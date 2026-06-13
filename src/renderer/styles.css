@@ -1,0 +1,380 @@
+:root {
+  color-scheme: light;
+  --bg: #f7f8f5;
+  --panel: #ffffff;
+  --panel-strong: #eef3ef;
+  --line: #cfd8d2;
+  --text: #1d2521;
+  --muted: #607069;
+  --accent: #1f7a5a;
+  --accent-2: #315f9c;
+  --danger: #b33a3a;
+  --warn: #9a6a13;
+  --cell: #fbfcfa;
+  --selected: #dceee7;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid var(--line);
+  background: var(--panel-strong);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brand {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand-mark {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #1f7a5a;
+  color: white;
+  font-weight: 800;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.brand p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-input {
+  height: 34px;
+  margin: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 10px;
+  background: white;
+}
+
+.table-list {
+  overflow: auto;
+  padding: 0 8px 12px;
+}
+
+.table-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+
+.table-item.active {
+  background: white;
+  border-color: var(--accent);
+}
+
+.table-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workspace {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  height: 100vh;
+}
+
+.toolbar,
+.querybar,
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.toolbar {
+  overflow-x: auto;
+}
+
+.divider {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+  flex: 0 0 auto;
+  margin: 0 3px;
+}
+
+.querybar select,
+.querybar input {
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  padding: 0 8px;
+}
+
+.querybar select {
+  min-width: 190px;
+}
+
+.querybar input {
+  min-width: 220px;
+}
+
+.checkline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.field-info {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid-section {
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.empty-state {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  text-align: center;
+  padding: 24px;
+}
+
+.grid-wrap {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--panel);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.data-grid {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.data-grid th,
+.data-grid td {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  min-width: 132px;
+  max-width: 280px;
+  height: 30px;
+  padding: 0;
+  background: var(--cell);
+}
+
+.data-grid th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #e8efea;
+  font-size: 12px;
+  font-weight: 700;
+  color: #233029;
+  text-align: left;
+}
+
+.data-grid th button {
+  width: 100%;
+  height: 30px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-select {
+  min-width: 44px !important;
+  max-width: 44px !important;
+  width: 44px;
+  text-align: center;
+  background: #eef3ef !important;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+}
+
+td.row-select {
+  z-index: 1;
+}
+
+.row-selected td,
+.row-selected .row-select {
+  background: var(--selected) !important;
+}
+
+.cell-input {
+  width: 100%;
+  height: 29px;
+  border: 0;
+  background: transparent;
+  padding: 0 7px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cell-input:focus {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+  background: white;
+}
+
+.pager {
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.pager select {
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+}
+
+#status-line {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  max-width: 520px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 12px 32px rgba(29, 37, 33, 0.16);
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.toast.warn {
+  border-left-color: var(--warn);
+}
+
+.toast.error {
+  border-left-color: var(--danger);
+}
+
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: 220px 1fr;
+  }
+
+  .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .querybar {
+    flex-wrap: wrap;
+  }
+
+  .field-info {
+    width: 100%;
+    margin-left: 0;
+  }
+}

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DB Master</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">DB</div>
+          <div>
+            <h1>DB Master</h1>
+            <p id="project-subtitle">No project loaded</p>
+          </div>
+        </div>
+        <input id="table-filter" class="filter-input" type="search" placeholder="Filter tables" />
+        <div id="table-list" class="table-list"></div>
+      </aside>
+
+      <main class="workspace">
+        <div class="toolbar">
+          <button id="open-db">Open DB</button>
+          <button id="open-xml">Open XML</button>
+          <button id="open-text">Open Text</button>
+          <span class="divider"></span>
+          <button id="save-project" disabled>Save</button>
+          <button id="export-table" disabled>Export</button>
+          <button id="export-all" disabled>Export All</button>
+          <button id="import-table" disabled>Import</button>
+          <button id="import-all">Import All</button>
+          <span class="divider"></span>
+          <button id="copy-row" disabled>Copy</button>
+          <button id="paste-row" disabled>Paste</button>
+          <button id="replace-row" disabled>Replace</button>
+          <button id="delete-row" disabled>Delete</button>
+          <button id="count-row" disabled>Count</button>
+          <span class="divider"></span>
+          <button id="hash-table" disabled>Hash</button>
+          <button id="extract-big">Extract BIG</button>
+        </div>
+
+        <div class="querybar">
+          <select id="column-select" disabled></select>
+          <input id="search-input" type="search" placeholder="Search" disabled />
+          <label class="checkline"><input id="search-exact" type="checkbox" /> Exact</label>
+          <button id="find-next" disabled>Find</button>
+          <span id="field-info" class="field-info">-</span>
+        </div>
+
+        <section class="grid-section">
+          <div id="empty-state" class="empty-state">
+            <strong>Open a DB/XML pair or a folder with exported .txt tables.</strong>
+          </div>
+          <div id="grid-wrap" class="grid-wrap hidden">
+            <table id="data-grid" class="data-grid"></table>
+          </div>
+        </section>
+
+        <div class="pager">
+          <button id="prev-page" disabled>Prev</button>
+          <span id="page-info">0 - 0 / 0</span>
+          <button id="next-page" disabled>Next</button>
+          <select id="page-size">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="250">250</option>
+            <option value="500">500</option>
+          </select>
+          <span id="status-line">Ready</span>
+        </div>
+      </main>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
