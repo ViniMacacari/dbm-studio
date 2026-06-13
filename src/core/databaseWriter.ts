@@ -11,11 +11,31 @@ interface WritableField extends FieldDescriptor {
 
 interface TableWriteLayout {
   name: string;
+  tableStart: number;
+  tableEnd: number;
+  recordsCountOffset: number;
   validRecordsCountOffset: number;
+  recordsCount: number;
   recordSize: number;
   fields: WritableField[];
   recordsOffset: number;
   capacity: number;
+  hasCompressedStrings: boolean;
+}
+
+interface TableReference {
+  shortName: string;
+  offset: number;
+  offsetPosition: number;
+  tableStart: number;
+}
+
+interface WritableLayoutParse {
+  databaseStart: number;
+  dbSize: number;
+  tableRefs: TableReference[];
+  layouts: TableWriteLayout[];
+  warnings: string[];
 }
 
 interface SaveDatabaseResult {
@@ -49,12 +69,16 @@ function kindFromDbFieldType(dbFieldType: number, xmlField?: FieldDescriptor): F
       return "integer";
     case 4:
       return "float";
+    case 13:
+      return "shortCompressedString";
+    case 14:
+      return "longCompressedString";
     default:
       return xmlField?.kind ?? "unknown";
   }
 }
 
-function parseWritableLayouts(dbBuffer: Buffer, descriptors: TableDescriptor[]): { layouts: TableWriteLayout[]; warnings: string[] } {
+function parseWritableLayouts(dbBuffer: Buffer, descriptors: TableDescriptor[]): WritableLayoutParse {
   const databaseStart = dbBuffer.indexOf(databaseHeader);
   if (databaseStart < 0) {
     throw new Error("Raw FIFA database header was not found. Save supports only uncompressed DB files opened successfully by the binary reader.");
@@ -87,23 +111,29 @@ function parseWritableLayouts(dbBuffer: Buffer, descriptors: TableDescriptor[]):
   cursor += 4;
   cursor += 4;
 
-  const tableRefs: Array<{ shortName: string; offset: number }> = [];
+  const tableRefs: TableReference[] = [];
   for (let index = 0; index < tableCount; index += 1) {
     if (cursor + 8 > databaseEnd) {
       warnings.push("Table directory ended earlier than expected.");
       break;
     }
+    const offset = dbBuffer.readUInt32LE(cursor + 4);
     tableRefs.push({
       shortName: readShortName(dbBuffer, cursor),
-      offset: dbBuffer.readUInt32LE(cursor + 4)
+      offset,
+      offsetPosition: cursor + 4,
+      tableStart: 0
     });
     cursor += 8;
   }
 
   cursor += 4;
   const tablesStartOffset = cursor;
+  tableRefs.forEach((tableRef) => {
+    tableRef.tableStart = tablesStartOffset + tableRef.offset;
+  });
   const tableStarts = tableRefs
-    .map((tableRef) => tablesStartOffset + tableRef.offset)
+    .map((tableRef) => tableRef.tableStart)
     .filter((offset) => offset >= tablesStartOffset && offset < databaseEnd)
     .sort((left, right) => left - right);
 
@@ -118,7 +148,7 @@ function parseWritableLayouts(dbBuffer: Buffer, descriptors: TableDescriptor[]):
       continue;
     }
 
-    const tableStart = tablesStartOffset + tableRef.offset;
+    const tableStart = tableRef.tableStart;
     if (tableStart < tablesStartOffset || tableStart + 32 > databaseEnd) {
       warnings.push(`${descriptor.name}: table header is outside the database buffer.`);
       continue;
@@ -128,7 +158,12 @@ function parseWritableLayouts(dbBuffer: Buffer, descriptors: TableDescriptor[]):
     tableCursor += 4;
     const recordSize = dbBuffer.readUInt32LE(tableCursor);
     tableCursor += 4;
-    tableCursor += 10;
+    tableCursor += 4;
+    const compressedStringLength = dbBuffer.readUInt32LE(tableCursor);
+    tableCursor += 4;
+    const recordsCountOffset = tableCursor;
+    const recordsCount = dbBuffer.readUInt16LE(tableCursor);
+    tableCursor += 2;
     const validRecordsCountOffset = tableCursor;
     tableCursor += 2;
     tableCursor += 4;
@@ -168,19 +203,23 @@ function parseWritableLayouts(dbBuffer: Buffer, descriptors: TableDescriptor[]):
     fields.sort((left, right) => left.bitOffset - right.bitOffset);
     const recordsOffset = tableCursor;
     const tableEnd = nextTableStart(tableStart);
-    const capacity = recordSize > 0 && tableEnd > recordsOffset ? Math.floor((tableEnd - recordsOffset) / recordSize) : 0;
 
     layouts.push({
       name: descriptor.name,
+      tableStart,
+      tableEnd,
+      recordsCountOffset,
       validRecordsCountOffset,
+      recordsCount,
       recordSize,
       fields,
       recordsOffset,
-      capacity
+      capacity: recordsCount,
+      hasCompressedStrings: compressedStringLength > 0 || fields.some((field) => field.dbFieldType === 13 || field.dbFieldType === 14)
     });
   }
 
-  return { layouts, warnings };
+  return { databaseStart, dbSize, tableRefs, layouts, warnings };
 }
 
 function parseInteger(value: string, context: string): bigint {
@@ -257,6 +296,16 @@ function writeDbField(record: Buffer, field: WritableField, value: string, conte
       record.writeFloatLE(numeric, byteOffset);
       return;
     }
+    case 13: {
+      const raw = parseInteger(value, context);
+      writeUnsignedBitsLE(record, field.bitOffset, 32, raw, context);
+      return;
+    }
+    case 14: {
+      const raw = parseInteger(value, context);
+      writeUnsignedBitsLE(record, field.bitOffset, 64, raw, context);
+      return;
+    }
     default: {
       const raw = parseInteger(value, context);
       writeUnsignedBitsLE(record, field.bitOffset, field.depth, raw, context);
@@ -279,9 +328,83 @@ function fieldFitsRecord(field: WritableField, recordSize: number): boolean {
       const byteOffset = field.bitOffset >> 3;
       return byteOffset + 4 <= recordSize;
     }
+    case 13:
+    case 14:
+      return false;
     default:
       return field.bitOffset + field.depth <= recordSize * 8;
   }
+}
+
+function sumShiftBefore(expansions: Array<{ insertOffset: number; extraBytes: number }>, offset: number): number {
+  return expansions
+    .filter((expansion) => expansion.insertOffset < offset)
+    .reduce((total, expansion) => total + expansion.extraBytes, 0);
+}
+
+function expandDatabaseForChangedRows(
+  dbBuffer: Buffer,
+  parsed: WritableLayoutParse,
+  tablesByName: Map<string, DataTable>,
+  warnings: string[]
+): Buffer {
+  const expansions: Array<{ layout: TableWriteLayout; insertOffset: number; extraBytes: number; rowCount: number }> = [];
+
+  for (const layout of parsed.layouts) {
+    const table = tablesByName.get(layout.name);
+    if (!table || table.rows.length <= layout.capacity) {
+      continue;
+    }
+    if (table.rows.length > 0xffff) {
+      throw new Error(`${layout.name}: DB table row count exceeds the 16-bit record counter.`);
+    }
+    if (layout.hasCompressedStrings) {
+      throw new Error(`${layout.name}: inserting rows into compressed-string tables is not supported yet.`);
+    }
+    const missingRows = table.rows.length - layout.capacity;
+    expansions.push({
+      layout,
+      insertOffset: layout.recordsOffset + layout.recordsCount * layout.recordSize,
+      extraBytes: missingRows * layout.recordSize,
+      rowCount: table.rows.length
+    });
+  }
+
+  if (expansions.length === 0) {
+    return dbBuffer;
+  }
+
+  expansions.sort((left, right) => left.insertOffset - right.insertOffset);
+  let output = Buffer.from(dbBuffer);
+  let totalInserted = 0;
+  for (const expansion of expansions) {
+    const adjustedInsertOffset = expansion.insertOffset + totalInserted;
+    output = Buffer.concat([
+      output.subarray(0, adjustedInsertOffset),
+      Buffer.alloc(expansion.extraBytes),
+      output.subarray(adjustedInsertOffset)
+    ]);
+    totalInserted += expansion.extraBytes;
+    warnings.push(`${expansion.layout.name}: expanded DB allocation by ${expansion.extraBytes} bytes for ${expansion.rowCount} rows.`);
+  }
+
+  output.writeUInt32LE(parsed.dbSize + totalInserted, parsed.databaseStart + databaseHeader.length);
+
+  for (const tableRef of parsed.tableRefs) {
+    const shift = sumShiftBefore(expansions, tableRef.tableStart);
+    if (shift > 0) {
+      output.writeUInt32LE(tableRef.offset + shift, tableRef.offsetPosition);
+    }
+  }
+
+  for (const expansion of expansions) {
+    const shiftedRecordsCountOffset = expansion.layout.recordsCountOffset + sumShiftBefore(expansions, expansion.layout.tableStart);
+    const shiftedValidRecordsCountOffset = expansion.layout.validRecordsCountOffset + sumShiftBefore(expansions, expansion.layout.tableStart);
+    output.writeUInt16LE(expansion.rowCount, shiftedRecordsCountOffset);
+    output.writeUInt16LE(expansion.rowCount, shiftedValidRecordsCountOffset);
+  }
+
+  return output;
 }
 
 export function saveDatabaseProject(project: DbProject): SaveDatabaseResult {
@@ -290,8 +413,9 @@ export function saveDatabaseProject(project: DbProject): SaveDatabaseResult {
   }
 
   const original = readFileSync(project.dbPath);
-  const output = Buffer.from(original);
-  const { layouts, warnings } = parseWritableLayouts(output, project.descriptors);
+  let output: Buffer = Buffer.from(original);
+  let parsed = parseWritableLayouts(output, project.descriptors);
+  const warnings = [...parsed.warnings];
   const changedTables = project.tables.filter((table) => table.changed);
   const tablesByName = new Map<string, DataTable>(changedTables.map((table) => [table.name, table]));
   let tablesWritten = 0;
@@ -304,7 +428,14 @@ export function saveDatabaseProject(project: DbProject): SaveDatabaseResult {
     };
   }
 
-  for (const layout of layouts) {
+  const expandedOutput = expandDatabaseForChangedRows(output, parsed, tablesByName, warnings);
+  if (expandedOutput.length !== output.length) {
+    output = expandedOutput;
+    parsed = parseWritableLayouts(output, project.descriptors);
+    warnings.push(...parsed.warnings);
+  }
+
+  for (const layout of parsed.layouts) {
     const table = tablesByName.get(layout.name);
     if (!table) {
       continue;
@@ -324,6 +455,7 @@ export function saveDatabaseProject(project: DbProject): SaveDatabaseResult {
       }
     });
 
+    output.writeUInt16LE(table.rows.length, layout.recordsCountOffset);
     output.writeUInt16LE(table.rows.length, layout.validRecordsCountOffset);
     for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex += 1) {
       const recordOffset = layout.recordsOffset + rowIndex * layout.recordSize;

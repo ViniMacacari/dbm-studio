@@ -3,6 +3,8 @@ import { AfterViewInit, Component, ElementRef, HostListener, ViewChild } from "@
 import { FormsModule } from "@angular/forms";
 import type { DataTable, DbProject } from "../shared/types";
 import type { DbMasterApi } from "./dbmaster-api";
+import { PlayerEditorPageComponent } from "./player-editor-page.component";
+import { PlayerEditorService } from "./player-editor.service";
 
 type ToastTone = "info" | "warn" | "error";
 
@@ -14,7 +16,7 @@ interface TableListItem {
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, PlayerEditorPageComponent],
   templateUrl: "./app.component.html"
 })
 export class AppComponent implements AfterViewInit {
@@ -25,8 +27,12 @@ export class AppComponent implements AfterViewInit {
 
   private readonly api: DbMasterApi = window.dbmaster;
 
+  constructor(private readonly playerEditor: PlayerEditorService) {}
+
   project?: DbProject;
   currentTableIndex = 0;
+  viewMode: "table" | "playerEditor" = "table";
+  playerEditorRowIndex = 0;
   page = 0;
   pageSize = 100;
   selectedColumnIndex = 0;
@@ -66,6 +72,21 @@ export class AppComponent implements AfterViewInit {
 
   get hasTable(): boolean {
     return Boolean(this.currentTable());
+  }
+
+  get isPlayersTable(): boolean {
+    return this.playerEditor.isPlayersTable(this.currentTable());
+  }
+
+  get canOpenPlayerEditor(): boolean {
+    return this.isPlayersTable && this.selectedRows.size === 1;
+  }
+
+  get selectedPlayerName(): string {
+    if (!this.project || !this.isPlayersTable || this.selectedRows.size !== 1) {
+      return "";
+    }
+    return this.playerEditor.resolvePlayerName(this.project, this.selectedRowIndexes()[0]);
   }
 
   get hasSelection(): boolean {
@@ -277,6 +298,7 @@ export class AppComponent implements AfterViewInit {
 
   selectTable(index: number): void {
     this.currentTableIndex = index;
+    this.viewMode = "table";
     this.page = 0;
     this.selectedColumnIndex = 0;
     this.selectedRows.clear();
@@ -324,6 +346,43 @@ export class AppComponent implements AfterViewInit {
     } else {
       this.selectedRows.delete(rowIndex);
     }
+  }
+
+  selectGridRow(rowIndex: number, event: MouseEvent): void {
+    if (event.ctrlKey || event.metaKey) {
+      if (this.selectedRows.has(rowIndex)) {
+        this.selectedRows.delete(rowIndex);
+      } else {
+        this.selectedRows.add(rowIndex);
+      }
+      return;
+    }
+
+    this.selectedRows.clear();
+    this.selectedRows.add(rowIndex);
+    if (this.isPlayersTable) {
+      const name = this.selectedPlayerName;
+      this.setStatus(name ? `${name} selected` : `Player row ${rowIndex + 1} selected`);
+    }
+  }
+
+  openPlayerEditor(): void {
+    if (!this.canOpenPlayerEditor) {
+      this.showToast("Select one player row.", "warn");
+      return;
+    }
+    this.playerEditorRowIndex = this.selectedRowIndexes()[0];
+    this.viewMode = "playerEditor";
+  }
+
+  closePlayerEditor(): void {
+    this.viewMode = "table";
+    this.resetHorizontalScroll();
+  }
+
+  onPlayerEditorApplied(message: string): void {
+    this.setStatus(message);
+    this.syncHorizontalScrollbar();
   }
 
   copyRows(): void {

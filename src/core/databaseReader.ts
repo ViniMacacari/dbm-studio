@@ -33,6 +33,18 @@ function decodeFixedString(bytes: Buffer): string {
     .replace(/\n/g, "\\n");
 }
 
+interface HuffmanTree {
+  child: number[][];
+  leaf: number[][];
+}
+
+interface CompressedStringContext {
+  buffer: Buffer;
+  baseOffset: number;
+  length: number;
+  tree: HuffmanTree;
+}
+
 function readField(reader: BitReader, field: FieldDescriptor): string {
   if (field.kind === "float") {
     return String(reader.readFloatLE());
@@ -62,6 +74,10 @@ export function makeEmptyTable(descriptor: TableDescriptor): DataTable {
 }
 
 function readUnsignedBitsLE(record: Buffer, bitOffset: number, depth: number): number {
+  return Number(readUnsignedBitsLEBigInt(record, bitOffset, depth));
+}
+
+function readUnsignedBitsLEBigInt(record: Buffer, bitOffset: number, depth: number): bigint {
   let value = 0n;
   for (let bit = 0; bit < depth; bit += 1) {
     const sourceBit = bitOffset + bit;
@@ -70,7 +86,54 @@ function readUnsignedBitsLE(record: Buffer, bitOffset: number, depth: number): n
       value |= 1n << BigInt(bit);
     }
   }
-  return Number(value);
+  return value;
+}
+
+function readHuffmanTree(buffer: Buffer, offset: number, nodeCount: number): HuffmanTree {
+  const child: number[][] = [];
+  const leaf: number[][] = [];
+  for (let index = 0; index < nodeCount; index += 1) {
+    const nodeOffset = offset + index * 4;
+    child.push([buffer[nodeOffset] ?? 0, buffer[nodeOffset + 2] ?? 0]);
+    leaf.push([buffer[nodeOffset + 1] ?? 0, buffer[nodeOffset + 3] ?? 0]);
+  }
+  return { child, leaf };
+}
+
+function readHuffmanString(buffer: Buffer, offset: number, outputLength: number, tree: HuffmanTree): string {
+  if (outputLength <= 0) {
+    return "";
+  }
+
+  if (tree.child.length === 0) {
+    return decodeFixedString(buffer.subarray(offset, offset + outputLength));
+  }
+
+  const output = Buffer.alloc(outputLength);
+  let outputIndex = 0;
+  let nodeIndex = 0;
+  let cursor = offset;
+
+  while (outputIndex < outputLength && cursor < buffer.length) {
+    const byte = buffer[cursor];
+    cursor += 1;
+    for (let bit = 7; bit >= 0; bit -= 1) {
+      const direction = (byte >> bit) & 1;
+      const childIndex = tree.child[nodeIndex]?.[direction] ?? 0;
+      if (childIndex === 0) {
+        output[outputIndex] = tree.leaf[nodeIndex]?.[direction] ?? 0;
+        outputIndex += 1;
+        nodeIndex = 0;
+        if (outputIndex === outputLength) {
+          break;
+        }
+      } else {
+        nodeIndex = childIndex;
+      }
+    }
+  }
+
+  return decodeFixedString(output);
 }
 
 function readShortName(buffer: Buffer, offset: number): string {
@@ -100,12 +163,54 @@ function kindFromDbFieldType(dbFieldType: number, xmlField?: FieldDescriptor): F
       return "integer";
     case 4:
       return "float";
+    case 13:
+      return "shortCompressedString";
+    case 14:
+      return "longCompressedString";
     default:
       return xmlField?.kind ?? "unknown";
   }
 }
 
-function readDbField(record: Buffer, field: FieldDescriptor): string {
+function readCompressedString(
+  record: Buffer,
+  field: FieldDescriptor,
+  context: CompressedStringContext | undefined,
+  longString: boolean
+): string {
+  const bitOffset = field.bitOffset ?? 0;
+  const byteOffset = bitOffset >> 3;
+  if (byteOffset + 4 > record.length) {
+    return "";
+  }
+
+  const compressedOffset = record.readInt32LE(byteOffset);
+  if (!context || compressedOffset < 0) {
+    return compressedOffset < 0 ? "" : String(compressedOffset);
+  }
+
+  const stringOffset = context.baseOffset + compressedOffset;
+  const stringLimit = context.baseOffset + context.length;
+  if (stringOffset < context.baseOffset || stringOffset >= stringLimit || stringOffset >= context.buffer.length) {
+    return "";
+  }
+
+  if (longString) {
+    if (stringOffset + 2 > stringLimit || stringOffset + 2 > context.buffer.length) {
+      return "";
+    }
+    const outputLength = context.buffer.readUInt16BE(stringOffset);
+    return readHuffmanString(context.buffer, stringOffset + 2, outputLength, context.tree);
+  }
+
+  if (stringOffset + 1 > stringLimit || stringOffset + 1 > context.buffer.length) {
+    return "";
+  }
+  const outputLength = context.buffer.readUInt8(stringOffset);
+  return readHuffmanString(context.buffer, stringOffset + 1, outputLength, context.tree);
+}
+
+function readDbField(record: Buffer, field: FieldDescriptor, compressedContext?: CompressedStringContext): string {
   const bitOffset = field.bitOffset ?? 0;
   const depth = field.depth ?? 0;
 
@@ -126,6 +231,10 @@ function readDbField(record: Buffer, field: FieldDescriptor): string {
       }
       return String(record.readFloatLE(byteOffset));
     }
+    case 13:
+      return readCompressedString(record, field, compressedContext, false);
+    case 14:
+      return readCompressedString(record, field, compressedContext, true);
     default: {
       if (depth <= 0) {
         return "";
@@ -133,6 +242,62 @@ function readDbField(record: Buffer, field: FieldDescriptor): string {
       return String(readUnsignedBitsLE(record, bitOffset, depth));
     }
   }
+}
+
+function buildCompressedStringContext(
+  database: Buffer,
+  records: Buffer[],
+  fields: FieldDescriptor[],
+  compressedBaseOffset: number,
+  compressedStringLength: number,
+  tableName: string,
+  warnings: string[]
+): CompressedStringContext | undefined {
+  const compressedFields = fields.filter((field) => field.dbFieldType === 13 || field.dbFieldType === 14);
+  if (compressedFields.length === 0 || compressedStringLength <= 0) {
+    return undefined;
+  }
+
+  let huffmanTreeSize = Number.MAX_SAFE_INTEGER;
+  for (const record of records) {
+    for (const field of compressedFields) {
+      const byteOffset = (field.bitOffset ?? 0) >> 3;
+      if (byteOffset + 4 > record.length) {
+        continue;
+      }
+      const compressedOffset = record.readInt32LE(byteOffset);
+      if (compressedOffset >= 0 && compressedOffset < huffmanTreeSize) {
+        huffmanTreeSize = compressedOffset;
+      }
+    }
+  }
+
+  if (huffmanTreeSize === Number.MAX_SAFE_INTEGER) {
+    huffmanTreeSize = 0;
+  }
+
+  if (compressedBaseOffset < 0 || compressedBaseOffset >= database.length) {
+    warnings.push(`${tableName}: compressed string block is outside the database buffer.`);
+    return undefined;
+  }
+
+  const readableLength = Math.min(compressedStringLength, database.length - compressedBaseOffset);
+  if (readableLength < compressedStringLength) {
+    warnings.push(`${tableName}: compressed string block is truncated.`);
+  }
+
+  const nodeCount = Math.floor(huffmanTreeSize / 4);
+  if (compressedBaseOffset + nodeCount * 4 > database.length) {
+    warnings.push(`${tableName}: Huffman tree is outside the database buffer.`);
+    return undefined;
+  }
+
+  return {
+    buffer: database,
+    baseOffset: compressedBaseOffset,
+    length: readableLength,
+    tree: readHuffmanTree(database, compressedBaseOffset, nodeCount)
+  };
 }
 
 function readFifaDatabaseByInternalLayout(dbBuffer: Buffer, descriptors: TableDescriptor[]): {
@@ -203,7 +368,11 @@ function readFifaDatabaseByInternalLayout(dbBuffer: Buffer, descriptors: TableDe
     tableCursor += 4;
     const recordSize = database.readUInt32LE(tableCursor);
     tableCursor += 4;
-    tableCursor += 10;
+    tableCursor += 4;
+    const compressedStringLength = database.readUInt32LE(tableCursor);
+    tableCursor += 4;
+    const recordsCount = database.readUInt16LE(tableCursor);
+    tableCursor += 2;
     const validRecordsCount = database.readUInt16LE(tableCursor);
     tableCursor += 2;
     tableCursor += 4;
@@ -241,15 +410,30 @@ function readFifaDatabaseByInternalLayout(dbBuffer: Buffer, descriptors: TableDe
 
     dbFields.sort((left, right) => (left.bitOffset ?? 0) - (right.bitOffset ?? 0));
 
-    const rows: string[][] = [];
+    const recordsOffset = tableCursor;
+    const records: Buffer[] = [];
     for (let rowIndex = 0; rowIndex < validRecordsCount; rowIndex += 1) {
-      const recordOffset = tableCursor + rowIndex * recordSize;
+      const recordOffset = recordsOffset + rowIndex * recordSize;
       if (recordOffset + recordSize > database.length) {
         warnings.push(`${descriptor.name}: record ${rowIndex + 1} is outside the database buffer.`);
         break;
       }
-      const record = database.subarray(recordOffset, recordOffset + recordSize);
-      rows.push(dbFields.map((field) => readDbField(record, field)));
+      records.push(database.subarray(recordOffset, recordOffset + recordSize));
+    }
+
+    const compressedContext = buildCompressedStringContext(
+      database,
+      records,
+      dbFields,
+      recordsOffset + recordsCount * recordSize,
+      compressedStringLength,
+      descriptor.name,
+      warnings
+    );
+
+    const rows: string[][] = [];
+    for (const record of records) {
+      rows.push(dbFields.map((field) => readDbField(record, field, compressedContext)));
     }
 
     parsedTables.set(descriptor.name, {

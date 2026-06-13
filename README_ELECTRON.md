@@ -25,6 +25,7 @@ dist/linux-unpacked/dbmaster-electron-ts
 - Browse tables, edit cells, sort columns and search values.
 - Copy, paste, replace, delete and count records.
 - Import/export one table or all tables using UTF-16 tab-delimited text.
+- Visual player editor for the `players` table, resolving display names from `editedplayernames` and `dcplayernames`, then saving custom name edits into `editedplayernames` by `playerid`.
 - Save raw DB files opened through a DB/XML pair, with an automatic `.bak` backup.
 - Calculate `hashid` values from `stringid` using the EA language hash routine.
 - Parse XML/meta descriptors flexibly.

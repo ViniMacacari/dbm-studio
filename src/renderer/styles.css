@@ -160,8 +160,14 @@ button:disabled {
 .workspace {
   min-width: 0;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100vh;
+}
+
+.table-workspace {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .toolbar,
@@ -244,6 +250,17 @@ button:disabled {
   margin-left: auto;
   color: var(--muted);
   font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-selection {
+  min-width: 140px;
+  max-width: 360px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -392,6 +409,186 @@ td.row-select {
   white-space: nowrap;
 }
 
+app-player-editor-page {
+  min-height: 0;
+  display: block;
+}
+
+.player-editor-page {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  background: var(--bg);
+}
+
+.player-editor-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: white;
+}
+
+.back-button,
+.apply-button {
+  min-width: 76px;
+}
+
+.apply-button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.apply-button:hover:not(:disabled) {
+  color: white;
+  border-color: #155f46;
+}
+
+.player-title {
+  min-width: 0;
+}
+
+.player-kicker {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.player-title h2 {
+  margin: 2px 0 4px;
+  font-size: 24px;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.player-meta span {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f6f8f6;
+  padding: 0 8px;
+}
+
+.editor-tabs {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #f2f5f2;
+}
+
+.editor-tabs button {
+  min-width: auto;
+}
+
+.editor-tabs button.active {
+  border-color: var(--accent);
+  background: white;
+  color: var(--accent);
+}
+
+.player-editor-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px 18px;
+}
+
+.editor-panel {
+  max-width: 1180px;
+}
+
+.name-grid,
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  gap: 10px;
+}
+
+.name-grid {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  margin-bottom: 14px;
+}
+
+.field-block {
+  min-width: 0;
+  min-height: 70px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 10px;
+}
+
+.field-block span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-block small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.field-block input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid #d7dfda;
+  border-radius: 6px;
+  background: #fbfcfa;
+  color: var(--text);
+  padding: 0 8px;
+}
+
+.field-block input:focus {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+  background: white;
+}
+
+.field-block input[readonly],
+.field-block input:disabled {
+  color: var(--muted);
+  background: #eef3ef;
+}
+
+.editor-footer {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  background: white;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 0 16px;
+}
+
 .toast {
   position: fixed;
   right: 16px;
@@ -489,5 +686,24 @@ td.row-select {
   .field-info {
     width: 100%;
     margin-left: 0;
+  }
+
+  .player-editor-header {
+    grid-template-columns: 1fr auto;
+  }
+
+  .back-button {
+    grid-column: 1;
+    justify-self: start;
+  }
+
+  .player-title {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .apply-button {
+    grid-column: 2;
+    grid-row: 1;
   }
 }
