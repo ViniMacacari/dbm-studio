@@ -60,6 +60,10 @@ export class AppComponent implements AfterViewInit {
     return Boolean(this.project);
   }
 
+  get canSaveDatabase(): boolean {
+    return this.project?.sourceKind === "database" && this.project.binaryReadMode !== "none" && Boolean(this.project.dbPath);
+  }
+
   get hasTable(): boolean {
     return Boolean(this.currentTable());
   }
@@ -179,11 +183,19 @@ export class AppComponent implements AfterViewInit {
       if (!this.project) {
         return;
       }
-      const result = await this.api.saveSnapshot(this.project);
+      const result = await this.api.saveDatabase(this.project);
       if (result.filePath) {
-        this.setStatus("Project saved");
+        if (result.tablesWritten === 0) {
+          this.setStatus("No changes to save");
+          return;
+        }
+        for (const table of this.project.tables) {
+          table.changed = false;
+        }
+        const warnings = result.warnings.length > 0 ? ` ${result.warnings.length} warning(s).` : "";
+        this.setStatus(`${result.tablesWritten} table(s) saved to DB.${warnings}`);
       }
-    });
+    }, "Saving database", "Writing .db file and backup");
   }
 
   async exportTable(): Promise<void> {

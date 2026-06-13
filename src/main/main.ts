@@ -9,7 +9,7 @@ import {
   importTable,
   openTextFolderProject,
   openXmlProject,
-  saveSnapshot
+  saveDatabaseProject
 } from "../core/projectIO";
 import type { DataTable, DbProject } from "../shared/types";
 
@@ -133,15 +133,8 @@ ipcMain.handle("project:openTextFolder", async () => {
   return { project: openTextFolderProject(folderPath) };
 });
 
-ipcMain.handle("project:saveSnapshot", async (_event, project: DbProject) => {
-  const filePath = await pickSaveFile("Save Project Snapshot", `${project.title || "dbmaster"}.dbmaster.json`, [
-    { name: "DB Master snapshot", extensions: ["json"] }
-  ]);
-  if (!filePath) {
-    return { canceled: true };
-  }
-  saveSnapshot(project, filePath);
-  return { filePath };
+ipcMain.handle("project:saveDatabase", async (_event, project: DbProject) => {
+  return saveDatabaseProject(project);
 });
 
 ipcMain.handle("table:export", async (_event, table: DataTable) => {

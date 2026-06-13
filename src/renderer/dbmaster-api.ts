@@ -4,7 +4,7 @@ export interface DbMasterApi {
   openXml(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;
   openDatabase(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;
   openTextFolder(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;
-  saveSnapshot(project: DbProject): Promise<{ canceled?: boolean; filePath?: string }>;
+  saveDatabase(project: DbProject): Promise<{ filePath: string; backupPath?: string; warnings: string[]; tablesWritten: number }>;
   exportTable(table: DataTable): Promise<{ canceled?: boolean; filePath?: string }>;
   exportAll(project: DbProject): Promise<{ canceled?: boolean; folderPath?: string; count?: number }>;
   importTable(expectedName?: string): Promise<{ canceled?: boolean; table?: DataTable }>;

@@ -3,6 +3,7 @@ import { basename, extname, join } from "node:path";
 import { parseTextTable, serializeTextTable } from "./textTable";
 import { parseXmlDescriptor } from "./xmlDescriptor";
 import { makeEmptyTable, readDatabaseWithDescriptor } from "./databaseReader";
+import { saveDatabaseProject } from "./databaseWriter";
 import type { DataTable, DbProject } from "../shared/types";
 
 export function openXmlProject(xmlPath: string): DbProject {
@@ -72,6 +73,4 @@ export function importTable(filePath: string, expectedName?: string): DataTable 
   return table;
 }
 
-export function saveSnapshot(project: DbProject, filePath: string): void {
-  writeFileSync(filePath, JSON.stringify(project, null, 2), "utf8");
-}
+export { saveDatabaseProject };

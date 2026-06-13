@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld("dbmaster", {
   openXml: () => ipcRenderer.invoke("project:openXml"),
   openDatabase: () => ipcRenderer.invoke("project:openDatabase"),
   openTextFolder: () => ipcRenderer.invoke("project:openTextFolder"),
-  saveSnapshot: (project: DbProject) => ipcRenderer.invoke("project:saveSnapshot", project),
+  saveDatabase: (project: DbProject) => ipcRenderer.invoke("project:saveDatabase", project),
   exportTable: (table: DataTable) => ipcRenderer.invoke("table:export", table),
   exportAll: (project: DbProject) => ipcRenderer.invoke("table:exportAll", project),
   importTable: (expectedName?: string) => ipcRenderer.invoke("table:import", expectedName),

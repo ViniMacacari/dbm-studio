@@ -28,7 +28,7 @@
       <button type="button" title="Open XML descriptor" (click)="openXml()">XML</button>
       <button type="button" title="Open exported text tables" (click)="openTextFolder()">Text</button>
       <span class="divider"></span>
-      <button type="button" [disabled]="!hasProject" (click)="saveProject()">Save</button>
+      <button type="button" [disabled]="!canSaveDatabase" title="Save opened .db file" (click)="saveProject()">Save</button>
       <button type="button" [disabled]="!hasTable" (click)="exportTable()">Export</button>
       <button type="button" [disabled]="!hasProject" title="Export all tables" (click)="exportAll()">Export+</button>
       <button type="button" [disabled]="!hasTable" (click)="importTable()">Import</button>
