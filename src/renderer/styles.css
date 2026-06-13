@@ -26,6 +26,11 @@ body {
   overflow: hidden;
 }
 
+app-root {
+  display: block;
+  height: 100vh;
+}
+
 button,
 input,
 select {

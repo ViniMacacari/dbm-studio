@@ -1,4 +1,6 @@
 dist
 node_modules
+.angular
+out-tsc
 DbMaster.csproj
 DbMaster.DbMaster.resx

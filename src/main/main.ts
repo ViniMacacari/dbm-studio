@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { computeLanguageHash, toSignedInt32 } from "../core/fifaHash";
@@ -37,7 +37,9 @@ function createWindow(): void {
     }
   });
 
-  void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+  const angularIndex = join(__dirname, "../renderer/browser/index.html");
+  const legacyIndex = join(__dirname, "../renderer/index.html");
+  void mainWindow.loadFile(existsSync(angularIndex) ? angularIndex : legacyIndex);
 }
 
 function activeWindow(): BrowserWindow | undefined {

@@ -1,6 +1,6 @@
 # DB Master Electron
 
-Electron + TypeScript rewrite of the WinForms DB Master UI.
+Electron + Angular + TypeScript rewrite of the WinForms DB Master UI.
 
 ## Commands
 
@@ -19,6 +19,7 @@ dist/linux-unpacked/dbmaster-electron-ts
 
 ## Implemented
 
+- Angular renderer UI running inside Electron.
 - Open DB/XML pair through Electron dialogs.
 - Open folders containing exported DB Master `.txt` tables.
 - Browse tables, edit cells, sort columns and search values.
