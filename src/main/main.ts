@@ -1,12 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { mkdirSync } from "node:fs";
 import { basename, join } from "node:path";
+import { Worker } from "node:worker_threads";
 import { computeLanguageHash, toSignedInt32 } from "../core/fifaHash";
 import { extractBig, readBigEntries } from "../core/bigArchive";
 import {
   exportTable,
   importTable,
-  openDatabaseProject,
   openTextFolderProject,
   openXmlProject,
   saveSnapshot
@@ -76,6 +76,33 @@ async function pickSaveFile(title: string, defaultPath: string, filters: Electro
   return result.canceled ? undefined : result.filePath;
 }
 
+function openDatabaseInWorker(xmlPath: string, dbPath: string): Promise<DbProject> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(join(__dirname, "openDatabaseWorker.js"), {
+      workerData: { xmlPath, dbPath }
+    });
+
+    worker.once("message", (message: { project?: DbProject; error?: string }) => {
+      if (message.error) {
+        reject(new Error(message.error));
+        return;
+      }
+      if (!message.project) {
+        reject(new Error("Database worker finished without returning a project."));
+        return;
+      }
+      resolve(message.project);
+    });
+
+    worker.once("error", reject);
+    worker.once("exit", (code) => {
+      if (code !== 0) {
+        reject(new Error(`Database worker exited with code ${code}.`));
+      }
+    });
+  });
+}
+
 ipcMain.handle("project:openXml", async () => {
   const xmlPath = await pickFile("Open XML Descriptor File", [{ name: "XML files", extensions: ["xml"] }]);
   if (!xmlPath) {
@@ -93,7 +120,7 @@ ipcMain.handle("project:openDatabase", async () => {
   if (!dbPath) {
     return { canceled: true };
   }
-  return { project: openDatabaseProject(xmlPath, dbPath) };
+  return { project: await openDatabaseInWorker(xmlPath, dbPath) };
 });
 
 ipcMain.handle("project:openTextFolder", async () => {

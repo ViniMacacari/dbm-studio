@@ -23,6 +23,7 @@
   "build": {
     "appId": "com.dbmaster.electron",
     "productName": "DB Master",
+    "asar": false,
     "files": [
       "dist/**/*",
       "package.json"

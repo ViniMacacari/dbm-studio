@@ -75,6 +75,8 @@ const tableFilter = $("table-filter") as HTMLInputElement;
 const gridWrap = $("grid-wrap");
 const emptyState = $("empty-state");
 const dataGrid = $("data-grid") as HTMLTableElement;
+const horizontalScroll = $("horizontal-scroll");
+const horizontalScrollInner = $("horizontal-scroll-inner");
 const columnSelect = $("column-select") as HTMLSelectElement;
 const searchInput = $("search-input") as HTMLInputElement;
 const searchExact = $("search-exact") as HTMLInputElement;
@@ -83,6 +85,9 @@ const statusLine = $("status-line");
 const pageInfo = $("page-info");
 const pageSize = $("page-size") as HTMLSelectElement;
 const toast = $("toast");
+const loadingOverlay = $("loading-overlay");
+const loadingTitle = $("loading-title");
+const loadingDetail = $("loading-detail");
 
 function currentTable(): DataTable | undefined {
   return state.project?.tables[state.currentTableIndex];
@@ -98,6 +103,22 @@ function showToast(message: string, tone: "info" | "warn" | "error" = "info"): v
   window.setTimeout(() => {
     toast.classList.add("hidden");
   }, 5200);
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
+async function setLoading(loading: boolean, title = "Loading", detail = "Please wait"): Promise<void> {
+  loadingTitle.textContent = title;
+  loadingDetail.textContent = detail;
+  loadingOverlay.classList.toggle("hidden", !loading);
+  document.body.classList.toggle("is-loading", loading);
+  if (loading) {
+    await nextFrame();
+  }
 }
 
 function setEnabled(ids: string[], enabled: boolean): void {
@@ -196,6 +217,22 @@ function pageBounds(table: DataTable): { start: number; end: number; total: numb
   return { start, end, total };
 }
 
+function syncHorizontalScrollbar(): void {
+  const table = currentTable();
+  if (!table) {
+    horizontalScroll.classList.add("hidden");
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    const scrollWidth = dataGrid.scrollWidth;
+    const clientWidth = gridWrap.clientWidth;
+    horizontalScrollInner.style.width = `${Math.max(scrollWidth, clientWidth)}px`;
+    horizontalScroll.classList.toggle("hidden", scrollWidth <= clientWidth + 1);
+    horizontalScroll.scrollLeft = gridWrap.scrollLeft;
+  });
+}
+
 function renderGrid(): void {
   const table = currentTable();
   dataGrid.textContent = "";
@@ -203,6 +240,7 @@ function renderGrid(): void {
   if (!table) {
     emptyState.classList.remove("hidden");
     gridWrap.classList.add("hidden");
+    horizontalScroll.classList.add("hidden");
     pageInfo.textContent = "0 - 0 / 0";
     return;
   }
@@ -282,6 +320,7 @@ function renderGrid(): void {
   pageInfo.textContent = total === 0 ? "0 - 0 / 0" : `${start + 1} - ${end} / ${total}`;
   ($<HTMLButtonElement>("prev-page")).disabled = state.page === 0;
   ($<HTMLButtonElement>("next-page")).disabled = end >= total;
+  syncHorizontalScrollbar();
 }
 
 function render(): void {
@@ -305,13 +344,20 @@ function loadProject(project: DbProject): void {
   setStatus(project.warnings.length > 0 ? `${project.title} loaded with ${project.warnings.length} warning(s)` : `${project.title} loaded`);
 }
 
-async function guarded(action: () => Promise<void>): Promise<void> {
+async function guarded(action: () => Promise<void>, loadingTitleText?: string, loadingDetailText?: string): Promise<void> {
   try {
+    if (loadingTitleText) {
+      await setLoading(true, loadingTitleText, loadingDetailText ?? "Please wait");
+    }
     await action();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     showToast(message, "error");
     setStatus("Error");
+  } finally {
+    if (loadingTitleText) {
+      await setLoading(false);
+    }
   }
 }
 
@@ -475,7 +521,7 @@ $("open-db").addEventListener("click", () => guarded(async () => {
   if (result.project) {
     loadProject(result.project);
   }
-}));
+}, "Opening database", "Reading XML and DB tables"));
 
 $("open-xml").addEventListener("click", () => guarded(async () => {
   const result = await api.openXml();
@@ -489,7 +535,7 @@ $("open-text").addEventListener("click", () => guarded(async () => {
   if (result.project) {
     loadProject(result.project);
   }
-}));
+}, "Opening text tables", "Reading exported .txt files"));
 
 $("save-project").addEventListener("click", () => guarded(async () => {
   if (!state.project) {
@@ -520,7 +566,7 @@ $("export-all").addEventListener("click", () => guarded(async () => {
   if (result.folderPath) {
     setStatus(`${result.count ?? 0} table(s) exported`);
   }
-}));
+}, "Exporting tables", "Writing .txt files"));
 
 $("import-table").addEventListener("click", () => guarded(async () => {
   const table = currentTable();
@@ -535,7 +581,7 @@ $("import-all").addEventListener("click", () => guarded(async () => {
   if (result.project) {
     loadProject(result.project);
   }
-}));
+}, "Importing tables", "Reading .txt files"));
 
 $("extract-big").addEventListener("click", () => guarded(async () => {
   const result = await api.extractDatabasesFromBig();
@@ -551,7 +597,7 @@ $("replace-row").addEventListener("click", () => pasteRows(true));
 $("delete-row").addEventListener("click", () => deleteRows(true));
 $("count-row").addEventListener("click", countRows);
 $("find-next").addEventListener("click", findNext);
-$("hash-table").addEventListener("click", () => guarded(calculateHashes));
+$("hash-table").addEventListener("click", () => guarded(calculateHashes, "Calculating hashes", "Updating hashid values"));
 
 $("prev-page").addEventListener("click", () => {
   state.page = Math.max(0, state.page - 1);
@@ -576,5 +622,28 @@ searchInput.addEventListener("keydown", (event) => {
     findNext();
   }
 });
+
+horizontalScroll.addEventListener("scroll", () => {
+  if (Math.abs(gridWrap.scrollLeft - horizontalScroll.scrollLeft) > 1) {
+    gridWrap.scrollLeft = horizontalScroll.scrollLeft;
+  }
+});
+
+gridWrap.addEventListener("scroll", () => {
+  if (Math.abs(horizontalScroll.scrollLeft - gridWrap.scrollLeft) > 1) {
+    horizontalScroll.scrollLeft = gridWrap.scrollLeft;
+  }
+});
+
+gridWrap.addEventListener("wheel", (event) => {
+  if (!event.shiftKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
+    return;
+  }
+  gridWrap.scrollLeft += event.deltaY;
+  horizontalScroll.scrollLeft = gridWrap.scrollLeft;
+  event.preventDefault();
+}, { passive: false });
+
+window.addEventListener("resize", syncHorizontalScrollbar);
 
 render();

@@ -22,15 +22,15 @@
 
       <main class="workspace">
         <div class="toolbar">
-          <button id="open-db">Open DB</button>
-          <button id="open-xml">Open XML</button>
-          <button id="open-text">Open Text</button>
+          <button id="open-db" title="Open DB/XML pair">DB</button>
+          <button id="open-xml" title="Open XML descriptor">XML</button>
+          <button id="open-text" title="Open exported text tables">Text</button>
           <span class="divider"></span>
           <button id="save-project" disabled>Save</button>
           <button id="export-table" disabled>Export</button>
-          <button id="export-all" disabled>Export All</button>
+          <button id="export-all" disabled title="Export all tables">Export+</button>
           <button id="import-table" disabled>Import</button>
-          <button id="import-all">Import All</button>
+          <button id="import-all" title="Import all tables">Import+</button>
           <span class="divider"></span>
           <button id="copy-row" disabled>Copy</button>
           <button id="paste-row" disabled>Paste</button>
@@ -39,7 +39,7 @@
           <button id="count-row" disabled>Count</button>
           <span class="divider"></span>
           <button id="hash-table" disabled>Hash</button>
-          <button id="extract-big">Extract BIG</button>
+          <button id="extract-big" title="Extract DB/XML from BIG archive">BIG</button>
         </div>
 
         <div class="querybar">
@@ -56,6 +56,9 @@
           </div>
           <div id="grid-wrap" class="grid-wrap hidden">
             <table id="data-grid" class="data-grid"></table>
+          </div>
+          <div id="horizontal-scroll" class="horizontal-scroll hidden" aria-label="Horizontal table scroll">
+            <div id="horizontal-scroll-inner" class="horizontal-scroll-inner"></div>
           </div>
         </section>
 
@@ -75,6 +78,13 @@
     </div>
 
     <div id="toast" class="toast hidden"></div>
+    <div id="loading-overlay" class="loading-overlay hidden">
+      <div class="loading-box">
+        <div class="spinner"></div>
+        <strong id="loading-title">Loading</strong>
+        <span id="loading-detail">Please wait</span>
+      </div>
+    </div>
     <script src="./app.js"></script>
   </body>
 </html>

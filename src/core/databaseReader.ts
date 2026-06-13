@@ -29,7 +29,7 @@ function decodeFixedString(bytes: Buffer): string {
   const value = end >= 0 ? bytes.subarray(0, end) : bytes;
   return value
     .toString("utf8")
-    .replace(/["\a\b\f\r\t]/g, "")
+    .replace(/["\x07\b\f\r\t]/g, "")
     .replace(/\n/g, "\\n");
 }
 
