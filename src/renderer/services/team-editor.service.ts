@@ -45,6 +45,12 @@ export interface TeamSearchResult {
   foundationYear?: string;
 }
 
+export interface TeamCreationResult {
+  rowIndex: number;
+  teamId: string;
+  message: string;
+}
+
 interface FieldDefinition {
   column: string;
   label: string;
@@ -211,6 +217,28 @@ export class TeamEditorService {
     return results;
   }
 
+  createTeam(project: DbProject | undefined): TeamCreationResult {
+    if (!project) {
+      throw new Error("Open a DB/XML pair before creating a team.");
+    }
+
+    const teams = this.findTeamsTable(project);
+    if (!teams) {
+      throw new Error("teams table was not found.");
+    }
+
+    const teamId = this.nextId(teams, "teamid");
+    teams.rows.push(this.makeCreatedTeamRow(teams, teamId));
+    teams.changed = true;
+    this.invalidateTable(teams);
+
+    return {
+      rowIndex: teams.rows.length - 1,
+      teamId,
+      message: `Team ${teamId} created in teams`
+    };
+  }
+
   createDraft(project: DbProject, rowIndex: number): TeamEditorDraft | undefined {
     const teams = this.findTeamsTable(project);
     if (!teams || !teams.rows[rowIndex]) {
@@ -349,6 +377,93 @@ export class TeamEditorService {
       throw new Error(`${field.label}: value must be at most ${field.max}.`);
     }
     return raw;
+  }
+
+  private makeCreatedTeamRow(teams: DataTable, teamId: string): string[] {
+    const defaults = new Map<string, string>([
+      ["teamid", teamId],
+      ["teamname", "New Team"],
+      ["overallrating", "60"],
+      ["matchdayoverallrating", "60"],
+      ["attackrating", "60"],
+      ["midfieldrating", "60"],
+      ["defenserating", "60"],
+      ["matchdayattackrating", "60"],
+      ["matchdaymidfieldrating", "60"],
+      ["matchdaydefenserating", "60"],
+      ["foundationyear", String(new Date().getFullYear())]
+    ]);
+
+    return teams.columns.map((column, columnIndex) => {
+      const lowerColumn = column.toLowerCase();
+      const fallback = this.defaultValueForField(teams.fields[columnIndex]);
+      return this.clampFieldValue(teams, lowerColumn, defaults.get(lowerColumn) ?? fallback, fallback);
+    });
+  }
+
+  private nextId(table: DataTable, column: string): string {
+    const columnIndex = this.columnIndex(table, column);
+    if (columnIndex < 0) {
+      throw new Error(`${table.name}.${column} column was not found.`);
+    }
+
+    const field = this.fieldForColumn(table, column);
+    const used = new Set<number>();
+    let maxId = 0;
+    for (const row of table.rows) {
+      const value = Number(row[columnIndex]);
+      if (Number.isInteger(value) && value > 0) {
+        used.add(value);
+        maxId = Math.max(maxId, value);
+      }
+    }
+
+    const minId = Math.max(1, Math.trunc(field?.rangeLow ?? 1));
+    const maxAllowed = field && field.rangeHigh >= field.rangeLow ? Math.trunc(field.rangeHigh) : Number.MAX_SAFE_INTEGER;
+    const next = Math.max(maxId + 1, minId);
+    if (next <= maxAllowed && !used.has(next)) {
+      return String(next);
+    }
+
+    const scanLimit = Math.min(maxAllowed, minId + Math.max(table.rows.length * 2, 100000));
+    for (let candidate = minId; candidate <= scanLimit; candidate += 1) {
+      if (!used.has(candidate)) {
+        return String(candidate);
+      }
+    }
+
+    throw new Error(`No free ${column} was found in ${table.name}.`);
+  }
+
+  private defaultValueForField(field: FieldDescriptor | undefined): string {
+    if (!field || field.kind === "string" || field.kind === "shortCompressedString" || field.kind === "longCompressedString" || field.kind === "unknown") {
+      return "";
+    }
+    if (field.rangeHigh >= field.rangeLow) {
+      if (field.rangeLow <= 0 && field.rangeHigh >= 0) {
+        return "0";
+      }
+      return String(Math.trunc(field.rangeLow));
+    }
+    return "0";
+  }
+
+  private clampFieldValue(table: DataTable, column: string, value: string, fallback: string): string {
+    const field = this.fieldForColumn(table, column);
+    if (!field || field.kind === "string" || field.kind === "shortCompressedString" || field.kind === "longCompressedString" || field.kind === "unknown") {
+      return value;
+    }
+
+    const numeric = Number(value);
+    const fallbackNumeric = Number(fallback);
+    if (!Number.isFinite(numeric)) {
+      return Number.isFinite(fallbackNumeric) ? fallback : this.defaultValueForField(field);
+    }
+    if (field.rangeHigh < field.rangeLow) {
+      return String(Math.trunc(numeric));
+    }
+    const clamped = Math.min(Math.max(Math.trunc(numeric), Math.trunc(field.rangeLow)), Math.trunc(field.rangeHigh));
+    return String(clamped);
   }
 
   private displayName(table: DataTable, rowIndex: number, teamId: string): string {

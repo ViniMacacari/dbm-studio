@@ -54,6 +54,12 @@ export interface LeagueSearchResult {
   teamsCount: number;
 }
 
+export interface LeagueCreationResult {
+  rowIndex: number;
+  leagueId: string;
+  message: string;
+}
+
 interface FieldDefinition {
   column: string;
   label: string;
@@ -142,6 +148,28 @@ export class LeagueEditorService {
       }
     }
     return results;
+  }
+
+  createLeague(project: DbProject | undefined): LeagueCreationResult {
+    if (!project) {
+      throw new Error("Open a DB/XML pair before creating a league.");
+    }
+
+    const leagues = this.findLeaguesTable(project);
+    if (!leagues) {
+      throw new Error("leagues table was not found.");
+    }
+
+    const leagueId = this.nextId(leagues, "leagueid");
+    leagues.rows.push(this.makeCreatedLeagueRow(leagues, leagueId));
+    leagues.changed = true;
+    this.invalidateTable(leagues);
+
+    return {
+      rowIndex: leagues.rows.length - 1,
+      leagueId,
+      message: `League ${leagueId} created in leagues`
+    };
   }
 
   createDraft(project: DbProject, rowIndex: number): LeagueEditorDraft | undefined {
@@ -284,6 +312,59 @@ export class LeagueEditorService {
     });
     links.rows.push(row);
     return links.rows.length - 1;
+  }
+
+  private makeCreatedLeagueRow(leagues: DataTable, leagueId: string): string[] {
+    const defaults = new Map<string, string>([
+      ["leagueid", leagueId],
+      ["leaguename", "New League"],
+      ["countryid", "0"],
+      ["level", "1"],
+      ["leaguetype", "0"],
+      ["isinternationalleague", "0"],
+      ["iswomencompetition", "0"],
+      ["iswithintransferwindow", "0"]
+    ]);
+
+    return leagues.columns.map((column, columnIndex) => {
+      const lowerColumn = column.toLowerCase();
+      const fallback = this.defaultValueForField(leagues.fields[columnIndex]);
+      return this.clampFieldValue(leagues, lowerColumn, defaults.get(lowerColumn) ?? fallback, fallback);
+    });
+  }
+
+  private nextId(table: DataTable, column: string): string {
+    const columnIndex = this.columnIndex(table, column);
+    if (columnIndex < 0) {
+      throw new Error(`${table.name}.${column} column was not found.`);
+    }
+
+    const field = this.fieldForColumn(table, column);
+    const used = new Set<number>();
+    let maxId = 0;
+    for (const row of table.rows) {
+      const value = Number(row[columnIndex]);
+      if (Number.isInteger(value) && value > 0) {
+        used.add(value);
+        maxId = Math.max(maxId, value);
+      }
+    }
+
+    const minId = Math.max(1, Math.trunc(field?.rangeLow ?? 1));
+    const maxAllowed = field && field.rangeHigh >= field.rangeLow ? Math.trunc(field.rangeHigh) : Number.MAX_SAFE_INTEGER;
+    const next = Math.max(maxId + 1, minId);
+    if (next <= maxAllowed && !used.has(next)) {
+      return String(next);
+    }
+
+    const scanLimit = Math.min(maxAllowed, minId + Math.max(table.rows.length * 2, 100000));
+    for (let candidate = minId; candidate <= scanLimit; candidate += 1) {
+      if (!used.has(candidate)) {
+        return String(candidate);
+      }
+    }
+
+    throw new Error(`No free ${column} was found in ${table.name}.`);
   }
 
   private createLeagueSummary(project: DbProject, leagues: DataTable, rowIndex: number): LeagueSearchResult | undefined {
@@ -471,10 +552,7 @@ export class LeagueEditorService {
   }
 
   private defaultValueForField(field: FieldDescriptor | undefined): string {
-    if (!field) {
-      return "";
-    }
-    if (field.kind === "string") {
+    if (!field || field.kind === "string" || field.kind === "shortCompressedString" || field.kind === "longCompressedString" || field.kind === "unknown") {
       return "";
     }
     if (field.rangeHigh >= field.rangeLow) {
@@ -488,7 +566,7 @@ export class LeagueEditorService {
 
   private clampFieldValue(table: DataTable, column: string, value: string, fallback: string): string {
     const field = this.fieldForColumn(table, column);
-    if (!field || field.kind === "string") {
+    if (!field || field.kind === "string" || field.kind === "shortCompressedString" || field.kind === "longCompressedString" || field.kind === "unknown") {
       return value;
     }
 
