@@ -46,6 +46,50 @@ function activeWindow(): BrowserWindow | undefined {
   return mainWindow;
 }
 
+interface WindowDisplayState {
+  window?: BrowserWindow;
+  wasFullScreen: boolean;
+  wasMaximized: boolean;
+}
+
+function captureWindowDisplayState(): WindowDisplayState {
+  const window = activeWindow();
+  return {
+    window,
+    wasFullScreen: window?.isFullScreen() ?? false,
+    wasMaximized: window?.isMaximized() ?? false
+  };
+}
+
+function restoreWindowDisplayState(state: WindowDisplayState): void {
+  const window = state.window;
+  if (!window || window.isDestroyed()) {
+    return;
+  }
+
+  setTimeout(() => {
+    if (window.isDestroyed()) {
+      return;
+    }
+    if (state.wasFullScreen && !window.isFullScreen()) {
+      window.setFullScreen(true);
+      return;
+    }
+    if (state.wasMaximized && !window.isMaximized()) {
+      window.maximize();
+    }
+  }, 50);
+}
+
+async function keepWindowDisplayState<T>(action: () => T | Promise<T>): Promise<T> {
+  const state = captureWindowDisplayState();
+  try {
+    return await action();
+  } finally {
+    restoreWindowDisplayState(state);
+  }
+}
+
 async function pickFile(title: string, filters: Electron.FileFilter[]): Promise<string | undefined> {
   const options: Electron.OpenDialogOptions = {
     title,
@@ -106,72 +150,86 @@ function openDatabaseInWorker(xmlPath: string, dbPath: string): Promise<DbProjec
 }
 
 ipcMain.handle("project:openXml", async () => {
-  const xmlPath = await pickFile("Open XML Descriptor File", [{ name: "XML files", extensions: ["xml"] }]);
-  if (!xmlPath) {
-    return { canceled: true };
-  }
-  return { project: openXmlProject(xmlPath) };
+  return keepWindowDisplayState(async () => {
+    const xmlPath = await pickFile("Open XML Descriptor File", [{ name: "XML files", extensions: ["xml"] }]);
+    if (!xmlPath) {
+      return { canceled: true };
+    }
+    return { project: openXmlProject(xmlPath) };
+  });
 });
 
 ipcMain.handle("project:openDatabase", async () => {
-  const xmlPath = await pickFile("Open XML Descriptor File", [{ name: "XML files", extensions: ["xml"] }]);
-  if (!xmlPath) {
-    return { canceled: true };
-  }
-  const dbPath = await pickFile("Open Database File", [{ name: "DB files", extensions: ["db"] }]);
-  if (!dbPath) {
-    return { canceled: true };
-  }
-  return { project: await openDatabaseInWorker(xmlPath, dbPath) };
+  return keepWindowDisplayState(async () => {
+    const xmlPath = await pickFile("Open XML Descriptor File", [{ name: "XML files", extensions: ["xml"] }]);
+    if (!xmlPath) {
+      return { canceled: true };
+    }
+    const dbPath = await pickFile("Open Database File", [{ name: "DB files", extensions: ["db"] }]);
+    if (!dbPath) {
+      return { canceled: true };
+    }
+    return { project: await openDatabaseInWorker(xmlPath, dbPath) };
+  });
 });
 
 ipcMain.handle("project:openTextFolder", async () => {
-  const folderPath = await pickFolder("Open Exported Tables Folder");
-  if (!folderPath) {
-    return { canceled: true };
-  }
-  return { project: openTextFolderProject(folderPath) };
+  return keepWindowDisplayState(async () => {
+    const folderPath = await pickFolder("Open Exported Tables Folder");
+    if (!folderPath) {
+      return { canceled: true };
+    }
+    return { project: openTextFolderProject(folderPath) };
+  });
 });
 
 ipcMain.handle("project:saveDatabase", async (_event, project: DbProject) => {
-  return saveDatabaseProject(project);
+  return keepWindowDisplayState(() => saveDatabaseProject(project));
 });
 
 ipcMain.handle("table:export", async (_event, table: DataTable) => {
-  const filePath = await pickSaveFile("Export table", `${table.name}.txt`, [{ name: "Text Unicode files", extensions: ["txt"] }]);
-  if (!filePath) {
-    return { canceled: true };
-  }
-  exportTable(table, filePath);
-  return { filePath };
+  return keepWindowDisplayState(async () => {
+    const filePath = await pickSaveFile("Export table", `${table.name}.txt`, [{ name: "Text Unicode files", extensions: ["txt"] }]);
+    if (!filePath) {
+      return { canceled: true };
+    }
+    exportTable(table, filePath);
+    return { filePath };
+  });
 });
 
 ipcMain.handle("table:exportAll", async (_event, project: DbProject) => {
-  const folderPath = await pickFolder("Select the folder where to export");
-  if (!folderPath) {
-    return { canceled: true };
-  }
-  mkdirSync(folderPath, { recursive: true });
-  for (const table of project.tables) {
-    exportTable(table, join(folderPath, `${table.name}.txt`));
-  }
-  return { folderPath, count: project.tables.length };
+  return keepWindowDisplayState(async () => {
+    const folderPath = await pickFolder("Select the folder where to export");
+    if (!folderPath) {
+      return { canceled: true };
+    }
+    mkdirSync(folderPath, { recursive: true });
+    for (const table of project.tables) {
+      exportTable(table, join(folderPath, `${table.name}.txt`));
+    }
+    return { folderPath, count: project.tables.length };
+  });
 });
 
 ipcMain.handle("table:import", async (_event, expectedName?: string) => {
-  const filePath = await pickFile("Import table", [{ name: "Text Unicode files", extensions: ["txt"] }]);
-  if (!filePath) {
-    return { canceled: true };
-  }
-  return { table: importTable(filePath, expectedName) };
+  return keepWindowDisplayState(async () => {
+    const filePath = await pickFile("Import table", [{ name: "Text Unicode files", extensions: ["txt"] }]);
+    if (!filePath) {
+      return { canceled: true };
+    }
+    return { table: importTable(filePath, expectedName) };
+  });
 });
 
 ipcMain.handle("table:importAll", async (_event) => {
-  const folderPath = await pickFolder("Select the folder from which to import");
-  if (!folderPath) {
-    return { canceled: true };
-  }
-  return { project: openTextFolderProject(folderPath) };
+  return keepWindowDisplayState(async () => {
+    const folderPath = await pickFolder("Select the folder from which to import");
+    if (!folderPath) {
+      return { canceled: true };
+    }
+    return { project: openTextFolderProject(folderPath) };
+  });
 });
 
 ipcMain.handle("hash:language", (_event, values: string[]) => {
@@ -179,27 +237,31 @@ ipcMain.handle("hash:language", (_event, values: string[]) => {
 });
 
 ipcMain.handle("big:list", async () => {
-  const filePath = await pickFile("Open BIG Archive", [{ name: "BIG archives", extensions: ["big"] }]);
-  if (!filePath) {
-    return { canceled: true };
-  }
-  return { archivePath: filePath, entries: readBigEntries(filePath) };
+  return keepWindowDisplayState(async () => {
+    const filePath = await pickFile("Open BIG Archive", [{ name: "BIG archives", extensions: ["big"] }]);
+    if (!filePath) {
+      return { canceled: true };
+    }
+    return { archivePath: filePath, entries: readBigEntries(filePath) };
+  });
 });
 
 ipcMain.handle("big:extractDatabases", async () => {
-  const filePath = await pickFile("Open BIG Archive", [{ name: "BIG archives", extensions: ["big"] }]);
-  if (!filePath) {
-    return { canceled: true };
-  }
-  const outputFolder = await pickFolder("Select extraction folder");
-  if (!outputFolder) {
-    return { canceled: true };
-  }
-  const result = extractBig(filePath, outputFolder, ["*.db", "*.xml"]);
-  return {
-    ...result,
-    message: `Extracted ${result.entries.length} database file(s) from ${basename(filePath)}.`
-  };
+  return keepWindowDisplayState(async () => {
+    const filePath = await pickFile("Open BIG Archive", [{ name: "BIG archives", extensions: ["big"] }]);
+    if (!filePath) {
+      return { canceled: true };
+    }
+    const outputFolder = await pickFolder("Select extraction folder");
+    if (!outputFolder) {
+      return { canceled: true };
+    }
+    const result = extractBig(filePath, outputFolder, ["*.db", "*.xml"]);
+    return {
+      ...result,
+      message: `Extracted ${result.entries.length} database file(s) from ${basename(filePath)}.`
+    };
+  });
 });
 
 app.whenReady().then(() => {
