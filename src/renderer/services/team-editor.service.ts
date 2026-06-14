@@ -1,5 +1,8 @@
 import { Injectable } from "@angular/core";
 import type { DataTable, DbProject, FieldDescriptor } from "../../shared/types";
+import type { SearchListOption } from "../components/search-list/search-list.component";
+import { TransferService } from "./transfer.service";
+import type { TeamPlayerLinkDraft } from "./transfer.service";
 
 export interface TeamEditorFieldDraft {
   column: string;
@@ -26,6 +29,9 @@ export interface TeamEditorDraft {
   midfield?: string;
   defense?: string;
   sections: TeamEditorSectionDraft[];
+  playerLinks: TeamPlayerLinkDraft[];
+  playerOptions: SearchListOption[];
+  playerToAdd: string;
 }
 
 export interface TeamSearchResult {
@@ -56,6 +62,8 @@ interface SectionDefinition {
 
 @Injectable({ providedIn: "root" })
 export class TeamEditorService {
+  constructor(private readonly transfers: TransferService) {}
+
   private readonly sections: SectionDefinition[] = [
     {
       id: "identity",
@@ -226,8 +234,19 @@ export class TeamEditorService {
           title: section.title,
           fields: this.makeFields(teams, rowIndex, section.fields)
         }))
-        .filter((section) => section.fields.length > 0)
+        .filter((section) => section.fields.length > 0),
+      playerLinks: this.transfers.linkedPlayers(project, teamId),
+      playerOptions: this.transfers.playerOptions(project),
+      playerToAdd: ""
     };
+  }
+
+  addPlayerToDraft(draft: TeamEditorDraft, playerId: string): string {
+    return this.transfers.addPlayerToTeamDraft(draft, playerId);
+  }
+
+  removePlayerFromDraft(draft: TeamEditorDraft, playerId: string): void {
+    draft.playerLinks = draft.playerLinks.filter((link) => link.playerId !== playerId);
   }
 
   applyDraft(project: DbProject, draft: TeamEditorDraft): { message: string; changedTables: string[] } {
@@ -245,10 +264,20 @@ export class TeamEditorService {
       }
     }
 
+    const changedTables = new Set<string>();
     teams.changed = true;
+    changedTables.add(teams.name);
+
+    const rosterResult = this.transfers.applyTeamPlayers(project, draft.teamId, draft.playerLinks);
+    if (rosterResult) {
+      for (const tableName of rosterResult.changedTables) {
+        changedTables.add(tableName);
+      }
+    }
+
     return {
-      message: `${this.displayName(teams, draft.rowIndex, draft.teamId)} updated in ${teams.name}`,
-      changedTables: [teams.name]
+      message: `${this.displayName(teams, draft.rowIndex, draft.teamId)} updated in ${[...changedTables].join(" + ")}`,
+      changedTables: [...changedTables]
     };
   }
 

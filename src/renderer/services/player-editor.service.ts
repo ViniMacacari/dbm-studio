@@ -96,6 +96,7 @@ interface CachedTableIndex<T> {
 export class PlayerEditorService {
   private readonly nameMapCache = new WeakMap<DataTable, CachedTableIndex<Map<string, string>>>();
   private readonly editedNamesCache = new WeakMap<DataTable, CachedTableIndex<Map<string, PlayerEditorNameDraft>>>();
+  private readonly playerRowIndexCache = new WeakMap<DataTable, CachedTableIndex<Map<string, number>>>();
 
   constructor(private readonly nations: NationService) {}
 
@@ -257,6 +258,7 @@ export class PlayerEditorService {
     }
     this.nameMapCache.delete(table);
     this.editedNamesCache.delete(table);
+    this.playerRowIndexCache.delete(table);
     this.nations.invalidateTable(table);
   }
 
@@ -279,6 +281,20 @@ export class PlayerEditorService {
     const playerId = this.read(players, rowIndex, "playerid");
     const names = this.resolveNames(project, players, rowIndex, playerId);
     return this.displayName(names, playerId);
+  }
+
+  resolvePlayerNameById(project: DbProject | undefined, playerId: string): string {
+    return this.resolvePlayerSummaryById(project, playerId)?.displayName ?? `Player ${playerId}`;
+  }
+
+  resolvePlayerSummaryById(project: DbProject | undefined, playerId: string): PlayerSearchResult | undefined {
+    const players = this.findPlayersTable(project);
+    if (!project || !players) {
+      return undefined;
+    }
+
+    const rowIndex = this.playerRowIndexById(players).get(playerId) ?? -1;
+    return rowIndex >= 0 ? this.createPlayerSummary(project, players, rowIndex) : undefined;
   }
 
   findPlayers(project: DbProject | undefined, query: string, limit = 60): PlayerSearchResult[] {
@@ -706,6 +722,23 @@ export class PlayerEditorService {
           playerjerseyname: jerseyNameColumn >= 0 ? row[jerseyNameColumn] ?? "" : ""
         });
       }
+      return indexed;
+    });
+  }
+
+  private playerRowIndexById(table: DataTable): Map<string, number> {
+    return this.cachedTableValue(this.playerRowIndexCache, table, () => {
+      const indexed = new Map<string, number>();
+      const playerIdColumn = this.columnIndex(table, "playerid");
+      if (playerIdColumn < 0) {
+        return indexed;
+      }
+      table.rows.forEach((row, rowIndex) => {
+        const playerId = row[playerIdColumn];
+        if (playerId) {
+          indexed.set(playerId, rowIndex);
+        }
+      });
       return indexed;
     });
   }
