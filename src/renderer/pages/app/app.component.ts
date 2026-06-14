@@ -1,7 +1,7 @@
 import { CommonModule } from "@angular/common";
 import { AfterViewInit, Component, ElementRef, HostListener, ViewChild } from "@angular/core";
 import { FormsModule } from "@angular/forms";
-import type { DataTable, DbProject } from "../../../shared/types";
+import type { DataTable, DbProject, FieldDescriptor } from "../../../shared/types";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
 import type { DbMasterApi } from "../../services/dbmaster-api";
 import { LeagueEditorService } from "../../services/league-editor.service";
@@ -558,6 +558,29 @@ export class AppComponent implements AfterViewInit {
     }, "Creating player", "Preparing players and edited names");
   }
 
+  async createTeamFromModule(): Promise<void> {
+    await this.guarded(async () => {
+      const result = this.teamEditor.createTeam(this.project);
+      this.teamSearchTerm = result.teamId;
+      this.refreshTeamSearch();
+      this.teamEditorRowIndex = result.rowIndex;
+      this.viewMode = "teamEditor";
+      this.setStatus(result.message);
+    }, "Creating team", "Preparing teams table");
+  }
+
+  async createLeagueFromModule(): Promise<void> {
+    await this.guarded(async () => {
+      const result = this.leagueEditor.createLeague(this.project);
+      this.leagueSearchTerm = result.leagueId;
+      this.leagueCountryFilter = "";
+      this.refreshLeagueSearch();
+      this.leagueEditorRowIndex = result.rowIndex;
+      this.viewMode = "leagueEditor";
+      this.setStatus(result.message);
+    }, "Creating league", "Preparing leagues table");
+  }
+
   openTeamFromModule(team: TeamSearchResult): void {
     this.teamEditorRowIndex = team.rowIndex;
     this.viewMode = "teamEditor";
@@ -736,6 +759,27 @@ export class AppComponent implements AfterViewInit {
     this.setStatus(`${this.copied.rows.length} row(s) pasted`);
   }
 
+  addRow(): void {
+    const table = this.currentTable();
+    if (!table) {
+      return;
+    }
+
+    const row = table.columns.map((_column, columnIndex) => this.defaultCellValue(table.fields[columnIndex]));
+    table.rows.push(row);
+    table.changed = true;
+    this.sort = undefined;
+    this.invalidateTableCaches(table);
+
+    const rowIndex = table.rows.length - 1;
+    this.page = Math.floor(rowIndex / this.pageSize);
+    this.selectedRows.clear();
+    this.selectedRows.add(rowIndex);
+    this.selectedColumnIndex = 0;
+    this.scrollToLastRow();
+    this.setStatus(`New row added to ${table.name}`);
+  }
+
   deleteRows(showMessage = true): void {
     const table = this.currentTable();
     if (!table) {
@@ -902,6 +946,29 @@ export class AppComponent implements AfterViewInit {
     this.setStatus(`${table.name} imported`);
   }
 
+  private invalidateTableCaches(table: DataTable): void {
+    this.leagueEditor.invalidateTable(table);
+    this.nations.invalidateTable(table);
+    this.playerEditor.invalidateTable(table);
+    this.teamEditor.invalidateTable(table);
+  }
+
+  private defaultCellValue(field: FieldDescriptor | undefined): string {
+    if (!field) {
+      return "";
+    }
+    if (field.kind === "string" || field.kind === "shortCompressedString" || field.kind === "longCompressedString" || field.kind === "unknown") {
+      return "";
+    }
+    if (field.rangeHigh >= field.rangeLow) {
+      if (field.rangeLow <= 0 && field.rangeHigh >= 0) {
+        return "0";
+      }
+      return String(Math.trunc(field.rangeLow));
+    }
+    return "0";
+  }
+
   private selectedRowIndexes(): number[] {
     return [...this.selectedRows].sort((left, right) => left - right);
   }
@@ -965,6 +1032,19 @@ export class AppComponent implements AfterViewInit {
   private resetHorizontalScroll(): void {
     requestAnimationFrame(() => {
       if (this.gridWrap?.nativeElement) {
+        this.gridWrap.nativeElement.scrollLeft = 0;
+      }
+      if (this.horizontalScroll?.nativeElement) {
+        this.horizontalScroll.nativeElement.scrollLeft = 0;
+      }
+      this.syncHorizontalScrollbar();
+    });
+  }
+
+  private scrollToLastRow(): void {
+    requestAnimationFrame(() => {
+      if (this.gridWrap?.nativeElement) {
+        this.gridWrap.nativeElement.scrollTop = this.gridWrap.nativeElement.scrollHeight;
         this.gridWrap.nativeElement.scrollLeft = 0;
       }
       if (this.horizontalScroll?.nativeElement) {

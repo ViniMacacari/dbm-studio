@@ -28,8 +28,6 @@
       </div>
       <div class="screen-actions">
         <button type="button" (click)="openDatabase()">DB</button>
-        <button type="button" (click)="openXml()">XML</button>
-        <button type="button" (click)="openTextFolder()">Text</button>
         <button type="button" [disabled]="!canSaveDatabase" (click)="saveProject()">Save</button>
       </div>
     </header>
@@ -105,8 +103,6 @@
         <button type="button" title="Modules" [disabled]="!hasProject" (click)="openModulesWorkspace()">Modules</button>
         <span class="divider"></span>
         <button type="button" title="Open DB/XML pair" (click)="openDatabase()">DB</button>
-        <button type="button" title="Open XML descriptor" (click)="openXml()">XML</button>
-        <button type="button" title="Open exported text tables" (click)="openTextFolder()">Text</button>
         <span class="divider"></span>
         <button type="button" [disabled]="!canSaveDatabase" title="Save opened .db file" (click)="saveProject()">Save</button>
         <button type="button" [disabled]="!hasTable" (click)="exportTable()">Export</button>
@@ -114,15 +110,13 @@
         <button type="button" [disabled]="!hasTable" (click)="importTable()">Import</button>
         <button type="button" title="Import all tables" (click)="importAll()">Import+</button>
         <span class="divider"></span>
+        <button type="button" [disabled]="!hasTable" title="Add a new row" (click)="addRow()">New</button>
         <button type="button" [disabled]="!hasTable" (click)="copyRows()">Copy</button>
         <button type="button" [disabled]="!canPaste" (click)="pasteRows()">Paste</button>
         <button type="button" [disabled]="!canReplace" (click)="pasteRows(true)">Replace</button>
         <button type="button" [disabled]="!hasSelection" (click)="deleteRows()">Delete</button>
         <button type="button" [disabled]="!hasTable" (click)="countRows()">Count</button>
         <button *ngIf="isPlayersTable" type="button" [disabled]="!canOpenPlayerEditor" title="Edit selected player" (click)="openPlayerEditor()">Edit Player</button>
-        <span class="divider"></span>
-        <button type="button" [disabled]="!hasTable" (click)="calculateHashes()">Hash</button>
-        <button type="button" title="Extract DB/XML from BIG archive" (click)="extractBig()">BIG</button>
       </div>
 
       <div class="table-workspace">
@@ -318,6 +312,10 @@
                 <span class="search-icon" aria-hidden="true"></span>
               </button>
             </form>
+            <button type="button" class="create-player-button" [disabled]="!canUseTeamModule" (click)="createTeamFromModule()">
+              <span class="plus-icon" aria-hidden="true"></span>
+              <span>Create Team</span>
+            </button>
           </div>
 
           <div class="player-results" *ngIf="teamSearchResults.length > 0; else noTeamResults">
@@ -379,6 +377,10 @@
               (valueChange)="refreshLeagueSearch()"
             ></app-search-list>
             <button type="button" [disabled]="!leagueCountryFilter" (click)="clearLeagueCountryFilter()">Clear</button>
+            <button type="button" class="create-player-button" [disabled]="!canUseLeagueModule" (click)="createLeagueFromModule()">
+              <span class="plus-icon" aria-hidden="true"></span>
+              <span>Create League</span>
+            </button>
           </div>
 
           <div class="player-results" *ngIf="leagueSearchResults.length > 0; else noLeagueResults">
