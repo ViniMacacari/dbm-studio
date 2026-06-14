@@ -4,3 +4,7 @@ node_modules
 out-tsc
 DbMaster.csproj
 DbMaster.DbMaster.resx
+DbMaster/
+DbMaster.Properties/
+Properties/
+app.manifest
