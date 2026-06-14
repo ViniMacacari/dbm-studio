@@ -59,13 +59,22 @@
       <div class="editor-grid">
         <label class="field-block" *ngFor="let field of player.identityFields; trackBy: trackByField">
           <span>{{ field.label }}</span>
-          <input
-            [type]="field.inputType"
-            [(ngModel)]="field.value"
-            [readonly]="field.readonly"
-            [min]="field.min"
-            [max]="field.max"
-          />
+          <app-searchable-select
+            *ngIf="field.inputType === 'nation'; else identityInput"
+            [options]="nationOptions"
+            [(value)]="field.value"
+            [disabled]="field.readonly"
+            placeholder="Search country"
+          ></app-searchable-select>
+          <ng-template #identityInput>
+            <input
+              [type]="field.inputType"
+              [(ngModel)]="field.value"
+              [readonly]="field.readonly"
+              [min]="field.min"
+              [max]="field.max"
+            />
+          </ng-template>
           <small *ngIf="field.relation">{{ field.relation }}</small>
         </label>
       </div>
@@ -75,13 +84,22 @@
       <div class="editor-grid">
         <label class="field-block" *ngFor="let field of section.fields; trackBy: trackByField">
           <span>{{ field.label }}</span>
-          <input
-            [type]="field.inputType"
-            [(ngModel)]="field.value"
-            [readonly]="field.readonly"
-            [min]="field.min"
-            [max]="field.max"
-          />
+          <app-searchable-select
+            *ngIf="field.inputType === 'nation'; else sectionInput"
+            [options]="nationOptions"
+            [(value)]="field.value"
+            [disabled]="field.readonly"
+            placeholder="Search country"
+          ></app-searchable-select>
+          <ng-template #sectionInput>
+            <input
+              [type]="field.inputType"
+              [(ngModel)]="field.value"
+              [readonly]="field.readonly"
+              [min]="field.min"
+              [max]="field.max"
+            />
+          </ng-template>
           <small *ngIf="field.relation">{{ field.relation }}</small>
         </label>
       </div>

@@ -12,9 +12,7 @@
 
       <div class="home-actions">
         <button type="button" class="primary-action" (click)="openDatabase()">Open DB + XML</button>
-        <button type="button" (click)="openXml()">Open XML</button>
         <button type="button" (click)="openTextFolder()">Open Text Folder</button>
-        <button type="button" (click)="extractBig()">Extract BIG</button>
       </div>
     </div>
   </section>
@@ -42,9 +40,9 @@
           <span class="choice-title">Table Editor</span>
           <span class="choice-meta">{{ tableCount }} tables</span>
         </button>
-        <button type="button" class="choice-card" [disabled]="!canUsePlayerModule" (click)="openModulesWorkspace()">
+        <button type="button" class="choice-card" [disabled]="!canUseModules" (click)="openModulesWorkspace()">
           <span class="choice-title">Modules</span>
-          <span class="choice-meta">{{ playersCount }} players</span>
+          <span class="choice-meta">{{ playersCount }} players / {{ teamsCount }} teams / {{ leaguesCount }} leagues</span>
         </button>
       </div>
 
@@ -57,9 +55,9 @@
           <span>Teams</span>
           <strong>{{ teamsCount }}</strong>
         </button>
-        <button type="button" class="module-card disabled" disabled>
+        <button type="button" class="module-card active" [disabled]="!canUseLeagueModule" (click)="openModulesWorkspace('leagues')">
           <span>Leagues</span>
-          <strong>Locked</strong>
+          <strong>{{ leaguesCount }}</strong>
         </button>
         <button type="button" class="module-card disabled" disabled>
           <span>Stadiums</span>
@@ -225,9 +223,9 @@
           <span>Teams</span>
           <strong>{{ teamsCount }}</strong>
         </button>
-        <button type="button" disabled>
+        <button type="button" [class.active]="activeModule === 'leagues'" [disabled]="!canUseLeagueModule" (click)="selectModule('leagues')">
           <span>Leagues</span>
-          <strong>Locked</strong>
+          <strong>{{ leaguesCount }}</strong>
         </button>
         <button type="button" disabled>
           <span>Stadiums</span>
@@ -235,7 +233,7 @@
         </button>
       </aside>
 
-      <section class="module-main" *ngIf="activeModule === 'players'; else teamsModule">
+      <section class="module-main" *ngIf="activeModule === 'players'; else nonPlayerModule">
         <div class="module-title-row">
           <div>
             <span class="module-kicker">Module</span>
@@ -290,8 +288,8 @@
         </ng-template>
       </section>
 
-      <ng-template #teamsModule>
-        <section class="module-main">
+      <ng-template #nonPlayerModule>
+        <section class="module-main" *ngIf="activeModule === 'teams'; else leaguesModule">
           <div class="module-title-row">
             <div>
               <span class="module-kicker">Module</span>
@@ -342,6 +340,66 @@
           </ng-template>
         </section>
       </ng-template>
+
+      <ng-template #leaguesModule>
+        <section class="module-main">
+          <div class="module-title-row">
+            <div>
+              <span class="module-kicker">Module</span>
+              <h2>Leagues</h2>
+            </div>
+            <span class="module-total">{{ leaguesCount }} rows</span>
+          </div>
+
+          <div class="player-module-toolbar league-filter-toolbar">
+            <form class="player-searchbar" (submit)="$event.preventDefault(); searchLeagues()">
+              <input
+                type="search"
+                name="leagueSearchTerm"
+                placeholder="Search league by name or ID"
+                [(ngModel)]="leagueSearchTerm"
+              />
+              <button type="submit" aria-label="Search leagues" title="Search leagues">
+                <span class="search-icon" aria-hidden="true"></span>
+              </button>
+            </form>
+            <app-searchable-select
+              class="module-filter-select"
+              [options]="nationOptions"
+              [(value)]="leagueCountryFilter"
+              placeholder="Filter by country"
+              (valueChange)="refreshLeagueSearch()"
+            ></app-searchable-select>
+            <button type="button" [disabled]="!leagueCountryFilter" (click)="clearLeagueCountryFilter()">Clear</button>
+          </div>
+
+          <div class="player-results" *ngIf="leagueSearchResults.length > 0; else noLeagueResults">
+            <button
+              type="button"
+              class="player-result"
+              *ngFor="let league of leagueSearchResults; trackBy: trackByLeagueResult"
+              (click)="openLeagueFromModule(league)"
+            >
+              <span class="result-main">
+                <strong>{{ league.displayName }}</strong>
+                <span>ID {{ league.leagueId }}</span>
+              </span>
+              <span class="result-meta">
+                <span *ngIf="league.countryName">{{ league.countryName }}</span>
+                <span *ngIf="league.level">Level {{ league.level }}</span>
+                <span *ngIf="league.leagueType">Type {{ league.leagueType }}</span>
+                <span>{{ league.teamsCount }} teams</span>
+              </span>
+            </button>
+          </div>
+
+          <ng-template #noLeagueResults>
+            <div class="empty-state module-empty">
+              <strong>No leagues found.</strong>
+            </div>
+          </ng-template>
+        </section>
+      </ng-template>
     </main>
 
     <footer class="screen-footer">
@@ -371,6 +429,18 @@
       (applied)="onTeamEditorApplied($event)"
       (appliedAndSave)="onTeamEditorAppliedAndSave($event)"
     ></app-team-editor-page>
+  </section>
+
+  <section class="editor-screen" *ngSwitchCase="'leagueEditor'">
+    <app-league-editor-page
+      *ngIf="project as loadedProject"
+      [project]="loadedProject"
+      [rowIndex]="leagueEditorRowIndex"
+      [canSaveDatabase]="canSaveDatabase"
+      (closeEditor)="closeLeagueEditor()"
+      (applied)="onLeagueEditorApplied($event)"
+      (appliedAndSave)="onLeagueEditorAppliedAndSave($event)"
+    ></app-league-editor-page>
   </section>
 </ng-container>
 

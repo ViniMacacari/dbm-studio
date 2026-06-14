@@ -1,6 +1,7 @@
 import { Injectable } from "@angular/core";
 import type { DataTable, DbProject, FieldDescriptor } from "../shared/types";
 import { datePartsToFifaDateCode, fifaDateCodeToAge, fifaDateCodeToIso, isoToFifaDateCode } from "./fifa-date";
+import { NationService } from "./nation.service";
 
 export interface PlayerEditorNameDraft {
   firstname: string;
@@ -17,7 +18,7 @@ export interface PlayerEditorFieldDraft {
   column: string;
   label: string;
   value: string;
-  inputType: "number" | "text" | "date";
+  inputType: "number" | "text" | "date" | "nation";
   readonly?: boolean;
   min?: number;
   max?: number;
@@ -67,7 +68,7 @@ export interface PlayerCreationResult {
 interface FieldDefinition {
   column: string;
   label: string;
-  inputType?: "number" | "text";
+  inputType?: "number" | "text" | "nation";
   readonly?: boolean;
   min?: number;
   max?: number;
@@ -95,11 +96,12 @@ interface CachedTableIndex<T> {
 export class PlayerEditorService {
   private readonly nameMapCache = new WeakMap<DataTable, CachedTableIndex<Map<string, string>>>();
   private readonly editedNamesCache = new WeakMap<DataTable, CachedTableIndex<Map<string, PlayerEditorNameDraft>>>();
-  private readonly nationMapCache = new WeakMap<DataTable, CachedTableIndex<Map<string, string>>>();
+
+  constructor(private readonly nations: NationService) {}
 
   private readonly identityFields: FieldDefinition[] = [
     { column: "playerid", label: "Player ID", readonly: true },
-    { column: "nationality", label: "Nationality" },
+    { column: "nationality", label: "Nationality", inputType: "nation" },
     { column: "birthdate", label: "Birth date" },
     { column: "height", label: "Height" },
     { column: "weight", label: "Weight" },
@@ -255,10 +257,11 @@ export class PlayerEditorService {
     }
     this.nameMapCache.delete(table);
     this.editedNamesCache.delete(table);
-    this.nationMapCache.delete(table);
+    this.nations.invalidateTable(table);
   }
 
   invalidateProject(project?: DbProject): void {
+    this.nations.invalidateProject(project);
     for (const table of project?.tables ?? []) {
       this.invalidateTable(table);
     }
@@ -353,7 +356,7 @@ export class PlayerEditorService {
     const displayName = this.displayName(names, playerId);
     const birthdate = this.read(players, rowIndex, "birthdate");
     const birthDateIso = fifaDateCodeToIso(birthdate);
-    const nationalityName = this.resolveNation(project, this.read(players, rowIndex, "nationality"));
+    const nationalityName = this.nations.resolveNation(project, this.read(players, rowIndex, "nationality"));
 
     return {
       playerId,
@@ -395,7 +398,7 @@ export class PlayerEditorService {
       rowIndex,
       playerId,
       displayName: this.displayName(names, playerId),
-      nationalityName: this.resolveNation(project, this.read(players, rowIndex, "nationality")),
+      nationalityName: this.nations.resolveNation(project, this.read(players, rowIndex, "nationality")),
       overall: this.read(players, rowIndex, "overallrating"),
       potential: this.read(players, rowIndex, "potential"),
       age: fifaDateCodeToAge(birthdate),
@@ -590,7 +593,7 @@ export class PlayerEditorService {
       return isoToFifaDateCode(field.value, field.column);
     }
 
-    if (field.inputType === "number") {
+    if (field.inputType === "number" || field.inputType === "nation") {
       return this.validateNumericField(field);
     }
 
@@ -653,47 +656,13 @@ export class PlayerEditorService {
       return undefined;
     }
     if (column.toLowerCase() === "nationality") {
-      return this.resolveNation(project, value) || undefined;
+      return this.nations.resolveNation(project, value) || undefined;
     }
     if (this.fieldStoresFifaDate(column)) {
       const iso = fifaDateCodeToIso(value);
       return iso ? `FIFA ${value}` : `Invalid FIFA date: ${value}`;
     }
     return undefined;
-  }
-
-  private resolveNation(project: DbProject, nationId: string): string {
-    if (!nationId) {
-      return "";
-    }
-    const nations = this.findTable(project, "nations");
-    if (!nations) {
-      return "";
-    }
-    const indexed = this.nationMap(nations);
-    return indexed.get(nationId) ?? "";
-  }
-
-  private nationMap(table: DataTable): Map<string, string> {
-    return this.cachedTableValue(this.nationMapCache, table, () => {
-      const indexed = new Map<string, string>();
-      const nationIdColumn = this.columnIndex(table, "nationid");
-      const nameColumn = this.columnIndex(table, "nationname");
-      const isoColumn = this.columnIndex(table, "isocountrycode");
-      if (nationIdColumn < 0) {
-        return indexed;
-      }
-      for (const row of table.rows) {
-        const nationId = row[nationIdColumn];
-        if (!nationId) {
-          continue;
-        }
-        const name = nameColumn >= 0 ? row[nameColumn]?.trim() : "";
-        const iso = isoColumn >= 0 ? row[isoColumn]?.trim() : "";
-        indexed.set(nationId, [name, iso ? `(${iso})` : ""].filter(Boolean).join(" "));
-      }
-      return indexed;
-    });
   }
 
   private nameMap(table: DataTable): Map<string, string> {

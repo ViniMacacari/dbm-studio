@@ -2,19 +2,19 @@ import { CommonModule } from "@angular/common";
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../shared/types";
+import { LeagueEditorService } from "./league-editor.service";
+import type { LeagueEditorDraft, LeagueEditorFieldDraft, LeagueTeamLinkDraft } from "./league-editor.service";
 import { NationService } from "./nation.service";
-import { PlayerEditorService } from "./player-editor.service";
-import type { PlayerEditorDraft, PlayerEditorFieldDraft } from "./player-editor.service";
 import { SearchableSelectComponent } from "./searchable-select.component";
 import type { SearchableOption } from "./searchable-select.component";
 
 @Component({
-  selector: "app-player-editor-page",
+  selector: "app-league-editor-page",
   standalone: true,
   imports: [CommonModule, FormsModule, SearchableSelectComponent],
-  templateUrl: "./player-editor-page.component.html"
+  templateUrl: "./league-editor-page.component.html"
 })
-export class PlayerEditorPageComponent implements OnChanges {
+export class LeagueEditorPageComponent implements OnChanges {
   @Input({ required: true }) project!: DbProject;
   @Input({ required: true }) rowIndex = 0;
   @Input() canSaveDatabase = false;
@@ -22,14 +22,14 @@ export class PlayerEditorPageComponent implements OnChanges {
   @Output() applied = new EventEmitter<string>();
   @Output() appliedAndSave = new EventEmitter<string>();
 
-  draft?: PlayerEditorDraft;
+  draft?: LeagueEditorDraft;
   nationOptions: SearchableOption[] = [];
   activeTab = "identity";
   lastApplied = "";
   lastAppliedTone: "info" | "error" = "info";
 
   constructor(
-    private readonly playerEditor: PlayerEditorService,
+    private readonly leagueEditor: LeagueEditorService,
     private readonly nations: NationService
   ) {}
 
@@ -41,6 +41,28 @@ export class PlayerEditorPageComponent implements OnChanges {
 
   get sections() {
     return this.draft?.sections ?? [];
+  }
+
+  addTeam(): void {
+    if (!this.draft) {
+      return;
+    }
+    try {
+      this.lastApplied = this.leagueEditor.addTeamToDraft(this.draft, this.draft.teamToAdd);
+      this.lastAppliedTone = "info";
+    } catch (error) {
+      this.lastApplied = error instanceof Error ? error.message : String(error);
+      this.lastAppliedTone = "error";
+    }
+  }
+
+  removeTeam(teamId: string): void {
+    if (!this.draft) {
+      return;
+    }
+    this.leagueEditor.removeTeamFromDraft(this.draft, teamId);
+    this.lastApplied = "Team link removed from draft";
+    this.lastAppliedTone = "info";
   }
 
   apply(): void {
@@ -55,12 +77,29 @@ export class PlayerEditorPageComponent implements OnChanges {
     this.commitDraft("save");
   }
 
+  setTab(tab: string): void {
+    this.activeTab = tab;
+  }
+
+  trackBySection(_index: number, section: { id: string }): string {
+    return section.id;
+  }
+
+  trackByField(_index: number, field: LeagueEditorFieldDraft): string {
+    return field.column;
+  }
+
+  trackByTeamLink(_index: number, link: LeagueTeamLinkDraft): string {
+    return link.teamId;
+  }
+
   private commitDraft(action: "stay" | "back" | "save"): void {
     if (!this.draft || !this.project) {
       return;
     }
+
     try {
-      const result = this.playerEditor.applyDraft(this.project, this.draft);
+      const result = this.leagueEditor.applyDraft(this.project, this.draft);
       this.lastApplied = result.message;
       this.lastAppliedTone = "info";
       if (action === "save") {
@@ -78,20 +117,8 @@ export class PlayerEditorPageComponent implements OnChanges {
     }
   }
 
-  setTab(tab: string): void {
-    this.activeTab = tab;
-  }
-
-  trackBySection(_index: number, section: { id: string }): string {
-    return section.id;
-  }
-
-  trackByField(_index: number, field: PlayerEditorFieldDraft): string {
-    return field.column;
-  }
-
   private loadDraft(resetTab = true): void {
-    this.draft = this.project ? this.playerEditor.createDraft(this.project, this.rowIndex) : undefined;
+    this.draft = this.project ? this.leagueEditor.createDraft(this.project, this.rowIndex) : undefined;
     this.nationOptions = this.nations.nationOptions(this.project);
     if (resetTab) {
       this.activeTab = "identity";

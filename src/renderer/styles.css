@@ -80,7 +80,10 @@ button:disabled {
   gap: 22px;
 }
 
-.home-brand {
+.brand.home-brand {
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
   border: 0;
   padding: 0;
 }
@@ -93,6 +96,10 @@ button:disabled {
 
 .home-brand h1 {
   font-size: 28px;
+}
+
+.home-brand p {
+  max-width: 100%;
 }
 
 .app-version {
@@ -335,6 +342,29 @@ button:disabled {
   padding: 0;
 }
 
+.module-filter-select {
+  flex: 1 1 260px;
+  max-width: 360px;
+}
+
+.searchable-select,
+.searchable-select input {
+  width: 100%;
+  min-width: 0;
+}
+
+.searchable-select input {
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  padding: 0 12px;
+}
+
+.field-block .searchable-select input {
+  height: 32px;
+}
+
 .search-icon {
   width: 15px;
   height: 15px;
@@ -460,8 +490,77 @@ button:disabled {
   justify-items: start;
 }
 
+.league-team-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 420px) auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.league-team-list {
+  display: grid;
+  gap: 6px;
+}
+
+.league-team-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) repeat(4, minmax(88px, 110px)) auto;
+  align-items: end;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  padding: 8px;
+}
+
+.league-team-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.league-team-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.league-team-main span,
+.inline-field span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.inline-field {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.inline-field input {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--cell);
+  padding: 0 8px;
+}
+
+.danger-button {
+  border-color: #d7b7b7;
+  color: var(--danger);
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 .editor-screen app-player-editor-page,
-.editor-screen app-team-editor-page {
+.editor-screen app-team-editor-page,
+.editor-screen app-league-editor-page {
   height: 100%;
   display: block;
 }
@@ -817,7 +916,8 @@ td.row-select {
 }
 
 app-player-editor-page,
-app-team-editor-page {
+app-team-editor-page,
+app-league-editor-page {
   min-height: 0;
   display: block;
 }
@@ -1118,6 +1218,11 @@ app-team-editor-page {
     grid-template-columns: 1fr;
   }
 
+  .league-team-toolbar,
+  .league-team-row {
+    grid-template-columns: 1fr;
+  }
+
   .shell {
     grid-template-columns: 220px 1fr;
   }
@@ -1171,6 +1276,17 @@ app-team-editor-page {
 @media (max-width: 620px) {
   .home-screen {
     place-items: start;
+  }
+
+  .brand.home-brand {
+    grid-template-columns: 56px minmax(0, 1fr);
+    column-gap: 14px;
+  }
+
+  .home-brand .brand-mark {
+    width: 56px;
+    height: 56px;
+    font-size: 18px;
   }
 
   .home-actions button,

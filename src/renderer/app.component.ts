@@ -3,17 +3,22 @@ import { AfterViewInit, Component, ElementRef, HostListener, ViewChild } from "@
 import { FormsModule } from "@angular/forms";
 import type { DataTable, DbProject } from "../shared/types";
 import type { DbMasterApi } from "./dbmaster-api";
+import { LeagueEditorPageComponent } from "./league-editor-page.component";
+import { LeagueEditorService } from "./league-editor.service";
+import type { LeagueSearchResult } from "./league-editor.service";
+import { NationService } from "./nation.service";
 import { PlayerEditorPageComponent } from "./player-editor-page.component";
 import { PlayerEditorService } from "./player-editor.service";
 import type { PlayerSearchResult } from "./player-editor.service";
+import { SearchableSelectComponent } from "./searchable-select.component";
 import { TeamEditorPageComponent } from "./team-editor-page.component";
 import { TeamEditorService } from "./team-editor.service";
 import type { TeamSearchResult } from "./team-editor.service";
 import packageInfo from "../../package.json";
 
 type ToastTone = "info" | "warn" | "error";
-type ViewMode = "home" | "launcher" | "table" | "modules" | "playerEditor" | "teamEditor";
-type ModuleMode = "players" | "teams";
+type ViewMode = "home" | "launcher" | "table" | "modules" | "playerEditor" | "teamEditor" | "leagueEditor";
+type ModuleMode = "players" | "teams" | "leagues";
 
 interface TableListItem {
   table: DataTable;
@@ -23,7 +28,7 @@ interface TableListItem {
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [CommonModule, FormsModule, PlayerEditorPageComponent, TeamEditorPageComponent],
+  imports: [CommonModule, FormsModule, PlayerEditorPageComponent, TeamEditorPageComponent, LeagueEditorPageComponent, SearchableSelectComponent],
   templateUrl: "./app.component.html"
 })
 export class AppComponent implements AfterViewInit {
@@ -38,6 +43,8 @@ export class AppComponent implements AfterViewInit {
   readonly appVersion = packageInfo.version;
 
   constructor(
+    private readonly leagueEditor: LeagueEditorService,
+    private readonly nations: NationService,
     private readonly playerEditor: PlayerEditorService,
     private readonly teamEditor: TeamEditorService
   ) {}
@@ -53,6 +60,10 @@ export class AppComponent implements AfterViewInit {
   teamEditorRowIndex = 0;
   teamSearchTerm = "";
   teamSearchResults: TeamSearchResult[] = [];
+  leagueEditorRowIndex = 0;
+  leagueSearchTerm = "";
+  leagueCountryFilter = "";
+  leagueSearchResults: LeagueSearchResult[] = [];
   page = 0;
   pageSize = 100;
   selectedColumnIndex = 0;
@@ -94,12 +105,28 @@ export class AppComponent implements AfterViewInit {
     return Boolean(this.teamEditor.findTeamsTable(this.project));
   }
 
+  get canUseLeagueModule(): boolean {
+    return Boolean(this.leagueEditor.findLeaguesTable(this.project));
+  }
+
+  get canUseModules(): boolean {
+    return this.canUsePlayerModule || this.canUseTeamModule || this.canUseLeagueModule;
+  }
+
   get playersCount(): number {
     return this.playerEditor.findPlayersTable(this.project)?.rows.length ?? 0;
   }
 
   get teamsCount(): number {
     return this.teamEditor.findTeamsTable(this.project)?.rows.length ?? 0;
+  }
+
+  get leaguesCount(): number {
+    return this.leagueEditor.findLeaguesTable(this.project)?.rows.length ?? 0;
+  }
+
+  get nationOptions() {
+    return this.nations.nationOptions(this.project);
   }
 
   get tableCount(): number {
@@ -218,6 +245,10 @@ export class AppComponent implements AfterViewInit {
 
   trackByTeamResult(_index: number, team: TeamSearchResult): string {
     return `${team.rowIndex}:${team.teamId}`;
+  }
+
+  trackByLeagueResult(_index: number, league: LeagueSearchResult): string {
+    return `${league.rowIndex}:${league.leagueId}`;
   }
 
   async openDatabase(): Promise<void> {
@@ -392,6 +423,10 @@ export class AppComponent implements AfterViewInit {
       await this.searchTeams("Loading teams", "Reading team rows");
       return;
     }
+    if (this.activeModule === "leagues") {
+      await this.searchLeagues("Loading leagues", "Resolving countries and team links");
+      return;
+    }
     await this.searchPlayers("Loading players", "Resolving names and relations");
   }
 
@@ -421,6 +456,29 @@ export class AppComponent implements AfterViewInit {
     this.setStatus(`${this.teamSearchResults.length} team result(s)${suffix}`);
   }
 
+  async searchLeagues(title = "Searching leagues", detail = "Resolving countries and team links"): Promise<void> {
+    await this.guarded(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      this.refreshLeagueSearch();
+    }, title, detail);
+  }
+
+  refreshLeagueSearch(): void {
+    this.leagueSearchResults = this.leagueEditor.findLeagues(
+      this.project,
+      this.leagueSearchTerm,
+      this.leagueCountryFilter,
+      this.leagueSearchTerm.trim() || this.leagueCountryFilter ? 120 : 60
+    );
+    const suffix = this.leagueSearchTerm.trim() ? ` for "${this.leagueSearchTerm.trim()}"` : "";
+    this.setStatus(`${this.leagueSearchResults.length} league result(s)${suffix}`);
+  }
+
+  clearLeagueCountryFilter(): void {
+    this.leagueCountryFilter = "";
+    this.refreshLeagueSearch();
+  }
+
   openPlayerFromModule(player: PlayerSearchResult): void {
     this.playerEditorRowIndex = player.rowIndex;
     this.playerEditorReturnMode = "modules";
@@ -442,6 +500,11 @@ export class AppComponent implements AfterViewInit {
   openTeamFromModule(team: TeamSearchResult): void {
     this.teamEditorRowIndex = team.rowIndex;
     this.viewMode = "teamEditor";
+  }
+
+  openLeagueFromModule(league: LeagueSearchResult): void {
+    this.leagueEditorRowIndex = league.rowIndex;
+    this.viewMode = "leagueEditor";
   }
 
   selectColumn(index: number): void {
@@ -475,6 +538,8 @@ export class AppComponent implements AfterViewInit {
     }
     table.rows[rowIndex][columnIndex] = input.value;
     table.changed = true;
+    this.leagueEditor.invalidateTable(table);
+    this.nations.invalidateTable(table);
     this.playerEditor.invalidateTable(table);
     this.teamEditor.invalidateTable(table);
     this.setStatus(`${table.name} changed`);
@@ -532,6 +597,13 @@ export class AppComponent implements AfterViewInit {
     this.resetHorizontalScroll();
   }
 
+  closeLeagueEditor(): void {
+    this.viewMode = "modules";
+    this.activeModule = "leagues";
+    this.refreshLeagueSearch();
+    this.resetHorizontalScroll();
+  }
+
   onPlayerEditorApplied(message: string): void {
     this.setStatus(message);
     if (this.playerEditorReturnMode === "modules") {
@@ -554,6 +626,17 @@ export class AppComponent implements AfterViewInit {
   async onTeamEditorAppliedAndSave(message: string): Promise<void> {
     this.onTeamEditorApplied(message);
     await this.saveProject("Applying and saving", "Updating team rows and writing .db file");
+  }
+
+  onLeagueEditorApplied(message: string): void {
+    this.setStatus(message);
+    this.refreshLeagueSearch();
+    this.syncHorizontalScrollbar();
+  }
+
+  async onLeagueEditorAppliedAndSave(message: string): Promise<void> {
+    this.onLeagueEditorApplied(message);
+    await this.saveProject("Applying and saving", "Updating league rows and writing .db file");
   }
 
   copyRows(): void {
@@ -584,6 +667,8 @@ export class AppComponent implements AfterViewInit {
     }
     table.rows.push(...this.copied.rows.map((row) => [...row]));
     table.changed = true;
+    this.leagueEditor.invalidateTable(table);
+    this.nations.invalidateTable(table);
     this.playerEditor.invalidateTable(table);
     this.teamEditor.invalidateTable(table);
     this.syncHorizontalScrollbar();
@@ -604,6 +689,8 @@ export class AppComponent implements AfterViewInit {
     }
     table.rows = table.rows.filter((_row, index) => !selected.has(index));
     table.changed = true;
+    this.leagueEditor.invalidateTable(table);
+    this.nations.invalidateTable(table);
     this.playerEditor.invalidateTable(table);
     this.teamEditor.invalidateTable(table);
     this.selectedRows.clear();
@@ -704,6 +791,8 @@ export class AppComponent implements AfterViewInit {
 
   private loadProject(project: DbProject): void {
     this.project = project;
+    this.leagueEditor.invalidateProject(project);
+    this.nations.invalidateProject(project);
     this.playerEditor.invalidateProject(project);
     this.teamEditor.invalidateProject(project);
     this.viewMode = "launcher";
@@ -713,6 +802,9 @@ export class AppComponent implements AfterViewInit {
     this.playerSearchResults = [];
     this.teamSearchTerm = "";
     this.teamSearchResults = [];
+    this.leagueSearchTerm = "";
+    this.leagueCountryFilter = "";
+    this.leagueSearchResults = [];
     this.page = 0;
     this.selectedColumnIndex = 0;
     this.selectedRows.clear();
@@ -738,6 +830,8 @@ export class AppComponent implements AfterViewInit {
     imported.fields = table.fields;
     imported.changed = true;
     project.tables[this.currentTableIndex] = imported;
+    this.leagueEditor.invalidateTable(imported);
+    this.nations.invalidateTable(imported);
     this.playerEditor.invalidateTable(imported);
     this.teamEditor.invalidateTable(imported);
     this.syncHorizontalScrollbar();

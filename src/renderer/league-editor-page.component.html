@@ -1,0 +1,115 @@
+<section class="player-editor-page league-editor-page" *ngIf="draft as league; else missingLeague">
+  <header class="player-editor-header">
+    <button type="button" class="back-button" (click)="closeEditor.emit()">Back</button>
+    <div class="player-title">
+      <span class="player-kicker">League {{ league.leagueId }}</span>
+      <h2>{{ league.displayName }}</h2>
+      <div class="player-meta">
+        <span *ngIf="league.countryName">{{ league.countryName }}</span>
+        <span>{{ league.teamLinks.length }} teams</span>
+      </div>
+    </div>
+    <div class="editor-actions">
+      <button type="button" class="apply-button" (click)="apply()">Apply</button>
+      <button type="button" class="secondary-apply-button" (click)="applyAndBack()">Apply and Back</button>
+      <button type="button" class="secondary-apply-button" [disabled]="!canSaveDatabase" (click)="applyAndSave()">Apply and Save</button>
+    </div>
+  </header>
+
+  <nav class="editor-tabs" aria-label="League editor tabs">
+    <button
+      *ngFor="let section of sections; trackBy: trackBySection"
+      type="button"
+      [class.active]="activeTab === section.id"
+      (click)="setTab(section.id)"
+    >
+      {{ section.title }}
+    </button>
+    <button type="button" [class.active]="activeTab === 'teams'" (click)="setTab('teams')">Teams</button>
+  </nav>
+
+  <div class="player-editor-body">
+    <section class="editor-panel" *ngFor="let section of sections; trackBy: trackBySection" [class.hidden]="activeTab !== section.id">
+      <div class="editor-grid">
+        <label class="field-block" *ngFor="let field of section.fields; trackBy: trackByField">
+          <span>{{ field.label }}</span>
+          <app-searchable-select
+            *ngIf="field.inputType === 'nation'; else fieldInput"
+            [options]="nationOptions"
+            [(value)]="field.value"
+            [disabled]="field.readonly"
+            placeholder="Search country"
+          ></app-searchable-select>
+          <ng-template #fieldInput>
+            <input
+              [type]="field.inputType"
+              [(ngModel)]="field.value"
+              [readonly]="field.readonly"
+              [min]="field.min"
+              [max]="field.max"
+            />
+          </ng-template>
+          <small *ngIf="field.relation">{{ field.relation }}</small>
+        </label>
+      </div>
+    </section>
+
+    <section class="editor-panel" [class.hidden]="activeTab !== 'teams'">
+      <div class="league-team-toolbar">
+        <app-searchable-select
+          [options]="league.teamOptions"
+          [(value)]="league.teamToAdd"
+          placeholder="Search team to add"
+        ></app-searchable-select>
+        <button type="button" class="create-player-button" (click)="addTeam()">
+          <span class="plus-icon" aria-hidden="true"></span>
+          <span>Add Team</span>
+        </button>
+      </div>
+
+      <div class="league-team-list" *ngIf="league.teamLinks.length > 0; else noLeagueTeams">
+        <div class="league-team-row" *ngFor="let link of league.teamLinks; trackBy: trackByTeamLink">
+          <div class="league-team-main">
+            <strong>{{ link.displayName }}</strong>
+            <span>ID {{ link.teamId }}</span>
+          </div>
+          <label class="inline-field">
+            <span>Current</span>
+            <input type="number" [(ngModel)]="link.currenttableposition" />
+          </label>
+          <label class="inline-field">
+            <span>Previous</span>
+            <input type="number" [(ngModel)]="link.previousyeartableposition" />
+          </label>
+          <label class="inline-field">
+            <span>Group</span>
+            <input type="number" [(ngModel)]="link.grouping" />
+          </label>
+          <label class="inline-field">
+            <span>Points</span>
+            <input type="number" [(ngModel)]="link.points" />
+          </label>
+          <button type="button" class="danger-button" (click)="removeTeam(link.teamId)">Remove</button>
+        </div>
+      </div>
+
+      <ng-template #noLeagueTeams>
+        <div class="empty-state module-empty">
+          <strong>No teams linked.</strong>
+        </div>
+      </ng-template>
+    </section>
+  </div>
+
+  <div class="editor-footer" [class.error]="lastAppliedTone === 'error'">
+    <span>{{ lastApplied }}</span>
+  </div>
+</section>
+
+<ng-template #missingLeague>
+  <section class="player-editor-page league-editor-page">
+    <div class="empty-state">
+      <strong>League row not found.</strong>
+    </div>
+  </section>
+</ng-template>
