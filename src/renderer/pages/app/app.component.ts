@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { AfterViewInit, Component, ElementRef, HostListener, ViewChild } from "@angular/core";
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, ViewChild } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { DataTable, DbProject, FieldDescriptor } from "../../../shared/types";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
@@ -46,6 +46,7 @@ export class AppComponent implements AfterViewInit {
   readonly appVersion = packageInfo.version;
 
   constructor(
+    private readonly changeDetector: ChangeDetectorRef,
     private readonly leagueEditor: LeagueEditorService,
     private readonly nations: NationService,
     private readonly playerEditor: PlayerEditorService,
@@ -1011,10 +1012,16 @@ export class AppComponent implements AfterViewInit {
     this.loadingTitle = title;
     this.loadingDetail = detail;
     this.loadingActive = loading;
+    this.changeDetector.detectChanges();
     if (loading) {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await this.waitForLoadingPaint();
     }
+  }
+
+  private async waitForLoadingPaint(): Promise<void> {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   }
 
   private setStatus(message: string): void {
