@@ -1,8 +1,8 @@
 {
-  "name": "dbmaster-electron-ts",
+  "name": "dbm-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "DB Master rewritten as an Electron and TypeScript desktop app.",
+  "description": "DBM Studio database editor built with Electron and TypeScript.",
   "main": "dist/main/main.js",
   "scripts": {
     "build": "npm run build:electron && npm run build:renderer",
@@ -19,9 +19,10 @@
     "@angular/core": "20.3.25",
     "@angular/forms": "20.3.25",
     "@angular/platform-browser": "20.3.25",
+    "fast-xml-parser": "^5.8.0",
+    "fifadate": "^0.0.9",
     "rxjs": "^7.8.2",
-    "zone.js": "^0.15.1",
-    "fast-xml-parser": "^5.8.0"
+    "zone.js": "^0.15.1"
   },
   "devDependencies": {
     "@angular/build": "20.3.25",
@@ -33,8 +34,8 @@
     "typescript": "^5.8.3"
   },
   "build": {
-    "appId": "com.dbmaster.electron",
-    "productName": "DB Master",
+    "appId": "com.dbm.studio",
+    "productName": "DBM Studio",
     "asar": false,
     "files": [
       "dist/**/*",
