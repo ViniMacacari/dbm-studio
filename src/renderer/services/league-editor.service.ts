@@ -1,7 +1,7 @@
 import { Injectable } from "@angular/core";
-import type { DataTable, DbProject, FieldDescriptor } from "../shared/types";
+import type { DataTable, DbProject, FieldDescriptor } from "../../shared/types";
 import { NationService } from "./nation.service";
-import type { SearchableOption } from "./searchable-select.component";
+import type { SearchListOption } from "../components/search-list/search-list.component";
 
 export interface LeagueEditorFieldDraft {
   column: string;
@@ -39,7 +39,7 @@ export interface LeagueEditorDraft {
   countryName: string;
   sections: LeagueEditorSectionDraft[];
   teamLinks: LeagueTeamLinkDraft[];
-  teamOptions: SearchableOption[];
+  teamOptions: SearchListOption[];
   teamToAdd: string;
 }
 
@@ -336,7 +336,7 @@ export class LeagueEditorService {
       .sort((left, right) => Number(left.currenttableposition) - Number(right.currenttableposition));
   }
 
-  private teamOptions(project: DbProject): SearchableOption[] {
+  private teamOptions(project: DbProject): SearchListOption[] {
     const teams = this.findTable(project, "teams");
     if (!teams) {
       return [];

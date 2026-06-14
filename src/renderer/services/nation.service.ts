@@ -1,6 +1,6 @@
 import { Injectable } from "@angular/core";
-import type { DataTable, DbProject } from "../shared/types";
-import type { SearchableOption } from "./searchable-select.component";
+import type { DataTable, DbProject } from "../../shared/types";
+import type { SearchListOption } from "../components/search-list/search-list.component";
 
 interface CachedTableIndex<T> {
   columnsKey: string;
@@ -11,14 +11,14 @@ interface CachedTableIndex<T> {
 
 @Injectable({ providedIn: "root" })
 export class NationService {
-  private readonly optionCache = new WeakMap<DataTable, CachedTableIndex<SearchableOption[]>>();
+  private readonly optionCache = new WeakMap<DataTable, CachedTableIndex<SearchListOption[]>>();
   private readonly nameCache = new WeakMap<DataTable, CachedTableIndex<Map<string, string>>>();
 
   findNationsTable(project?: DbProject): DataTable | undefined {
     return this.findTable(project, "nations");
   }
 
-  nationOptions(project?: DbProject): SearchableOption[] {
+  nationOptions(project?: DbProject): SearchListOption[] {
     const table = this.findNationsTable(project);
     return table ? this.optionsForTable(table) : [];
   }
@@ -48,7 +48,7 @@ export class NationService {
     }
   }
 
-  private optionsForTable(table: DataTable): SearchableOption[] {
+  private optionsForTable(table: DataTable): SearchListOption[] {
     return this.cachedTableValue(this.optionCache, table, () => {
       const nationIdColumn = this.columnIndex(table, "nationid");
       const nameColumn = this.columnIndex(table, "nationname");

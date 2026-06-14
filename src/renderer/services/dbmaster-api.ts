@@ -1,4 +1,4 @@
-import type { DataTable, DbProject } from "../shared/types";
+import type { DataTable, DbProject } from "../../shared/types";
 
 export interface DbMasterApi {
   openXml(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;

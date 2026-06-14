@@ -1,20 +1,20 @@
 import { CommonModule } from "@angular/common";
 import { AfterViewInit, Component, ElementRef, HostListener, ViewChild } from "@angular/core";
 import { FormsModule } from "@angular/forms";
-import type { DataTable, DbProject } from "../shared/types";
-import type { DbMasterApi } from "./dbmaster-api";
-import { LeagueEditorPageComponent } from "./league-editor-page.component";
-import { LeagueEditorService } from "./league-editor.service";
-import type { LeagueSearchResult } from "./league-editor.service";
-import { NationService } from "./nation.service";
-import { PlayerEditorPageComponent } from "./player-editor-page.component";
-import { PlayerEditorService } from "./player-editor.service";
-import type { PlayerSearchResult } from "./player-editor.service";
-import { SearchableSelectComponent } from "./searchable-select.component";
-import { TeamEditorPageComponent } from "./team-editor-page.component";
-import { TeamEditorService } from "./team-editor.service";
-import type { TeamSearchResult } from "./team-editor.service";
-import packageInfo from "../../package.json";
+import type { DataTable, DbProject } from "../../../shared/types";
+import { SearchListComponent } from "../../components/search-list/search-list.component";
+import type { DbMasterApi } from "../../services/dbmaster-api";
+import { LeagueEditorService } from "../../services/league-editor.service";
+import type { LeagueSearchResult } from "../../services/league-editor.service";
+import { NationService } from "../../services/nation.service";
+import { PlayerEditorService } from "../../services/player-editor.service";
+import type { PlayerSearchResult } from "../../services/player-editor.service";
+import { TeamEditorService } from "../../services/team-editor.service";
+import type { TeamSearchResult } from "../../services/team-editor.service";
+import { LeagueEditorPageComponent } from "../league-editor/league-editor-page.component";
+import { PlayerEditorPageComponent } from "../player-editor/player-editor-page.component";
+import { TeamEditorPageComponent } from "../team-editor/team-editor-page.component";
+import packageInfo from "../../../../package.json";
 
 type ToastTone = "info" | "warn" | "error";
 type ViewMode = "home" | "launcher" | "table" | "modules" | "playerEditor" | "teamEditor" | "leagueEditor";
@@ -28,7 +28,7 @@ interface TableListItem {
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [CommonModule, FormsModule, PlayerEditorPageComponent, TeamEditorPageComponent, LeagueEditorPageComponent, SearchableSelectComponent],
+  imports: [CommonModule, FormsModule, PlayerEditorPageComponent, TeamEditorPageComponent, LeagueEditorPageComponent, SearchListComponent],
   templateUrl: "./app.component.html"
 })
 export class AppComponent implements AfterViewInit {

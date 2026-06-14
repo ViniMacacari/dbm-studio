@@ -363,13 +363,13 @@
                 <span class="search-icon" aria-hidden="true"></span>
               </button>
             </form>
-            <app-searchable-select
+            <app-search-list
               class="module-filter-select"
               [options]="nationOptions"
               [(value)]="leagueCountryFilter"
               placeholder="Filter by country"
               (valueChange)="refreshLeagueSearch()"
-            ></app-searchable-select>
+            ></app-search-list>
             <button type="button" [disabled]="!leagueCountryFilter" (click)="clearLeagueCountryFilter()">Clear</button>
           </div>
 

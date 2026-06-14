@@ -1,17 +1,17 @@
 import { CommonModule } from "@angular/common";
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from "@angular/core";
 import { FormsModule } from "@angular/forms";
-import type { DbProject } from "../shared/types";
-import { LeagueEditorService } from "./league-editor.service";
-import type { LeagueEditorDraft, LeagueEditorFieldDraft, LeagueTeamLinkDraft } from "./league-editor.service";
-import { NationService } from "./nation.service";
-import { SearchableSelectComponent } from "./searchable-select.component";
-import type { SearchableOption } from "./searchable-select.component";
+import type { DbProject } from "../../../shared/types";
+import { SearchListComponent } from "../../components/search-list/search-list.component";
+import type { SearchListOption } from "../../components/search-list/search-list.component";
+import { LeagueEditorService } from "../../services/league-editor.service";
+import type { LeagueEditorDraft, LeagueEditorFieldDraft, LeagueTeamLinkDraft } from "../../services/league-editor.service";
+import { NationService } from "../../services/nation.service";
 
 @Component({
   selector: "app-league-editor-page",
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchableSelectComponent],
+  imports: [CommonModule, FormsModule, SearchListComponent],
   templateUrl: "./league-editor-page.component.html"
 })
 export class LeagueEditorPageComponent implements OnChanges {
@@ -23,7 +23,7 @@ export class LeagueEditorPageComponent implements OnChanges {
   @Output() appliedAndSave = new EventEmitter<string>();
 
   draft?: LeagueEditorDraft;
-  nationOptions: SearchableOption[] = [];
+  nationOptions: SearchListOption[] = [];
   activeTab = "identity";
   lastApplied = "";
   lastAppliedTone: "info" | "error" = "info";

@@ -1,5 +1,5 @@
 import { Injectable } from "@angular/core";
-import type { DataTable, DbProject, FieldDescriptor } from "../shared/types";
+import type { DataTable, DbProject, FieldDescriptor } from "../../shared/types";
 import { datePartsToFifaDateCode, fifaDateCodeToAge, fifaDateCodeToIso, isoToFifaDateCode } from "./fifa-date";
 import { NationService } from "./nation.service";
 

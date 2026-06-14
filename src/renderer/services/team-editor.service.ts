@@ -1,5 +1,5 @@
 import { Injectable } from "@angular/core";
-import type { DataTable, DbProject, FieldDescriptor } from "../shared/types";
+import type { DataTable, DbProject, FieldDescriptor } from "../../shared/types";
 
 export interface TeamEditorFieldDraft {
   column: string;

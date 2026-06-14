@@ -1,9 +1,9 @@
 import { CommonModule } from "@angular/common";
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from "@angular/core";
 import { FormsModule } from "@angular/forms";
-import type { DbProject } from "../shared/types";
-import { TeamEditorService } from "./team-editor.service";
-import type { TeamEditorDraft, TeamEditorFieldDraft } from "./team-editor.service";
+import type { DbProject } from "../../../shared/types";
+import { TeamEditorService } from "../../services/team-editor.service";
+import type { TeamEditorDraft, TeamEditorFieldDraft } from "../../services/team-editor.service";
 
 @Component({
   selector: "app-team-editor-page",

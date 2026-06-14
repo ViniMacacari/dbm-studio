@@ -1,17 +1,17 @@
 import { CommonModule } from "@angular/common";
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from "@angular/core";
 import { FormsModule } from "@angular/forms";
-import type { DbProject } from "../shared/types";
-import { NationService } from "./nation.service";
-import { PlayerEditorService } from "./player-editor.service";
-import type { PlayerEditorDraft, PlayerEditorFieldDraft } from "./player-editor.service";
-import { SearchableSelectComponent } from "./searchable-select.component";
-import type { SearchableOption } from "./searchable-select.component";
+import type { DbProject } from "../../../shared/types";
+import { SearchListComponent } from "../../components/search-list/search-list.component";
+import type { SearchListOption } from "../../components/search-list/search-list.component";
+import { NationService } from "../../services/nation.service";
+import { PlayerEditorService } from "../../services/player-editor.service";
+import type { PlayerEditorDraft, PlayerEditorFieldDraft } from "../../services/player-editor.service";
 
 @Component({
   selector: "app-player-editor-page",
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchableSelectComponent],
+  imports: [CommonModule, FormsModule, SearchListComponent],
   templateUrl: "./player-editor-page.component.html"
 })
 export class PlayerEditorPageComponent implements OnChanges {
@@ -23,7 +23,7 @@ export class PlayerEditorPageComponent implements OnChanges {
   @Output() appliedAndSave = new EventEmitter<string>();
 
   draft?: PlayerEditorDraft;
-  nationOptions: SearchableOption[] = [];
+  nationOptions: SearchListOption[] = [];
   activeTab = "identity";
   lastApplied = "";
   lastAppliedTone: "info" | "error" = "info";

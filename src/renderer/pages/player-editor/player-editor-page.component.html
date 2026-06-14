@@ -59,13 +59,13 @@
       <div class="editor-grid">
         <label class="field-block" *ngFor="let field of player.identityFields; trackBy: trackByField">
           <span>{{ field.label }}</span>
-          <app-searchable-select
+          <app-search-list
             *ngIf="field.inputType === 'nation'; else identityInput"
             [options]="nationOptions"
             [(value)]="field.value"
             [disabled]="field.readonly"
             placeholder="Search country"
-          ></app-searchable-select>
+          ></app-search-list>
           <ng-template #identityInput>
             <input
               [type]="field.inputType"
@@ -84,13 +84,13 @@
       <div class="editor-grid">
         <label class="field-block" *ngFor="let field of section.fields; trackBy: trackByField">
           <span>{{ field.label }}</span>
-          <app-searchable-select
+          <app-search-list
             *ngIf="field.inputType === 'nation'; else sectionInput"
             [options]="nationOptions"
             [(value)]="field.value"
             [disabled]="field.readonly"
             placeholder="Search country"
-          ></app-searchable-select>
+          ></app-search-list>
           <ng-template #sectionInput>
             <input
               [type]="field.inputType"

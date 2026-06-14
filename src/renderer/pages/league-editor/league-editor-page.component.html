@@ -33,13 +33,13 @@
       <div class="editor-grid">
         <label class="field-block" *ngFor="let field of section.fields; trackBy: trackByField">
           <span>{{ field.label }}</span>
-          <app-searchable-select
+          <app-search-list
             *ngIf="field.inputType === 'nation'; else fieldInput"
             [options]="nationOptions"
             [(value)]="field.value"
             [disabled]="field.readonly"
             placeholder="Search country"
-          ></app-searchable-select>
+          ></app-search-list>
           <ng-template #fieldInput>
             <input
               [type]="field.inputType"
@@ -56,11 +56,11 @@
 
     <section class="editor-panel" [class.hidden]="activeTab !== 'teams'">
       <div class="league-team-toolbar">
-        <app-searchable-select
+        <app-search-list
           [options]="league.teamOptions"
           [(value)]="league.teamToAdd"
           placeholder="Search team to add"
-        ></app-searchable-select>
+        ></app-search-list>
         <button type="button" class="create-player-button" (click)="addTeam()">
           <span class="plus-icon" aria-hidden="true"></span>
           <span>Add Team</span>
