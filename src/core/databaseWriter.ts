@@ -2,6 +2,7 @@ import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
 import type { DataTable, DbProject, FieldDescriptor, TableDescriptor } from "../shared/types";
 
 const databaseHeader = Buffer.from([0x44, 0x42, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00]);
+const noCompressedStringBlockLength = 0xffffffff;
 
 interface WritableField extends FieldDescriptor {
   bitOffset: number;
@@ -47,6 +48,10 @@ interface SaveDatabaseResult {
 
 function readShortName(buffer: Buffer, offset: number): string {
   return buffer.subarray(offset, offset + 4).toString("latin1");
+}
+
+function normalizeCompressedStringLength(length: number): number {
+  return length === noCompressedStringBlockLength ? 0 : length;
 }
 
 function descriptorMaps(descriptors: TableDescriptor[]): {
@@ -159,7 +164,7 @@ function parseWritableLayouts(dbBuffer: Buffer, descriptors: TableDescriptor[]):
     const recordSize = dbBuffer.readUInt32LE(tableCursor);
     tableCursor += 4;
     tableCursor += 4;
-    const compressedStringLength = dbBuffer.readUInt32LE(tableCursor);
+    const compressedStringLength = normalizeCompressedStringLength(dbBuffer.readUInt32LE(tableCursor));
     tableCursor += 4;
     const recordsCountOffset = tableCursor;
     const recordsCount = dbBuffer.readUInt16LE(tableCursor);

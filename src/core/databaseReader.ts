@@ -2,6 +2,7 @@ import { BitReader } from "./bitBuffer";
 import type { DataTable, FieldDescriptor, TableDescriptor } from "../shared/types";
 
 const databaseHeader = Buffer.from([0x44, 0x42, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00]);
+const noCompressedStringBlockLength = 0xffffffff;
 
 function columnsFromDescriptor(table: TableDescriptor): string[] {
   return table.fields.map((field) => field.name);
@@ -138,6 +139,10 @@ function readHuffmanString(buffer: Buffer, offset: number, outputLength: number,
 
 function readShortName(buffer: Buffer, offset: number): string {
   return buffer.subarray(offset, offset + 4).toString("latin1");
+}
+
+function normalizeCompressedStringLength(length: number): number {
+  return length === noCompressedStringBlockLength ? 0 : length;
 }
 
 function descriptorMaps(descriptors: TableDescriptor[]): {
@@ -369,7 +374,7 @@ function readFifaDatabaseByInternalLayout(dbBuffer: Buffer, descriptors: TableDe
     const recordSize = database.readUInt32LE(tableCursor);
     tableCursor += 4;
     tableCursor += 4;
-    const compressedStringLength = database.readUInt32LE(tableCursor);
+    const compressedStringLength = normalizeCompressedStringLength(database.readUInt32LE(tableCursor));
     tableCursor += 4;
     const recordsCount = database.readUInt16LE(tableCursor);
     tableCursor += 2;

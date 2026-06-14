@@ -33,6 +33,7 @@ export class AppComponent implements AfterViewInit {
   @ViewChild("horizontalScrollInner") private horizontalScrollInner?: ElementRef<HTMLElement>;
 
   private readonly api: DbMasterApi = window.dbmaster;
+  private readonly minimumLoadingDurationMs = 400;
   readonly appName = "DBM Studio";
   readonly appVersion = packageInfo.version;
 
@@ -246,7 +247,7 @@ export class AppComponent implements AfterViewInit {
     }, "Opening text tables", "Reading exported .txt files");
   }
 
-  async saveProject(): Promise<void> {
+  async saveProject(title = "Saving database", detail = "Writing .db file and backup"): Promise<void> {
     await this.guarded(async () => {
       if (!this.project) {
         return;
@@ -263,7 +264,7 @@ export class AppComponent implements AfterViewInit {
         const warnings = result.warnings.length > 0 ? ` ${result.warnings.length} warning(s).` : "";
         this.setStatus(`${result.tablesWritten} table(s) saved to DB.${warnings}`);
       }
-    }, "Saving database", "Writing .db file and backup");
+    }, title, detail);
   }
 
   async exportTable(): Promise<void> {
@@ -541,7 +542,7 @@ export class AppComponent implements AfterViewInit {
 
   async onPlayerEditorAppliedAndSave(message: string): Promise<void> {
     this.onPlayerEditorApplied(message);
-    await this.saveProject();
+    await this.saveProject("Applying and saving", "Updating player rows and writing .db file");
   }
 
   onTeamEditorApplied(message: string): void {
@@ -552,7 +553,7 @@ export class AppComponent implements AfterViewInit {
 
   async onTeamEditorAppliedAndSave(message: string): Promise<void> {
     this.onTeamEditorApplied(message);
-    await this.saveProject();
+    await this.saveProject("Applying and saving", "Updating team rows and writing .db file");
   }
 
   copyRows(): void {
@@ -717,10 +718,6 @@ export class AppComponent implements AfterViewInit {
     this.selectedRows.clear();
     this.copied = undefined;
     this.sort = undefined;
-    const warning = project.warnings.find(Boolean);
-    if (warning) {
-      this.showToast(warning, "warn");
-    }
     this.setStatus(project.warnings.length > 0 ? `${project.title} loaded with ${project.warnings.length} warning(s)` : `${project.title} loaded`);
     this.resetHorizontalScroll();
   }
@@ -761,9 +758,11 @@ export class AppComponent implements AfterViewInit {
   }
 
   private async guarded(action: () => Promise<void>, title?: string, detail?: string): Promise<void> {
+    let loadingStartedAt = 0;
     try {
       if (title) {
         await this.setLoading(true, title, detail ?? "Please wait");
+        loadingStartedAt = performance.now();
       }
       await action();
     } catch (error) {
@@ -772,6 +771,11 @@ export class AppComponent implements AfterViewInit {
       this.setStatus("Error");
     } finally {
       if (title) {
+        const elapsed = performance.now() - loadingStartedAt;
+        const remaining = Math.max(0, this.minimumLoadingDurationMs - elapsed);
+        if (remaining > 0) {
+          await new Promise<void>((resolve) => window.setTimeout(resolve, remaining));
+        }
         await this.setLoading(false);
       }
     }
@@ -782,6 +786,7 @@ export class AppComponent implements AfterViewInit {
     this.loadingDetail = detail;
     this.loadingActive = loading;
     if (loading) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
   }
