@@ -11,6 +11,7 @@ export interface SearchListOption {
   selector: "app-search-list",
   standalone: true,
   imports: [CommonModule],
+  styleUrl: "./search-list.component.scss",
   template: `
     <div class="search-list" [class.open]="isOpen && filteredOptions.length > 0">
       <input

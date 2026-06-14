@@ -11,7 +11,8 @@ import type { TeamPlayerLinkDraft } from "../../services/transfer.service";
   selector: "app-team-editor-page",
   standalone: true,
   imports: [CommonModule, FormsModule, SearchListComponent],
-  templateUrl: "./team-editor-page.component.html"
+  templateUrl: "./team-editor-page.component.html",
+  styleUrl: "./team-editor-page.component.scss"
 })
 export class TeamEditorPageComponent implements OnChanges {
   @Input({ required: true }) project!: DbProject;

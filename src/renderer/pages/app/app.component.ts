@@ -31,7 +31,8 @@ interface TableListItem {
   selector: "app-root",
   standalone: true,
   imports: [CommonModule, FormsModule, PlayerEditorPageComponent, TeamEditorPageComponent, LeagueEditorPageComponent, SearchListComponent],
-  templateUrl: "./app.component.html"
+  templateUrl: "./app.component.html",
+  styleUrl: "./app.component.scss"
 })
 export class AppComponent implements AfterViewInit {
   @ViewChild("gridWrap") private gridWrap?: ElementRef<HTMLElement>;

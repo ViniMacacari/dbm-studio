@@ -12,7 +12,8 @@ import { NationService } from "../../services/nation.service";
   selector: "app-league-editor-page",
   standalone: true,
   imports: [CommonModule, FormsModule, SearchListComponent],
-  templateUrl: "./league-editor-page.component.html"
+  templateUrl: "./league-editor-page.component.html",
+  styleUrl: "./league-editor-page.component.scss"
 })
 export class LeagueEditorPageComponent implements OnChanges {
   @Input({ required: true }) project!: DbProject;

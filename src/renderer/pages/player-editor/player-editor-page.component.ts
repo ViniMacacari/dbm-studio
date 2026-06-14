@@ -12,7 +12,8 @@ import type { PlayerEditorDraft, PlayerEditorFieldDraft } from "../../services/p
   selector: "app-player-editor-page",
   standalone: true,
   imports: [CommonModule, FormsModule, SearchListComponent],
-  templateUrl: "./player-editor-page.component.html"
+  templateUrl: "./player-editor-page.component.html",
+  styleUrl: "./player-editor-page.component.scss"
 })
 export class PlayerEditorPageComponent implements OnChanges {
   @Input({ required: true }) project!: DbProject;
