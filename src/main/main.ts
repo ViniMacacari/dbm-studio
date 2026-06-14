@@ -28,7 +28,7 @@ function createWindow(): void {
     height: 820,
     minWidth: 980,
     minHeight: 620,
-    title: "DB Master",
+    title: "DBM Studio",
     icon: join(process.cwd(), "app.ico"),
     webPreferences: {
       preload: join(__dirname, "../preload/preload.js"),

@@ -5,8 +5,15 @@ import type { DataTable, DbProject } from "../shared/types";
 import type { DbMasterApi } from "./dbmaster-api";
 import { PlayerEditorPageComponent } from "./player-editor-page.component";
 import { PlayerEditorService } from "./player-editor.service";
+import type { PlayerSearchResult } from "./player-editor.service";
+import { TeamEditorPageComponent } from "./team-editor-page.component";
+import { TeamEditorService } from "./team-editor.service";
+import type { TeamSearchResult } from "./team-editor.service";
+import packageInfo from "../../package.json";
 
 type ToastTone = "info" | "warn" | "error";
+type ViewMode = "home" | "launcher" | "table" | "modules" | "playerEditor" | "teamEditor";
+type ModuleMode = "players" | "teams";
 
 interface TableListItem {
   table: DataTable;
@@ -16,7 +23,7 @@ interface TableListItem {
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [CommonModule, FormsModule, PlayerEditorPageComponent],
+  imports: [CommonModule, FormsModule, PlayerEditorPageComponent, TeamEditorPageComponent],
   templateUrl: "./app.component.html"
 })
 export class AppComponent implements AfterViewInit {
@@ -26,13 +33,25 @@ export class AppComponent implements AfterViewInit {
   @ViewChild("horizontalScrollInner") private horizontalScrollInner?: ElementRef<HTMLElement>;
 
   private readonly api: DbMasterApi = window.dbmaster;
+  readonly appName = "DBM Studio";
+  readonly appVersion = packageInfo.version;
 
-  constructor(private readonly playerEditor: PlayerEditorService) {}
+  constructor(
+    private readonly playerEditor: PlayerEditorService,
+    private readonly teamEditor: TeamEditorService
+  ) {}
 
   project?: DbProject;
   currentTableIndex = 0;
-  viewMode: "table" | "playerEditor" = "table";
+  viewMode: ViewMode = "home";
+  activeModule: ModuleMode = "players";
+  playerEditorReturnMode: "table" | "modules" = "table";
   playerEditorRowIndex = 0;
+  playerSearchTerm = "";
+  playerSearchResults: PlayerSearchResult[] = [];
+  teamEditorRowIndex = 0;
+  teamSearchTerm = "";
+  teamSearchResults: TeamSearchResult[] = [];
   page = 0;
   pageSize = 100;
   selectedColumnIndex = 0;
@@ -64,6 +83,26 @@ export class AppComponent implements AfterViewInit {
 
   get hasProject(): boolean {
     return Boolean(this.project);
+  }
+
+  get canUsePlayerModule(): boolean {
+    return Boolean(this.playerEditor.findPlayersTable(this.project));
+  }
+
+  get canUseTeamModule(): boolean {
+    return Boolean(this.teamEditor.findTeamsTable(this.project));
+  }
+
+  get playersCount(): number {
+    return this.playerEditor.findPlayersTable(this.project)?.rows.length ?? 0;
+  }
+
+  get teamsCount(): number {
+    return this.teamEditor.findTeamsTable(this.project)?.rows.length ?? 0;
+  }
+
+  get tableCount(): number {
+    return this.project?.tables.length ?? 0;
   }
 
   get canSaveDatabase(): boolean {
@@ -170,6 +209,14 @@ export class AppComponent implements AfterViewInit {
 
   trackByRowIndex(_index: number, rowIndex: number): number {
     return rowIndex;
+  }
+
+  trackByPlayerResult(_index: number, player: PlayerSearchResult): string {
+    return `${player.rowIndex}:${player.playerId}`;
+  }
+
+  trackByTeamResult(_index: number, team: TeamSearchResult): string {
+    return `${team.rowIndex}:${team.teamId}`;
   }
 
   async openDatabase(): Promise<void> {
@@ -305,6 +352,97 @@ export class AppComponent implements AfterViewInit {
     this.resetHorizontalScroll();
   }
 
+  showLauncher(): void {
+    if (!this.project) {
+      this.viewMode = "home";
+      return;
+    }
+    this.viewMode = "launcher";
+  }
+
+  openTableWorkspace(): void {
+    if (!this.project) {
+      this.showToast("Open a DB/XML pair first.", "warn");
+      this.viewMode = "home";
+      return;
+    }
+    this.viewMode = "table";
+    this.resetHorizontalScroll();
+  }
+
+  async openModulesWorkspace(module: ModuleMode = this.activeModule): Promise<void> {
+    if (!this.project) {
+      this.showToast("Open a DB/XML pair first.", "warn");
+      this.viewMode = "home";
+      return;
+    }
+    this.activeModule = module;
+    this.viewMode = "modules";
+    await this.loadActiveModule();
+  }
+
+  async selectModule(module: ModuleMode): Promise<void> {
+    this.activeModule = module;
+    await this.loadActiveModule();
+  }
+
+  async loadActiveModule(): Promise<void> {
+    if (this.activeModule === "teams") {
+      await this.searchTeams("Loading teams", "Reading team rows");
+      return;
+    }
+    await this.searchPlayers("Loading players", "Resolving names and relations");
+  }
+
+  async searchPlayers(title = "Searching players", detail = "Resolving names and relations"): Promise<void> {
+    await this.guarded(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      this.refreshPlayerSearch();
+    }, title, detail);
+  }
+
+  refreshPlayerSearch(): void {
+    this.playerSearchResults = this.playerEditor.findPlayers(this.project, this.playerSearchTerm, this.playerSearchTerm.trim() ? 80 : 30);
+    const suffix = this.playerSearchTerm.trim() ? ` for "${this.playerSearchTerm.trim()}"` : "";
+    this.setStatus(`${this.playerSearchResults.length} player result(s)${suffix}`);
+  }
+
+  async searchTeams(title = "Searching teams", detail = "Reading team rows"): Promise<void> {
+    await this.guarded(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      this.refreshTeamSearch();
+    }, title, detail);
+  }
+
+  refreshTeamSearch(): void {
+    this.teamSearchResults = this.teamEditor.findTeams(this.project, this.teamSearchTerm, this.teamSearchTerm.trim() ? 80 : 30);
+    const suffix = this.teamSearchTerm.trim() ? ` for "${this.teamSearchTerm.trim()}"` : "";
+    this.setStatus(`${this.teamSearchResults.length} team result(s)${suffix}`);
+  }
+
+  openPlayerFromModule(player: PlayerSearchResult): void {
+    this.playerEditorRowIndex = player.rowIndex;
+    this.playerEditorReturnMode = "modules";
+    this.viewMode = "playerEditor";
+  }
+
+  async createPlayerFromModule(): Promise<void> {
+    await this.guarded(async () => {
+      const result = this.playerEditor.createPlayer(this.project);
+      this.playerSearchTerm = result.playerId;
+      this.refreshPlayerSearch();
+      this.playerEditorRowIndex = result.rowIndex;
+      this.playerEditorReturnMode = "modules";
+      this.viewMode = "playerEditor";
+      this.setStatus(result.message);
+    }, "Creating player", "Preparing players and edited names");
+  }
+
+  openTeamFromModule(team: TeamSearchResult): void {
+    this.teamEditorRowIndex = team.rowIndex;
+    this.viewMode = "teamEditor";
+  }
+
   selectColumn(index: number): void {
     this.selectedColumnIndex = index;
   }
@@ -336,6 +474,8 @@ export class AppComponent implements AfterViewInit {
     }
     table.rows[rowIndex][columnIndex] = input.value;
     table.changed = true;
+    this.playerEditor.invalidateTable(table);
+    this.teamEditor.invalidateTable(table);
     this.setStatus(`${table.name} changed`);
   }
 
@@ -372,17 +512,47 @@ export class AppComponent implements AfterViewInit {
       return;
     }
     this.playerEditorRowIndex = this.selectedRowIndexes()[0];
+    this.playerEditorReturnMode = "table";
     this.viewMode = "playerEditor";
   }
 
   closePlayerEditor(): void {
-    this.viewMode = "table";
+    this.viewMode = this.playerEditorReturnMode;
+    if (this.viewMode === "modules") {
+      this.refreshPlayerSearch();
+    }
+    this.resetHorizontalScroll();
+  }
+
+  closeTeamEditor(): void {
+    this.viewMode = "modules";
+    this.activeModule = "teams";
+    this.refreshTeamSearch();
     this.resetHorizontalScroll();
   }
 
   onPlayerEditorApplied(message: string): void {
     this.setStatus(message);
+    if (this.playerEditorReturnMode === "modules") {
+      this.refreshPlayerSearch();
+    }
     this.syncHorizontalScrollbar();
+  }
+
+  async onPlayerEditorAppliedAndSave(message: string): Promise<void> {
+    this.onPlayerEditorApplied(message);
+    await this.saveProject();
+  }
+
+  onTeamEditorApplied(message: string): void {
+    this.setStatus(message);
+    this.refreshTeamSearch();
+    this.syncHorizontalScrollbar();
+  }
+
+  async onTeamEditorAppliedAndSave(message: string): Promise<void> {
+    this.onTeamEditorApplied(message);
+    await this.saveProject();
   }
 
   copyRows(): void {
@@ -413,6 +583,8 @@ export class AppComponent implements AfterViewInit {
     }
     table.rows.push(...this.copied.rows.map((row) => [...row]));
     table.changed = true;
+    this.playerEditor.invalidateTable(table);
+    this.teamEditor.invalidateTable(table);
     this.syncHorizontalScrollbar();
     this.setStatus(`${this.copied.rows.length} row(s) pasted`);
   }
@@ -431,6 +603,8 @@ export class AppComponent implements AfterViewInit {
     }
     table.rows = table.rows.filter((_row, index) => !selected.has(index));
     table.changed = true;
+    this.playerEditor.invalidateTable(table);
+    this.teamEditor.invalidateTable(table);
     this.selectedRows.clear();
     this.syncHorizontalScrollbar();
     if (showMessage) {
@@ -529,7 +703,15 @@ export class AppComponent implements AfterViewInit {
 
   private loadProject(project: DbProject): void {
     this.project = project;
+    this.playerEditor.invalidateProject(project);
+    this.teamEditor.invalidateProject(project);
+    this.viewMode = "launcher";
+    this.activeModule = "players";
     this.currentTableIndex = 0;
+    this.playerSearchTerm = "";
+    this.playerSearchResults = [];
+    this.teamSearchTerm = "";
+    this.teamSearchResults = [];
     this.page = 0;
     this.selectedColumnIndex = 0;
     this.selectedRows.clear();
@@ -559,6 +741,8 @@ export class AppComponent implements AfterViewInit {
     imported.fields = table.fields;
     imported.changed = true;
     project.tables[this.currentTableIndex] = imported;
+    this.playerEditor.invalidateTable(imported);
+    this.teamEditor.invalidateTable(imported);
     this.syncHorizontalScrollbar();
     this.setStatus(`${table.name} imported`);
   }

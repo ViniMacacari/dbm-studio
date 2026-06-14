@@ -12,7 +12,11 @@
         <span *ngIf="!player.namesAvailable">No editedplayernames table</span>
       </div>
     </div>
-    <button type="button" class="apply-button" (click)="apply()">Apply</button>
+    <div class="editor-actions">
+      <button type="button" class="apply-button" (click)="apply()">Apply</button>
+      <button type="button" class="secondary-apply-button" (click)="applyAndBack()">Apply and Back</button>
+      <button type="button" class="secondary-apply-button" [disabled]="!canSaveDatabase" (click)="applyAndSave()">Apply and Save</button>
+    </div>
   </header>
 
   <nav class="editor-tabs" aria-label="Player editor tabs">
@@ -84,7 +88,7 @@
     </section>
   </div>
 
-  <div class="editor-footer">
+  <div class="editor-footer" [class.error]="lastAppliedTone === 'error'">
     <span>{{ lastApplied }}</span>
   </div>
 </section>

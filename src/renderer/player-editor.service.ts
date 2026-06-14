@@ -1,5 +1,6 @@
 import { Injectable } from "@angular/core";
-import type { DataTable, DbProject } from "../shared/types";
+import type { DataTable, DbProject, FieldDescriptor } from "../shared/types";
+import { datePartsToFifaDateCode, fifaDateCodeToAge, fifaDateCodeToIso, isoToFifaDateCode } from "./fifa-date";
 
 export interface PlayerEditorNameDraft {
   firstname: string;
@@ -16,11 +17,13 @@ export interface PlayerEditorFieldDraft {
   column: string;
   label: string;
   value: string;
-  inputType: "number" | "text";
+  inputType: "number" | "text" | "date";
   readonly?: boolean;
   min?: number;
   max?: number;
   relation?: string;
+  storage?: "raw" | "fifaDate";
+  rawValue?: string;
 }
 
 export interface PlayerEditorSectionDraft {
@@ -44,6 +47,23 @@ export interface PlayerEditorDraft {
   sections: PlayerEditorSectionDraft[];
 }
 
+export interface PlayerSearchResult {
+  rowIndex: number;
+  playerId: string;
+  displayName: string;
+  nationalityName?: string;
+  overall?: string;
+  potential?: string;
+  age?: number;
+  nameSource: PlayerResolvedNames["source"];
+}
+
+export interface PlayerCreationResult {
+  rowIndex: number;
+  playerId: string;
+  message: string;
+}
+
 interface FieldDefinition {
   column: string;
   label: string;
@@ -64,18 +84,29 @@ interface NameResolution {
   source: PlayerResolvedNames["source"];
 }
 
+interface CachedTableIndex<T> {
+  columnsKey: string;
+  rowCount: number;
+  rows: string[][];
+  value: T;
+}
+
 @Injectable({ providedIn: "root" })
 export class PlayerEditorService {
+  private readonly nameMapCache = new WeakMap<DataTable, CachedTableIndex<Map<string, string>>>();
+  private readonly editedNamesCache = new WeakMap<DataTable, CachedTableIndex<Map<string, PlayerEditorNameDraft>>>();
+  private readonly nationMapCache = new WeakMap<DataTable, CachedTableIndex<Map<string, string>>>();
+
   private readonly identityFields: FieldDefinition[] = [
     { column: "playerid", label: "Player ID", readonly: true },
     { column: "nationality", label: "Nationality" },
-    { column: "birthdate", label: "Birth date code" },
+    { column: "birthdate", label: "Birth date" },
     { column: "height", label: "Height" },
     { column: "weight", label: "Weight" },
     { column: "preferredfoot", label: "Preferred foot" },
     { column: "gender", label: "Gender" },
     { column: "contractvaliduntil", label: "Contract until" },
-    { column: "playerjointeamdate", label: "Join date code" },
+    { column: "playerjointeamdate", label: "Join date" },
     { column: "isretiring", label: "Retiring" },
     { column: "iscustomized", label: "Customized" },
     { column: "usercaneditname", label: "Editable name" }
@@ -86,7 +117,7 @@ export class PlayerEditorService {
       id: "profile",
       title: "Profile",
       fields: [
-        { column: "overallrating", label: "Overall", min: 0, max: 99 },
+        { column: "overallrating", label: "Overall", min: 0, max: 99, readonly: true },
         { column: "potential", label: "Potential", min: 0, max: 99 },
         { column: "internationalrep", label: "International rep", min: 0, max: 5 },
         { column: "skillmoves", label: "Skill moves", min: 0, max: 5 },
@@ -218,6 +249,21 @@ export class PlayerEditorService {
     return this.findTable(project, "editedplayernames");
   }
 
+  invalidateTable(table?: DataTable): void {
+    if (!table) {
+      return;
+    }
+    this.nameMapCache.delete(table);
+    this.editedNamesCache.delete(table);
+    this.nationMapCache.delete(table);
+  }
+
+  invalidateProject(project?: DbProject): void {
+    for (const table of project?.tables ?? []) {
+      this.invalidateTable(table);
+    }
+  }
+
   resolvePlayerName(project: DbProject | undefined, rowIndex: number): string {
     if (!project) {
       return "";
@@ -230,6 +276,66 @@ export class PlayerEditorService {
     const playerId = this.read(players, rowIndex, "playerid");
     const names = this.resolveNames(project, players, rowIndex, playerId);
     return this.displayName(names, playerId);
+  }
+
+  findPlayers(project: DbProject | undefined, query: string, limit = 60): PlayerSearchResult[] {
+    const players = this.findPlayersTable(project);
+    if (!project || !players) {
+      return [];
+    }
+
+    const normalizedQuery = this.normalizeSearch(query.trim());
+    const results: PlayerSearchResult[] = [];
+    for (let rowIndex = 0; rowIndex < players.rows.length; rowIndex += 1) {
+      const summary = this.createPlayerSummary(project, players, rowIndex);
+      if (!summary) {
+        continue;
+      }
+      if (normalizedQuery && !this.playerMatchesQuery(summary, normalizedQuery)) {
+        continue;
+      }
+      results.push(summary);
+      if (results.length >= limit) {
+        break;
+      }
+    }
+    return results;
+  }
+
+  createPlayer(project: DbProject | undefined): PlayerCreationResult {
+    if (!project) {
+      throw new Error("Open a DB/XML pair before creating a player.");
+    }
+
+    const players = this.findPlayersTable(project);
+    if (!players) {
+      throw new Error("players table was not found.");
+    }
+
+    const namesTable = this.findNamesTable(project);
+    if (!namesTable) {
+      throw new Error("editedplayernames table was not found.");
+    }
+
+    const playerId = this.nextPlayerId(players);
+    const row = this.makeCreatedPlayerRow(players, playerId);
+    players.rows.push(row);
+    players.changed = true;
+    this.invalidateTable(players);
+
+    const nameRowIndex = this.findOrCreateNameRow(namesTable, playerId);
+    this.write(namesTable, nameRowIndex, "firstname", "New");
+    this.write(namesTable, nameRowIndex, "surname", "Player");
+    this.write(namesTable, nameRowIndex, "commonname", "");
+    this.write(namesTable, nameRowIndex, "playerjerseyname", "Player");
+    namesTable.changed = true;
+    this.invalidateTable(namesTable);
+
+    return {
+      rowIndex: players.rows.length - 1,
+      playerId,
+      message: `Player ${playerId} created in players + editedplayernames`
+    };
   }
 
   isPlayersTable(table?: DataTable): boolean {
@@ -246,7 +352,7 @@ export class PlayerEditorService {
     const names = this.resolveNames(project, players, rowIndex, playerId);
     const displayName = this.displayName(names, playerId);
     const birthdate = this.read(players, rowIndex, "birthdate");
-    const birthDateIso = this.decodeFifaDate(birthdate);
+    const birthDateIso = fifaDateCodeToIso(birthdate);
     const nationalityName = this.resolveNation(project, this.read(players, rowIndex, "nationality"));
 
     return {
@@ -262,7 +368,7 @@ export class PlayerEditorService {
       },
       nationalityName,
       birthDateIso,
-      age: birthDateIso ? this.ageFromIso(birthDateIso) : undefined,
+      age: fifaDateCodeToAge(birthdate),
       namesAvailable: Boolean(this.findNamesTable(project)),
       names,
       identityFields: this.makeFields(players, rowIndex, this.identityFields, project),
@@ -274,6 +380,102 @@ export class PlayerEditorService {
         }))
         .filter((section) => section.fields.length > 0)
     };
+  }
+
+  private createPlayerSummary(project: DbProject, players: DataTable, rowIndex: number): PlayerSearchResult | undefined {
+    if (!players.rows[rowIndex]) {
+      return undefined;
+    }
+
+    const playerId = this.read(players, rowIndex, "playerid");
+    const names = this.resolveNames(project, players, rowIndex, playerId);
+    const birthdate = this.read(players, rowIndex, "birthdate");
+
+    return {
+      rowIndex,
+      playerId,
+      displayName: this.displayName(names, playerId),
+      nationalityName: this.resolveNation(project, this.read(players, rowIndex, "nationality")),
+      overall: this.read(players, rowIndex, "overallrating"),
+      potential: this.read(players, rowIndex, "potential"),
+      age: fifaDateCodeToAge(birthdate),
+      nameSource: names.source
+    };
+  }
+
+  private playerMatchesQuery(player: PlayerSearchResult, normalizedQuery: string): boolean {
+    return [
+      player.displayName,
+      player.playerId,
+      player.nationalityName ?? ""
+    ].some((value) => this.normalizeSearch(value).includes(normalizedQuery));
+  }
+
+  private makeCreatedPlayerRow(players: DataTable, playerId: string): string[] {
+    const template = players.rows[0] ?? [];
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const birthdate = datePartsToFifaDateCode(2004, 1, 1, "birthdate");
+    const joinDate = datePartsToFifaDateCode(today.getFullYear(), today.getMonth() + 1, today.getDate(), "playerjointeamdate");
+    const defaultValues = new Map<string, string>([
+      ["playerid", playerId],
+      ["firstnameid", "0"],
+      ["lastnameid", "0"],
+      ["commonnameid", "0"],
+      ["playerjerseynameid", "0"],
+      ["iscustomized", "1"],
+      ["usercaneditname", "1"],
+      ["overallrating", "60"],
+      ["potential", "60"],
+      ["height", "180"],
+      ["weight", "75"],
+      ["birthdate", birthdate],
+      ["playerjointeamdate", joinDate],
+      ["contractvaliduntil", String(currentYear + 2)],
+      ["isretiring", "0"]
+    ]);
+
+    return players.columns.map((column, columnIndex) => {
+      const lowerColumn = column.toLowerCase();
+      const fallback = template[columnIndex] ?? this.defaultValueForField(players.fields[columnIndex]);
+      const value = defaultValues.get(lowerColumn) ?? fallback;
+      return this.clampFieldValue(players, lowerColumn, value, fallback);
+    });
+  }
+
+  private nextPlayerId(players: DataTable): string {
+    const playerIdColumn = this.columnIndex(players, "playerid");
+    if (playerIdColumn < 0) {
+      throw new Error("players.playerid column was not found.");
+    }
+
+    const field = this.fieldForColumn(players, "playerid");
+    const used = new Set<number>();
+    let maxId = 0;
+    for (const row of players.rows) {
+      const value = Number(row[playerIdColumn]);
+      if (!Number.isInteger(value) || value <= 0) {
+        continue;
+      }
+      used.add(value);
+      maxId = Math.max(maxId, value);
+    }
+
+    const minId = Math.max(1, Math.trunc(field?.rangeLow ?? 1));
+    const maxAllowed = field && field.rangeHigh >= field.rangeLow ? Math.trunc(field.rangeHigh) : Number.MAX_SAFE_INTEGER;
+    const next = Math.max(maxId + 1, minId);
+    if (next <= maxAllowed && !used.has(next)) {
+      return String(next);
+    }
+
+    const scanLimit = Math.min(maxAllowed, minId + Math.max(players.rows.length * 2, 100000));
+    for (let candidate = minId; candidate <= scanLimit; candidate += 1) {
+      if (!used.has(candidate)) {
+        return String(candidate);
+      }
+    }
+
+    throw new Error("No free playerid was found in the players table range.");
   }
 
   applyDraft(project: DbProject, draft: PlayerEditorDraft): { message: string; changedTables: string[] } {
@@ -289,7 +491,7 @@ export class PlayerEditorService {
 
     for (const field of [...draft.identityFields, ...draft.sections.flatMap((section) => section.fields)]) {
       if (!field.readonly) {
-        this.write(players, draft.rowIndex, field.column, field.value);
+        this.write(players, draft.rowIndex, field.column, this.normalizeFieldForWrite(field));
       }
     }
 
@@ -306,6 +508,7 @@ export class PlayerEditorService {
       this.write(namesTable, nameRowIndex, "playerjerseyname", draft.names.playerjerseyname);
       namesTable.changed = true;
       changedTables.add(namesTable.name);
+      this.invalidateTable(namesTable);
 
       this.writeIfPresent(players, draft.rowIndex, "iscustomized", "1");
       this.writeIfPresent(players, draft.rowIndex, "usercaneditname", "1");
@@ -323,6 +526,97 @@ export class PlayerEditorService {
 
   private columnIndex(table: DataTable, column: string): number {
     return table.columns.findIndex((candidate) => candidate.toLowerCase() === column.toLowerCase());
+  }
+
+  private fieldForColumn(table: DataTable, column: string): FieldDescriptor | undefined {
+    const index = this.columnIndex(table, column);
+    return index >= 0 ? table.fields[index] : undefined;
+  }
+
+  private defaultValueForField(field: FieldDescriptor | undefined): string {
+    if (!field) {
+      return "";
+    }
+    if (field.kind === "string") {
+      return "";
+    }
+    if (field.rangeHigh >= field.rangeLow) {
+      if (field.rangeLow <= 0 && field.rangeHigh >= 0) {
+        return "0";
+      }
+      return String(Math.trunc(field.rangeLow));
+    }
+    return "0";
+  }
+
+  private numericRangeForField(field: FieldDescriptor | undefined): { min?: number; max?: number } {
+    if (!field || field.kind === "string" || field.kind === "float" || field.rangeHigh < field.rangeLow) {
+      return {};
+    }
+
+    return {
+      min: Math.trunc(field.rangeLow),
+      max: Math.trunc(field.rangeHigh)
+    };
+  }
+
+  private fieldStoresFifaDate(column: string): boolean {
+    const normalized = column.toLowerCase();
+    return normalized === "birthdate" || normalized === "playerjointeamdate";
+  }
+
+  private clampFieldValue(table: DataTable, column: string, value: string, fallback: string): string {
+    const field = this.fieldForColumn(table, column);
+    if (!field || field.kind === "string") {
+      return value;
+    }
+
+    const numeric = Number(value);
+    const fallbackNumeric = Number(fallback);
+    if (!Number.isFinite(numeric)) {
+      return Number.isFinite(fallbackNumeric) ? fallback : this.defaultValueForField(field);
+    }
+
+    if (field.rangeHigh < field.rangeLow) {
+      return String(Math.trunc(numeric));
+    }
+
+    const clamped = Math.min(Math.max(Math.trunc(numeric), Math.trunc(field.rangeLow)), Math.trunc(field.rangeHigh));
+    return String(clamped);
+  }
+
+  private normalizeFieldForWrite(field: PlayerEditorFieldDraft): string {
+    if (field.storage === "fifaDate") {
+      return isoToFifaDateCode(field.value, field.column);
+    }
+
+    if (field.inputType === "number") {
+      return this.validateNumericField(field);
+    }
+
+    return field.value;
+  }
+
+  private validateNumericField(field: PlayerEditorFieldDraft): string {
+    const raw = field.value.trim();
+    if (!/^-?\d+$/.test(raw)) {
+      throw new Error(`${field.label}: expected an integer value.`);
+    }
+
+    const numeric = Number(raw);
+    if (!Number.isSafeInteger(numeric)) {
+      throw new Error(`${field.label}: value is outside the safe integer range.`);
+    }
+
+    if (field.min !== undefined && numeric < field.min) {
+      throw new Error(`${field.label}: value must be at least ${field.min}.`);
+    }
+
+    if (field.max !== undefined && numeric > field.max) {
+      throw new Error(`${field.label}: value must be at most ${field.max}.`);
+    }
+
+    return raw;
   }
 
   private read(table: DataTable, rowIndex: number, column: string): string {
@@ -361,6 +655,10 @@ export class PlayerEditorService {
     if (column.toLowerCase() === "nationality") {
       return this.resolveNation(project, value) || undefined;
     }
+    if (this.fieldStoresFifaDate(column)) {
+      const iso = fifaDateCodeToIso(value);
+      return iso ? `FIFA ${value}` : `Invalid FIFA date: ${value}`;
+    }
     return undefined;
   }
 
@@ -372,19 +670,96 @@ export class PlayerEditorService {
     if (!nations) {
       return "";
     }
-    const nationIdColumn = this.columnIndex(nations, "nationid");
-    const nameColumn = this.columnIndex(nations, "nationname");
-    const isoColumn = this.columnIndex(nations, "isocountrycode");
-    if (nationIdColumn < 0) {
-      return "";
+    const indexed = this.nationMap(nations);
+    return indexed.get(nationId) ?? "";
+  }
+
+  private nationMap(table: DataTable): Map<string, string> {
+    return this.cachedTableValue(this.nationMapCache, table, () => {
+      const indexed = new Map<string, string>();
+      const nationIdColumn = this.columnIndex(table, "nationid");
+      const nameColumn = this.columnIndex(table, "nationname");
+      const isoColumn = this.columnIndex(table, "isocountrycode");
+      if (nationIdColumn < 0) {
+        return indexed;
+      }
+      for (const row of table.rows) {
+        const nationId = row[nationIdColumn];
+        if (!nationId) {
+          continue;
+        }
+        const name = nameColumn >= 0 ? row[nameColumn]?.trim() : "";
+        const iso = isoColumn >= 0 ? row[isoColumn]?.trim() : "";
+        indexed.set(nationId, [name, iso ? `(${iso})` : ""].filter(Boolean).join(" "));
+      }
+      return indexed;
+    });
+  }
+
+  private nameMap(table: DataTable): Map<string, string> {
+    return this.cachedTableValue(this.nameMapCache, table, () => {
+      const indexed = new Map<string, string>();
+      const nameIdColumn = this.columnIndex(table, "nameid");
+      const nameColumn = this.columnIndex(table, "name");
+      if (nameIdColumn < 0 || nameColumn < 0) {
+        return indexed;
+      }
+      for (const row of table.rows) {
+        const nameId = row[nameIdColumn];
+        if (nameId) {
+          indexed.set(nameId, row[nameColumn]?.trim() ?? "");
+        }
+      }
+      return indexed;
+    });
+  }
+
+  private editedNamesMap(table: DataTable): Map<string, PlayerEditorNameDraft> {
+    return this.cachedTableValue(this.editedNamesCache, table, () => {
+      const indexed = new Map<string, PlayerEditorNameDraft>();
+      const playerIdColumn = this.columnIndex(table, "playerid");
+      const firstnameColumn = this.columnIndex(table, "firstname");
+      const surnameColumn = this.columnIndex(table, "surname");
+      const commonNameColumn = this.columnIndex(table, "commonname");
+      const jerseyNameColumn = this.columnIndex(table, "playerjerseyname");
+      if (playerIdColumn < 0) {
+        return indexed;
+      }
+      for (const row of table.rows) {
+        const playerId = row[playerIdColumn];
+        if (!playerId) {
+          continue;
+        }
+        indexed.set(playerId, {
+          firstname: firstnameColumn >= 0 ? row[firstnameColumn] ?? "" : "",
+          surname: surnameColumn >= 0 ? row[surnameColumn] ?? "" : "",
+          commonname: commonNameColumn >= 0 ? row[commonNameColumn] ?? "" : "",
+          playerjerseyname: jerseyNameColumn >= 0 ? row[jerseyNameColumn] ?? "" : ""
+        });
+      }
+      return indexed;
+    });
+  }
+
+  private cachedTableValue<T>(
+    cache: WeakMap<DataTable, CachedTableIndex<T>>,
+    table: DataTable,
+    build: () => T
+  ): T {
+    const columnsKey = table.columns.join("\u001f");
+    const cached = cache.get(table);
+    if (cached && cached.rows === table.rows && cached.rowCount === table.rows.length && cached.columnsKey === columnsKey) {
+      return cached.value;
     }
-    const row = nations.rows.find((candidate) => candidate[nationIdColumn] === nationId);
-    if (!row) {
-      return "";
-    }
-    const name = nameColumn >= 0 ? row[nameColumn]?.trim() : "";
-    const iso = isoColumn >= 0 ? row[isoColumn]?.trim() : "";
-    return [name, iso ? `(${iso})` : ""].filter(Boolean).join(" ");
+
+    const value = build();
+    cache.set(table, {
+      columnsKey,
+      rowCount: table.rows.length,
+      rows: table.rows,
+      value
+    });
+    return value;
   }
 
   private makeFields(
@@ -395,23 +770,32 @@ export class PlayerEditorService {
   ): PlayerEditorFieldDraft[] {
     return definitions
       .filter((definition) => this.columnIndex(table, definition.column) >= 0)
-      .map((definition) => ({
-        column: definition.column,
-        label: definition.label,
-        value: this.read(table, rowIndex, definition.column),
-        inputType: definition.inputType ?? "number",
-        readonly: definition.readonly,
-        min: definition.min,
-        max: definition.max,
-        relation: this.resolveFieldRelation(project, definition.column, this.read(table, rowIndex, definition.column))
-      }));
+      .map((definition) => {
+        const rawValue = this.read(table, rowIndex, definition.column);
+        const field = this.fieldForColumn(table, definition.column);
+        const isFifaDate = this.fieldStoresFifaDate(definition.column);
+        const numericRange = isFifaDate ? {} : this.numericRangeForField(field);
+        const dateValue = isFifaDate ? fifaDateCodeToIso(rawValue) : undefined;
+
+        return {
+          column: definition.column,
+          label: definition.label,
+          value: dateValue ?? rawValue,
+          inputType: dateValue ? "date" as const : definition.inputType ?? "number" as const,
+          readonly: definition.readonly,
+          min: definition.min ?? numericRange.min,
+          max: definition.max ?? numericRange.max,
+          relation: this.resolveFieldRelation(project, definition.column, rawValue),
+          storage: dateValue ? "fifaDate" as const : "raw" as const,
+          rawValue
+        };
+      });
   }
 
   private resolveNames(project: DbProject, players: DataTable, rowIndex: number, playerId: string): PlayerResolvedNames {
     const namesTable = this.findNamesTable(project);
-    const nameRowIndex = namesTable ? this.findRowByPlayerId(namesTable, playerId) : -1;
-    const editedNames = this.readNames(namesTable, nameRowIndex);
-    if (this.hasAnyName(editedNames)) {
+    const editedNames = namesTable ? this.editedNamesMap(namesTable).get(playerId) : undefined;
+    if (editedNames && this.hasAnyName(editedNames)) {
       return {
         ...editedNames,
         source: "editedplayernames"
@@ -474,13 +858,7 @@ export class PlayerEditorService {
     if (!table) {
       return "";
     }
-    const nameIdColumn = this.columnIndex(table, "nameid");
-    const nameColumn = this.columnIndex(table, "name");
-    if (nameIdColumn < 0 || nameColumn < 0) {
-      return "";
-    }
-    const row = table.rows.find((candidate) => candidate[nameIdColumn] === nameId);
-    const value = row?.[nameColumn]?.trim() ?? "";
+    const value = this.nameMap(table).get(nameId) ?? "";
     return this.isReadableName(value) ? value : "";
   }
 
@@ -489,13 +867,7 @@ export class PlayerEditorService {
     if (!table) {
       return "";
     }
-    const nameIdColumn = this.columnIndex(table, "nameid");
-    const nameColumn = this.columnIndex(table, "name");
-    if (nameIdColumn < 0 || nameColumn < 0) {
-      return "";
-    }
-    const row = table.rows.find((candidate) => candidate[nameIdColumn] === nameId);
-    return row?.[nameColumn]?.trim() ?? "";
+    return this.nameMap(table).get(nameId) ?? "";
   }
 
   private pickNameSource(names: NameResolution[]): PlayerResolvedNames["source"] {
@@ -565,23 +937,8 @@ export class PlayerEditorService {
     return Boolean(names.firstname.trim() || names.surname.trim() || names.commonname.trim() || names.playerjerseyname.trim());
   }
 
-  private decodeFifaDate(value: string): string | undefined {
-    const days = Number(value);
-    if (!Number.isFinite(days) || days <= 0) {
-      return undefined;
-    }
-    const date = new Date(Date.UTC(1601, 0, 1) + days * 24 * 60 * 60 * 1000);
-    return Number.isNaN(date.getTime()) ? undefined : date.toISOString().slice(0, 10);
+  private normalizeSearch(value: string): string {
+    return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   }
 
-  private ageFromIso(value: string): number {
-    const birthDate = new Date(`${value}T00:00:00Z`);
-    const today = new Date();
-    let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
-    const monthDelta = today.getUTCMonth() - birthDate.getUTCMonth();
-    if (monthDelta < 0 || (monthDelta === 0 && today.getUTCDate() < birthDate.getUTCDate())) {
-      age -= 1;
-    }
-    return age;
-  }
 }

@@ -1,134 +1,378 @@
-<div class="shell">
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-mark">DB</div>
-      <div>
-        <h1>DB Master</h1>
-        <p>{{ projectSubtitle }}</p>
-      </div>
-    </div>
-    <input class="filter-input" type="search" placeholder="Filter tables" [(ngModel)]="tableFilter" />
-    <div class="table-list">
-      <button
-        *ngFor="let item of filteredTables(); trackBy: trackByTable"
-        type="button"
-        class="table-item"
-        [class.active]="item.index === currentTableIndex"
-        (click)="selectTable(item.index)"
-      >
-        <span class="table-name">{{ item.table.name }}</span>
-        <span class="table-count">{{ item.table.rows.length }}</span>
-      </button>
-    </div>
-  </aside>
-
-  <main class="workspace">
-    <div class="toolbar">
-      <button type="button" title="Open DB/XML pair" (click)="openDatabase()">DB</button>
-      <button type="button" title="Open XML descriptor" (click)="openXml()">XML</button>
-      <button type="button" title="Open exported text tables" (click)="openTextFolder()">Text</button>
-      <span class="divider"></span>
-      <button type="button" [disabled]="!canSaveDatabase" title="Save opened .db file" (click)="saveProject()">Save</button>
-      <button type="button" [disabled]="!hasTable" (click)="exportTable()">Export</button>
-      <button type="button" [disabled]="!hasProject" title="Export all tables" (click)="exportAll()">Export+</button>
-      <button type="button" [disabled]="!hasTable" (click)="importTable()">Import</button>
-      <button type="button" title="Import all tables" (click)="importAll()">Import+</button>
-      <span class="divider"></span>
-      <button type="button" [disabled]="!hasTable" (click)="copyRows()">Copy</button>
-      <button type="button" [disabled]="!canPaste" (click)="pasteRows()">Paste</button>
-      <button type="button" [disabled]="!canReplace" (click)="pasteRows(true)">Replace</button>
-      <button type="button" [disabled]="!hasSelection" (click)="deleteRows()">Delete</button>
-      <button type="button" [disabled]="!hasTable" (click)="countRows()">Count</button>
-      <button *ngIf="isPlayersTable" type="button" [disabled]="!canOpenPlayerEditor" title="Edit selected player" (click)="openPlayerEditor()">Edit Player</button>
-      <span class="divider"></span>
-      <button type="button" [disabled]="!hasTable" (click)="calculateHashes()">Hash</button>
-      <button type="button" title="Extract DB/XML from BIG archive" (click)="extractBig()">BIG</button>
-    </div>
-
-    <div class="table-workspace" *ngIf="viewMode === 'table'; else playerEditorView">
-      <div class="querybar">
-        <select [(ngModel)]="selectedColumnIndex" [disabled]="!hasTable">
-          <option *ngFor="let column of currentTable()?.columns ?? []; let i = index; trackBy: trackByColumn" [ngValue]="i">
-            {{ column }}
-          </option>
-        </select>
-        <input type="search" placeholder="Search" [(ngModel)]="searchTerm" [disabled]="!hasTable" (keydown.enter)="findNext()" />
-        <label class="checkline"><input type="checkbox" [(ngModel)]="searchExact" /> Exact</label>
-        <button type="button" [disabled]="!hasTable" (click)="findNext()">Find</button>
-        <span class="player-selection" *ngIf="selectedPlayerName">{{ selectedPlayerName }}</span>
-        <span class="field-info">{{ fieldInfo }}</span>
+<ng-container [ngSwitch]="viewMode">
+  <section class="home-screen" *ngSwitchCase="'home'">
+    <div class="home-panel">
+      <div class="brand home-brand">
+        <div class="brand-mark">DBM</div>
+        <div>
+          <h1>{{ appName }}</h1>
+          <p>{{ projectSubtitle }}</p>
+          <span class="app-version">v{{ appVersion }}</span>
+        </div>
       </div>
 
-      <section class="grid-section">
-        <ng-container *ngIf="currentTable() as table; else empty">
-          <div #gridWrap class="grid-wrap" (scroll)="onGridScroll()" (wheel)="onGridWheel($event)">
-            <table #dataGrid class="data-grid">
-              <thead>
-                <tr>
-                  <th class="row-select">#</th>
-                  <th *ngFor="let column of table.columns; let columnIndex = index; trackBy: trackByColumn">
-                    <button type="button" [title]="column" (click)="sortByColumn(columnIndex)">
-                      {{ sort?.column === columnIndex ? column + (sort?.direction === 1 ? ' up' : ' down') : column }}
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  *ngFor="let rowIndex of visibleRowIndexes(); trackBy: trackByRowIndex"
-                  [class.row-selected]="selectedRows.has(rowIndex)"
-                  (click)="selectGridRow(rowIndex, $event)"
-                >
-                  <td class="row-select">
-                    <input type="checkbox" [checked]="selectedRows.has(rowIndex)" (click)="$event.stopPropagation()" (change)="toggleRow(rowIndex, $event)" />
-                  </td>
-                  <td *ngFor="let column of table.columns; let columnIndex = index; trackBy: trackByColumn">
-                    <input
-                      class="cell-input"
-                      [value]="table.rows[rowIndex][columnIndex] ?? ''"
-                      (change)="updateCell(rowIndex, columnIndex, $event)"
-                      (focus)="selectColumn(columnIndex)"
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+      <div class="home-actions">
+        <button type="button" class="primary-action" (click)="openDatabase()">Open DB + XML</button>
+        <button type="button" (click)="openXml()">Open XML</button>
+        <button type="button" (click)="openTextFolder()">Open Text Folder</button>
+        <button type="button" (click)="extractBig()">Extract BIG</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="launcher-screen" *ngSwitchCase="'launcher'">
+    <header class="screen-header">
+      <div class="brand compact-brand">
+        <div class="brand-mark">DBM</div>
+        <div>
+          <h1>{{ appName }}</h1>
+          <p>{{ projectSubtitle }}</p>
+        </div>
+      </div>
+      <div class="screen-actions">
+        <button type="button" (click)="openDatabase()">DB</button>
+        <button type="button" (click)="openXml()">XML</button>
+        <button type="button" (click)="openTextFolder()">Text</button>
+        <button type="button" [disabled]="!canSaveDatabase" (click)="saveProject()">Save</button>
+      </div>
+    </header>
+
+    <main class="launcher-main">
+      <div class="choice-grid">
+        <button type="button" class="choice-card" (click)="openTableWorkspace()">
+          <span class="choice-title">Table Editor</span>
+          <span class="choice-meta">{{ tableCount }} tables</span>
+        </button>
+        <button type="button" class="choice-card" [disabled]="!canUsePlayerModule" (click)="openModulesWorkspace()">
+          <span class="choice-title">Modules</span>
+          <span class="choice-meta">{{ playersCount }} players</span>
+        </button>
+      </div>
+
+      <div class="module-preview-grid">
+        <button type="button" class="module-card active" [disabled]="!canUsePlayerModule" (click)="openModulesWorkspace('players')">
+          <span>Players</span>
+          <strong>{{ playersCount }}</strong>
+        </button>
+        <button type="button" class="module-card active" [disabled]="!canUseTeamModule" (click)="openModulesWorkspace('teams')">
+          <span>Teams</span>
+          <strong>{{ teamsCount }}</strong>
+        </button>
+        <button type="button" class="module-card disabled" disabled>
+          <span>Leagues</span>
+          <strong>Locked</strong>
+        </button>
+        <button type="button" class="module-card disabled" disabled>
+          <span>Stadiums</span>
+          <strong>Locked</strong>
+        </button>
+      </div>
+    </main>
+
+    <footer class="screen-footer">
+      <span>{{ statusLine }}</span>
+    </footer>
+  </section>
+
+  <div class="shell" *ngSwitchCase="'table'">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">DBM</div>
+        <div>
+          <h1>{{ appName }}</h1>
+          <p>{{ projectSubtitle }}</p>
+        </div>
+      </div>
+      <input class="filter-input" type="search" placeholder="Filter tables" [(ngModel)]="tableFilter" />
+      <div class="table-list">
+        <button
+          *ngFor="let item of filteredTables(); trackBy: trackByTable"
+          type="button"
+          class="table-item"
+          [class.active]="item.index === currentTableIndex"
+          (click)="selectTable(item.index)"
+        >
+          <span class="table-name">{{ item.table.name }}</span>
+          <span class="table-count">{{ item.table.rows.length }}</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <div class="toolbar">
+        <button type="button" title="Project screen" (click)="showLauncher()">Home</button>
+        <button type="button" title="Modules" [disabled]="!hasProject" (click)="openModulesWorkspace()">Modules</button>
+        <span class="divider"></span>
+        <button type="button" title="Open DB/XML pair" (click)="openDatabase()">DB</button>
+        <button type="button" title="Open XML descriptor" (click)="openXml()">XML</button>
+        <button type="button" title="Open exported text tables" (click)="openTextFolder()">Text</button>
+        <span class="divider"></span>
+        <button type="button" [disabled]="!canSaveDatabase" title="Save opened .db file" (click)="saveProject()">Save</button>
+        <button type="button" [disabled]="!hasTable" (click)="exportTable()">Export</button>
+        <button type="button" [disabled]="!hasProject" title="Export all tables" (click)="exportAll()">Export+</button>
+        <button type="button" [disabled]="!hasTable" (click)="importTable()">Import</button>
+        <button type="button" title="Import all tables" (click)="importAll()">Import+</button>
+        <span class="divider"></span>
+        <button type="button" [disabled]="!hasTable" (click)="copyRows()">Copy</button>
+        <button type="button" [disabled]="!canPaste" (click)="pasteRows()">Paste</button>
+        <button type="button" [disabled]="!canReplace" (click)="pasteRows(true)">Replace</button>
+        <button type="button" [disabled]="!hasSelection" (click)="deleteRows()">Delete</button>
+        <button type="button" [disabled]="!hasTable" (click)="countRows()">Count</button>
+        <button *ngIf="isPlayersTable" type="button" [disabled]="!canOpenPlayerEditor" title="Edit selected player" (click)="openPlayerEditor()">Edit Player</button>
+        <span class="divider"></span>
+        <button type="button" [disabled]="!hasTable" (click)="calculateHashes()">Hash</button>
+        <button type="button" title="Extract DB/XML from BIG archive" (click)="extractBig()">BIG</button>
+      </div>
+
+      <div class="table-workspace">
+        <div class="querybar">
+          <select [(ngModel)]="selectedColumnIndex" [disabled]="!hasTable">
+            <option *ngFor="let column of currentTable()?.columns ?? []; let i = index; trackBy: trackByColumn" [ngValue]="i">
+              {{ column }}
+            </option>
+          </select>
+          <input type="search" placeholder="Search" [(ngModel)]="searchTerm" [disabled]="!hasTable" (keydown.enter)="findNext()" />
+          <label class="checkline"><input type="checkbox" [(ngModel)]="searchExact" /> Exact</label>
+          <button type="button" [disabled]="!hasTable" (click)="findNext()">Find</button>
+          <span class="player-selection" *ngIf="selectedPlayerName">{{ selectedPlayerName }}</span>
+          <span class="field-info">{{ fieldInfo }}</span>
+        </div>
+
+        <section class="grid-section">
+          <ng-container *ngIf="currentTable() as table; else empty">
+            <div #gridWrap class="grid-wrap" (scroll)="onGridScroll()" (wheel)="onGridWheel($event)">
+              <table #dataGrid class="data-grid">
+                <thead>
+                  <tr>
+                    <th class="row-select">#</th>
+                    <th *ngFor="let column of table.columns; let columnIndex = index; trackBy: trackByColumn">
+                      <button type="button" [title]="column" (click)="sortByColumn(columnIndex)">
+                        {{ sort?.column === columnIndex ? column + (sort?.direction === 1 ? ' up' : ' down') : column }}
+                      </button>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    *ngFor="let rowIndex of visibleRowIndexes(); trackBy: trackByRowIndex"
+                    [class.row-selected]="selectedRows.has(rowIndex)"
+                    (click)="selectGridRow(rowIndex, $event)"
+                  >
+                    <td class="row-select">
+                      <input type="checkbox" [checked]="selectedRows.has(rowIndex)" (click)="$event.stopPropagation()" (change)="toggleRow(rowIndex, $event)" />
+                    </td>
+                    <td *ngFor="let column of table.columns; let columnIndex = index; trackBy: trackByColumn">
+                      <input
+                        class="cell-input"
+                        [value]="table.rows[rowIndex][columnIndex] ?? ''"
+                        (change)="updateCell(rowIndex, columnIndex, $event)"
+                        (focus)="selectColumn(columnIndex)"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div #horizontalScroll class="horizontal-scroll hidden" aria-label="Horizontal table scroll" (scroll)="onHorizontalScroll()">
+              <div #horizontalScrollInner class="horizontal-scroll-inner"></div>
+            </div>
+          </ng-container>
+          <ng-template #empty>
+            <div class="empty-state">
+              <strong>No table selected.</strong>
+            </div>
+          </ng-template>
+        </section>
+
+        <div class="pager">
+          <button type="button" [disabled]="isPrevDisabled" (click)="previousPage()">Prev</button>
+          <span>{{ pageInfo }}</span>
+          <button type="button" [disabled]="isNextDisabled" (click)="nextPage()">Next</button>
+          <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">
+            <option [ngValue]="50">50</option>
+            <option [ngValue]="100">100</option>
+            <option [ngValue]="250">250</option>
+            <option [ngValue]="500">500</option>
+          </select>
+          <span id="status-line">{{ statusLine }}</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <section class="modules-screen" *ngSwitchCase="'modules'">
+    <header class="screen-header">
+      <div class="brand compact-brand">
+        <div class="brand-mark">DBM</div>
+        <div>
+          <h1>{{ appName }}</h1>
+          <p>{{ projectSubtitle }}</p>
+        </div>
+      </div>
+      <div class="screen-actions">
+        <button type="button" (click)="showLauncher()">Home</button>
+        <button type="button" (click)="openTableWorkspace()">Table</button>
+        <button type="button" [disabled]="!canSaveDatabase" (click)="saveProject()">Save</button>
+      </div>
+    </header>
+
+    <main class="module-layout">
+      <aside class="module-rail">
+        <button type="button" [class.active]="activeModule === 'players'" [disabled]="!canUsePlayerModule" (click)="selectModule('players')">
+          <span>Players</span>
+          <strong>{{ playersCount }}</strong>
+        </button>
+        <button type="button" [class.active]="activeModule === 'teams'" [disabled]="!canUseTeamModule" (click)="selectModule('teams')">
+          <span>Teams</span>
+          <strong>{{ teamsCount }}</strong>
+        </button>
+        <button type="button" disabled>
+          <span>Leagues</span>
+          <strong>Locked</strong>
+        </button>
+        <button type="button" disabled>
+          <span>Stadiums</span>
+          <strong>Locked</strong>
+        </button>
+      </aside>
+
+      <section class="module-main" *ngIf="activeModule === 'players'; else teamsModule">
+        <div class="module-title-row">
+          <div>
+            <span class="module-kicker">Module</span>
+            <h2>Players</h2>
           </div>
-          <div #horizontalScroll class="horizontal-scroll hidden" aria-label="Horizontal table scroll" (scroll)="onHorizontalScroll()">
-            <div #horizontalScrollInner class="horizontal-scroll-inner"></div>
-          </div>
-        </ng-container>
-        <ng-template #empty>
-          <div class="empty-state">
-            <strong>Open a DB/XML pair or a folder with exported .txt tables.</strong>
+          <span class="module-total">{{ playersCount }} rows</span>
+        </div>
+
+        <div class="player-module-toolbar">
+          <form class="player-searchbar" (submit)="$event.preventDefault(); searchPlayers()">
+            <input
+              type="search"
+              name="playerSearchTerm"
+              placeholder="Search player by name or ID"
+              [(ngModel)]="playerSearchTerm"
+            />
+            <button type="submit" aria-label="Search players" title="Search players">
+              <span class="search-icon" aria-hidden="true"></span>
+            </button>
+          </form>
+          <button type="button" class="create-player-button" [disabled]="!canUsePlayerModule" (click)="createPlayerFromModule()">
+            <span class="plus-icon" aria-hidden="true"></span>
+            <span>Create Player</span>
+          </button>
+        </div>
+
+        <div class="player-results" *ngIf="playerSearchResults.length > 0; else noPlayerResults">
+          <button
+            type="button"
+            class="player-result"
+            *ngFor="let player of playerSearchResults; trackBy: trackByPlayerResult"
+            (click)="openPlayerFromModule(player)"
+          >
+            <span class="result-main">
+              <strong>{{ player.displayName }}</strong>
+              <span>ID {{ player.playerId }}</span>
+            </span>
+            <span class="result-meta">
+              <span *ngIf="player.nationalityName">{{ player.nationalityName }}</span>
+              <span *ngIf="player.age !== undefined">{{ player.age }} years</span>
+              <span *ngIf="player.overall">OVR {{ player.overall }}</span>
+              <span *ngIf="player.potential">POT {{ player.potential }}</span>
+              <span>names: {{ player.nameSource }}</span>
+            </span>
+          </button>
+        </div>
+
+        <ng-template #noPlayerResults>
+          <div class="empty-state module-empty">
+            <strong>No players found.</strong>
           </div>
         </ng-template>
       </section>
 
-      <div class="pager">
-        <button type="button" [disabled]="isPrevDisabled" (click)="previousPage()">Prev</button>
-        <span>{{ pageInfo }}</span>
-        <button type="button" [disabled]="isNextDisabled" (click)="nextPage()">Next</button>
-        <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">
-          <option [ngValue]="50">50</option>
-          <option [ngValue]="100">100</option>
-          <option [ngValue]="250">250</option>
-          <option [ngValue]="500">500</option>
-        </select>
-        <span id="status-line">{{ statusLine }}</span>
-      </div>
-    </div>
+      <ng-template #teamsModule>
+        <section class="module-main">
+          <div class="module-title-row">
+            <div>
+              <span class="module-kicker">Module</span>
+              <h2>Teams</h2>
+            </div>
+            <span class="module-total">{{ teamsCount }} rows</span>
+          </div>
 
-    <ng-template #playerEditorView>
-      <app-player-editor-page
-        [project]="project!"
-        [rowIndex]="playerEditorRowIndex"
-        (closeEditor)="closePlayerEditor()"
-        (applied)="onPlayerEditorApplied($event)"
-      ></app-player-editor-page>
-    </ng-template>
-  </main>
-</div>
+          <div class="player-module-toolbar">
+            <form class="player-searchbar" (submit)="$event.preventDefault(); searchTeams()">
+              <input
+                type="search"
+                name="teamSearchTerm"
+                placeholder="Search team by name or ID"
+                [(ngModel)]="teamSearchTerm"
+              />
+              <button type="submit" aria-label="Search teams" title="Search teams">
+                <span class="search-icon" aria-hidden="true"></span>
+              </button>
+            </form>
+          </div>
+
+          <div class="player-results" *ngIf="teamSearchResults.length > 0; else noTeamResults">
+            <button
+              type="button"
+              class="player-result"
+              *ngFor="let team of teamSearchResults; trackBy: trackByTeamResult"
+              (click)="openTeamFromModule(team)"
+            >
+              <span class="result-main">
+                <strong>{{ team.displayName }}</strong>
+                <span>ID {{ team.teamId }}</span>
+              </span>
+              <span class="result-meta">
+                <span *ngIf="team.overall">OVR {{ team.overall }}</span>
+                <span *ngIf="team.attack">ATT {{ team.attack }}</span>
+                <span *ngIf="team.midfield">MID {{ team.midfield }}</span>
+                <span *ngIf="team.defense">DEF {{ team.defense }}</span>
+                <span *ngIf="team.foundationYear">Founded {{ team.foundationYear }}</span>
+              </span>
+            </button>
+          </div>
+
+          <ng-template #noTeamResults>
+            <div class="empty-state module-empty">
+              <strong>No teams found.</strong>
+            </div>
+          </ng-template>
+        </section>
+      </ng-template>
+    </main>
+
+    <footer class="screen-footer">
+      <span>{{ statusLine }}</span>
+    </footer>
+  </section>
+
+  <section class="editor-screen" *ngSwitchCase="'playerEditor'">
+    <app-player-editor-page
+      *ngIf="project as loadedProject"
+      [project]="loadedProject"
+      [rowIndex]="playerEditorRowIndex"
+      [canSaveDatabase]="canSaveDatabase"
+      (closeEditor)="closePlayerEditor()"
+      (applied)="onPlayerEditorApplied($event)"
+      (appliedAndSave)="onPlayerEditorAppliedAndSave($event)"
+    ></app-player-editor-page>
+  </section>
+
+  <section class="editor-screen" *ngSwitchCase="'teamEditor'">
+    <app-team-editor-page
+      *ngIf="project as loadedProject"
+      [project]="loadedProject"
+      [rowIndex]="teamEditorRowIndex"
+      [canSaveDatabase]="canSaveDatabase"
+      (closeEditor)="closeTeamEditor()"
+      (applied)="onTeamEditorApplied($event)"
+      (appliedAndSave)="onTeamEditorAppliedAndSave($event)"
+    ></app-team-editor-page>
+  </section>
+</ng-container>
 
 <div class="toast" [class.hidden]="!toastVisible" [class.warn]="toastTone === 'warn'" [class.error]="toastTone === 'error'">
   {{ toastMessage }}

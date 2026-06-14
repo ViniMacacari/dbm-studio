@@ -1,0 +1,60 @@
+<section class="player-editor-page team-editor-page" *ngIf="draft as team; else missingTeam">
+  <header class="player-editor-header">
+    <button type="button" class="back-button" (click)="closeEditor.emit()">Back</button>
+    <div class="player-title">
+      <span class="player-kicker">Team {{ team.teamId }}</span>
+      <h2>{{ team.displayName }}</h2>
+      <div class="player-meta">
+        <span *ngIf="team.overall">OVR {{ team.overall }}</span>
+        <span *ngIf="team.attack">ATT {{ team.attack }}</span>
+        <span *ngIf="team.midfield">MID {{ team.midfield }}</span>
+        <span *ngIf="team.defense">DEF {{ team.defense }}</span>
+      </div>
+    </div>
+    <div class="editor-actions">
+      <button type="button" class="apply-button" (click)="apply()">Apply</button>
+      <button type="button" class="secondary-apply-button" (click)="applyAndBack()">Apply and Back</button>
+      <button type="button" class="secondary-apply-button" [disabled]="!canSaveDatabase" (click)="applyAndSave()">Apply and Save</button>
+    </div>
+  </header>
+
+  <nav class="editor-tabs" aria-label="Team editor tabs">
+    <button
+      *ngFor="let section of sections; trackBy: trackBySection"
+      type="button"
+      [class.active]="activeTab === section.id"
+      (click)="setTab(section.id)"
+    >
+      {{ section.title }}
+    </button>
+  </nav>
+
+  <div class="player-editor-body">
+    <section class="editor-panel" *ngFor="let section of sections; trackBy: trackBySection" [class.hidden]="activeTab !== section.id">
+      <div class="editor-grid">
+        <label class="field-block" *ngFor="let field of section.fields; trackBy: trackByField">
+          <span>{{ field.label }}</span>
+          <input
+            [type]="field.inputType"
+            [(ngModel)]="field.value"
+            [readonly]="field.readonly"
+            [min]="field.min"
+            [max]="field.max"
+          />
+        </label>
+      </div>
+    </section>
+  </div>
+
+  <div class="editor-footer" [class.error]="lastAppliedTone === 'error'">
+    <span>{{ lastApplied }}</span>
+  </div>
+</section>
+
+<ng-template #missingTeam>
+  <section class="player-editor-page team-editor-page">
+    <div class="empty-state">
+      <strong>Team row not found.</strong>
+    </div>
+  </section>
+</ng-template>

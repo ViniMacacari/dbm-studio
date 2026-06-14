@@ -2,16 +2,16 @@ import { CommonModule } from "@angular/common";
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../shared/types";
-import { PlayerEditorService } from "./player-editor.service";
-import type { PlayerEditorDraft, PlayerEditorFieldDraft } from "./player-editor.service";
+import { TeamEditorService } from "./team-editor.service";
+import type { TeamEditorDraft, TeamEditorFieldDraft } from "./team-editor.service";
 
 @Component({
-  selector: "app-player-editor-page",
+  selector: "app-team-editor-page",
   standalone: true,
   imports: [CommonModule, FormsModule],
-  templateUrl: "./player-editor-page.component.html"
+  templateUrl: "./team-editor-page.component.html"
 })
-export class PlayerEditorPageComponent implements OnChanges {
+export class TeamEditorPageComponent implements OnChanges {
   @Input({ required: true }) project!: DbProject;
   @Input({ required: true }) rowIndex = 0;
   @Input() canSaveDatabase = false;
@@ -19,12 +19,12 @@ export class PlayerEditorPageComponent implements OnChanges {
   @Output() applied = new EventEmitter<string>();
   @Output() appliedAndSave = new EventEmitter<string>();
 
-  draft?: PlayerEditorDraft;
+  draft?: TeamEditorDraft;
   activeTab = "identity";
   lastApplied = "";
   lastAppliedTone: "info" | "error" = "info";
 
-  constructor(private readonly playerEditor: PlayerEditorService) {}
+  constructor(private readonly teamEditor: TeamEditorService) {}
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes["project"] || changes["rowIndex"]) {
@@ -52,8 +52,9 @@ export class PlayerEditorPageComponent implements OnChanges {
     if (!this.draft || !this.project) {
       return;
     }
+
     try {
-      const result = this.playerEditor.applyDraft(this.project, this.draft);
+      const result = this.teamEditor.applyDraft(this.project, this.draft);
       this.lastApplied = result.message;
       this.lastAppliedTone = "info";
       if (action === "save") {
@@ -79,12 +80,12 @@ export class PlayerEditorPageComponent implements OnChanges {
     return section.id;
   }
 
-  trackByField(_index: number, field: PlayerEditorFieldDraft): string {
+  trackByField(_index: number, field: TeamEditorFieldDraft): string {
     return field.column;
   }
 
   private loadDraft(resetTab = true): void {
-    this.draft = this.project ? this.playerEditor.createDraft(this.project, this.rowIndex) : undefined;
+    this.draft = this.project ? this.teamEditor.createDraft(this.project, this.rowIndex) : undefined;
     if (resetTab) {
       this.activeTab = "identity";
       this.lastApplied = "";
