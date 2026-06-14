@@ -59,6 +59,10 @@
           <span>Leagues</span>
           <strong>{{ leaguesCount }}</strong>
         </button>
+        <button type="button" class="module-card active" [disabled]="!canUseTransferModule" (click)="openModulesWorkspace('transfers')">
+          <span>Transfers</span>
+          <strong>{{ transfersCount }}</strong>
+        </button>
         <button type="button" class="module-card disabled" disabled>
           <span>Stadiums</span>
           <strong>Locked</strong>
@@ -227,6 +231,10 @@
           <span>Leagues</span>
           <strong>{{ leaguesCount }}</strong>
         </button>
+        <button type="button" [class.active]="activeModule === 'transfers'" [disabled]="!canUseTransferModule" (click)="selectModule('transfers')">
+          <span>Transfers</span>
+          <strong>{{ transfersCount }}</strong>
+        </button>
         <button type="button" disabled>
           <span>Stadiums</span>
           <strong>Locked</strong>
@@ -289,7 +297,7 @@
       </section>
 
       <ng-template #nonPlayerModule>
-        <section class="module-main" *ngIf="activeModule === 'teams'; else leaguesModule">
+        <section class="module-main" *ngIf="activeModule === 'teams'; else nonTeamModule">
           <div class="module-title-row">
             <div>
               <span class="module-kicker">Module</span>
@@ -341,8 +349,8 @@
         </section>
       </ng-template>
 
-      <ng-template #leaguesModule>
-        <section class="module-main">
+      <ng-template #nonTeamModule>
+        <section class="module-main" *ngIf="activeModule === 'leagues'; else transfersModule">
           <div class="module-title-row">
             <div>
               <span class="module-kicker">Module</span>
@@ -396,6 +404,71 @@
           <ng-template #noLeagueResults>
             <div class="empty-state module-empty">
               <strong>No leagues found.</strong>
+            </div>
+          </ng-template>
+        </section>
+      </ng-template>
+
+      <ng-template #transfersModule>
+        <section class="module-main">
+          <div class="module-title-row">
+            <div>
+              <span class="module-kicker">Module</span>
+              <h2>Transfers</h2>
+            </div>
+            <span class="module-total">{{ transfersCount }} player links</span>
+          </div>
+
+          <div class="player-module-toolbar">
+            <form class="player-searchbar" (submit)="$event.preventDefault(); searchTransfers()">
+              <input
+                type="search"
+                name="transferSearchTerm"
+                placeholder="Search player, ID, or current team"
+                [(ngModel)]="transferSearchTerm"
+              />
+              <button type="submit" aria-label="Search transfers" title="Search transfers">
+                <span class="search-icon" aria-hidden="true"></span>
+              </button>
+            </form>
+          </div>
+
+          <div class="transfer-results" *ngIf="transferSearchResults.length > 0; else noTransferResults">
+            <article class="transfer-card" *ngFor="let player of transferSearchResults; trackBy: trackByTransferResult">
+              <div class="transfer-player">
+                <div class="result-main">
+                  <strong>{{ player.displayName }}</strong>
+                  <span>ID {{ player.playerId }}</span>
+                </div>
+                <div class="result-meta">
+                  <span>{{ player.teamName }}</span>
+                  <span *ngIf="player.overall">OVR {{ player.overall }}</span>
+                  <span *ngIf="player.potential">POT {{ player.potential }}</span>
+                  <span *ngIf="player.age !== undefined">{{ player.age }} years</span>
+                  <span *ngIf="player.nationalityName">{{ player.nationalityName }}</span>
+                </div>
+              </div>
+              <app-search-list
+                class="transfer-destination"
+                [options]="teamOptions"
+                [value]="transferDestination(player)"
+                placeholder="Destination club"
+                (valueChange)="setTransferDestination(player, $event)"
+              ></app-search-list>
+              <button
+                type="button"
+                class="apply-button"
+                [disabled]="!transferDestination(player) || transferDestination(player) === player.teamId"
+                (click)="transferPlayer(player)"
+              >
+                Transfer
+              </button>
+            </article>
+          </div>
+
+          <ng-template #noTransferResults>
+            <div class="empty-state module-empty">
+              <strong>No transfer players found.</strong>
             </div>
           </ng-template>
         </section>

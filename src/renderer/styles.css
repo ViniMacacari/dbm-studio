@@ -566,6 +566,10 @@ button:disabled {
   padding: 8px;
 }
 
+.team-player-row {
+  grid-template-columns: minmax(190px, 1fr) repeat(6, minmax(74px, 90px)) auto;
+}
+
 .league-team-main {
   min-width: 0;
   display: grid;
@@ -607,6 +611,38 @@ button:disabled {
 .danger-button:hover:not(:disabled) {
   border-color: var(--danger);
   color: var(--danger);
+}
+
+.transfer-results {
+  display: grid;
+  gap: 8px;
+  max-width: 1180px;
+}
+
+.transfer-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 360px) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 10px 12px;
+}
+
+.transfer-player {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.transfer-card .apply-button {
+  min-width: 92px;
+}
+
+.transfer-destination {
+  min-width: 0;
 }
 
 .editor-screen app-player-editor-page,
@@ -1270,7 +1306,8 @@ app-league-editor-page {
   }
 
   .league-team-toolbar,
-  .league-team-row {
+  .league-team-row,
+  .transfer-card {
     grid-template-columns: 1fr;
   }
 

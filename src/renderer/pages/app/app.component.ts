@@ -11,6 +11,8 @@ import { PlayerEditorService } from "../../services/player-editor.service";
 import type { PlayerSearchResult } from "../../services/player-editor.service";
 import { TeamEditorService } from "../../services/team-editor.service";
 import type { TeamSearchResult } from "../../services/team-editor.service";
+import { TransferService } from "../../services/transfer.service";
+import type { TransferSearchResult } from "../../services/transfer.service";
 import { LeagueEditorPageComponent } from "../league-editor/league-editor-page.component";
 import { PlayerEditorPageComponent } from "../player-editor/player-editor-page.component";
 import { TeamEditorPageComponent } from "../team-editor/team-editor-page.component";
@@ -18,7 +20,7 @@ import packageInfo from "../../../../package.json";
 
 type ToastTone = "info" | "warn" | "error";
 type ViewMode = "home" | "launcher" | "table" | "modules" | "playerEditor" | "teamEditor" | "leagueEditor";
-type ModuleMode = "players" | "teams" | "leagues";
+type ModuleMode = "players" | "teams" | "leagues" | "transfers";
 
 interface TableListItem {
   table: DataTable;
@@ -46,7 +48,8 @@ export class AppComponent implements AfterViewInit {
     private readonly leagueEditor: LeagueEditorService,
     private readonly nations: NationService,
     private readonly playerEditor: PlayerEditorService,
-    private readonly teamEditor: TeamEditorService
+    private readonly teamEditor: TeamEditorService,
+    private readonly transfers: TransferService
   ) {}
 
   project?: DbProject;
@@ -64,6 +67,9 @@ export class AppComponent implements AfterViewInit {
   leagueSearchTerm = "";
   leagueCountryFilter = "";
   leagueSearchResults: LeagueSearchResult[] = [];
+  transferSearchTerm = "";
+  transferSearchResults: TransferSearchResult[] = [];
+  transferDestinations: Record<number, string> = {};
   page = 0;
   pageSize = 100;
   selectedColumnIndex = 0;
@@ -109,8 +115,12 @@ export class AppComponent implements AfterViewInit {
     return Boolean(this.leagueEditor.findLeaguesTable(this.project));
   }
 
+  get canUseTransferModule(): boolean {
+    return this.transfers.canUseTransferModule(this.project);
+  }
+
   get canUseModules(): boolean {
-    return this.canUsePlayerModule || this.canUseTeamModule || this.canUseLeagueModule;
+    return this.canUsePlayerModule || this.canUseTeamModule || this.canUseLeagueModule || this.canUseTransferModule;
   }
 
   get playersCount(): number {
@@ -125,8 +135,16 @@ export class AppComponent implements AfterViewInit {
     return this.leagueEditor.findLeaguesTable(this.project)?.rows.length ?? 0;
   }
 
+  get transfersCount(): number {
+    return this.transfers.findTeamPlayerLinksTable(this.project)?.rows.length ?? 0;
+  }
+
   get nationOptions() {
     return this.nations.nationOptions(this.project);
+  }
+
+  get teamOptions() {
+    return this.transfers.teamOptions(this.project);
   }
 
   get tableCount(): number {
@@ -249,6 +267,10 @@ export class AppComponent implements AfterViewInit {
 
   trackByLeagueResult(_index: number, league: LeagueSearchResult): string {
     return `${league.rowIndex}:${league.leagueId}`;
+  }
+
+  trackByTransferResult(_index: number, player: TransferSearchResult): string {
+    return `${player.rowIndex}:${player.playerId}`;
   }
 
   async openDatabase(): Promise<void> {
@@ -427,6 +449,10 @@ export class AppComponent implements AfterViewInit {
       await this.searchLeagues("Loading leagues", "Resolving countries and team links");
       return;
     }
+    if (this.activeModule === "transfers") {
+      await this.searchTransfers("Loading transfers", "Reading player club links");
+      return;
+    }
     await this.searchPlayers("Loading players", "Resolving names and relations");
   }
 
@@ -477,6 +503,41 @@ export class AppComponent implements AfterViewInit {
   clearLeagueCountryFilter(): void {
     this.leagueCountryFilter = "";
     this.refreshLeagueSearch();
+  }
+
+  async searchTransfers(title = "Searching transfers", detail = "Resolving players and clubs"): Promise<void> {
+    await this.guarded(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      this.refreshTransferSearch();
+    }, title, detail);
+  }
+
+  refreshTransferSearch(): void {
+    this.transferSearchResults = this.transfers.findTransferPlayers(this.project, this.transferSearchTerm, this.transferSearchTerm.trim() ? 100 : 40);
+    this.transferDestinations = Object.fromEntries(
+      this.transferSearchResults.map((player) => [player.rowIndex, this.transferDestinations[player.rowIndex] ?? ""])
+    );
+    const suffix = this.transferSearchTerm.trim() ? ` for "${this.transferSearchTerm.trim()}"` : "";
+    this.setStatus(`${this.transferSearchResults.length} transfer result(s)${suffix}`);
+  }
+
+  transferDestination(player: TransferSearchResult): string {
+    return this.transferDestinations[player.rowIndex] ?? "";
+  }
+
+  setTransferDestination(player: TransferSearchResult, teamId: string): void {
+    this.transferDestinations = {
+      ...this.transferDestinations,
+      [player.rowIndex]: teamId
+    };
+  }
+
+  async transferPlayer(player: TransferSearchResult): Promise<void> {
+    await this.guarded(async () => {
+      const result = this.transfers.transferPlayer(this.project, player.rowIndex, this.transferDestination(player));
+      this.refreshTransferSearch();
+      this.setStatus(result.message);
+    }, "Transferring player", "Updating teamplayerlinks");
   }
 
   openPlayerFromModule(player: PlayerSearchResult): void {
@@ -805,6 +866,9 @@ export class AppComponent implements AfterViewInit {
     this.leagueSearchTerm = "";
     this.leagueCountryFilter = "";
     this.leagueSearchResults = [];
+    this.transferSearchTerm = "";
+    this.transferSearchResults = [];
+    this.transferDestinations = {};
     this.page = 0;
     this.selectedColumnIndex = 0;
     this.selectedRows.clear();
