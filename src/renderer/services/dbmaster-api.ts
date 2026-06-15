@@ -1,4 +1,11 @@
-import type { DataTable, DbProject } from "../../shared/types";
+import type {
+  DataTable,
+  DbProject,
+  MinifaceImageResult,
+  VisualDependenciesInstallResult,
+  VisualDependenciesStatus,
+  VisualDependencyProgress
+} from "../../shared/types";
 
 export interface DbMasterApi {
   openXml(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;
@@ -11,6 +18,10 @@ export interface DbMasterApi {
   importAll(): Promise<{ canceled?: boolean; project?: DbProject }>;
   computeLanguageHashes(values: string[]): Promise<number[]>;
   extractDatabasesFromBig(): Promise<{ canceled?: boolean; message?: string; entries?: unknown[]; warnings?: string[] }>;
+  getVisualDependenciesStatus(): Promise<VisualDependenciesStatus>;
+  installVisualDependencies(): Promise<VisualDependenciesInstallResult>;
+  onVisualDependenciesProgress(listener: (progress: VisualDependencyProgress) => void): () => void;
+  getPlayerMiniface(playerId: string): Promise<MinifaceImageResult>;
 }
 
 declare global {

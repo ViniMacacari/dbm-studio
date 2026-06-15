@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { computeLanguageHash, toSignedInt32 } from "../core/fifaHash";
 import { extractBig, readBigEntries } from "../core/bigArchive";
+import { VisualDependencyManager } from "./visualDependencyManager";
 import {
   exportTable,
   importTable,
@@ -14,6 +15,7 @@ import {
 import type { DataTable, DbProject } from "../shared/types";
 
 let mainWindow: BrowserWindow | undefined;
+let visualDependencyManager: VisualDependencyManager | undefined;
 let lastBlurDisplayState: WindowDisplayState | undefined;
 const windowDisplayRestoreDelays = [0, 75, 250, 750, 1500];
 const workAreaTolerancePx = 64;
@@ -49,6 +51,11 @@ function createWindow(): void {
 
 function activeWindow(): BrowserWindow | undefined {
   return mainWindow;
+}
+
+function visualDependencies(): VisualDependencyManager {
+  visualDependencyManager ??= new VisualDependencyManager(app.getPath("userData"));
+  return visualDependencyManager;
 }
 
 interface WindowDisplayState {
@@ -333,6 +340,20 @@ ipcMain.handle("big:extractDatabases", async () => {
       message: `Extracted ${result.entries.length} database file(s) from ${basename(filePath)}.`
     };
   });
+});
+
+ipcMain.handle("visualDependencies:getStatus", () => {
+  return visualDependencies().getStatus();
+});
+
+ipcMain.handle("visualDependencies:install", (event) => {
+  return visualDependencies().installAll((progress) => {
+    event.sender.send("visualDependencies:progress", progress);
+  });
+});
+
+ipcMain.handle("visualDependencies:getMiniface", (_event, playerId: string) => {
+  return visualDependencies().getMiniface(playerId);
 });
 
 app.whenReady().then(() => {

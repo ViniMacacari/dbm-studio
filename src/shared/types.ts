@@ -73,3 +73,41 @@ export interface BigExtractResult {
   entries: BigEntry[];
   warnings: string[];
 }
+
+export interface VisualDependencyStatus {
+  id: string;
+  label: string;
+  fileName: string;
+  downloadUrl: string;
+  targetPath: string;
+  installed: boolean;
+  filesCount: number;
+}
+
+export interface VisualDependenciesStatus {
+  rootPath: string;
+  dependencies: VisualDependencyStatus[];
+  allInstalled: boolean;
+}
+
+export interface VisualDependenciesInstallResult extends VisualDependenciesStatus {
+  installed: string[];
+  warnings: string[];
+}
+
+export interface VisualDependencyProgress {
+  id: string;
+  label: string;
+  phase: "queued" | "downloading" | "extracting" | "installed" | "error";
+  receivedBytes: number;
+  totalBytes?: number;
+  percent: number;
+  message: string;
+}
+
+export interface MinifaceImageResult {
+  playerId: string;
+  dataUrl: string;
+  found: boolean;
+  source: "player" | "generic" | "missing";
+}

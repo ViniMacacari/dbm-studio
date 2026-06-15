@@ -1,7 +1,7 @@
 import { CommonModule } from "@angular/common";
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, ViewChild } from "@angular/core";
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from "@angular/core";
 import { FormsModule } from "@angular/forms";
-import type { DataTable, DbProject, FieldDescriptor } from "../../../shared/types";
+import type { DataTable, DbProject, FieldDescriptor, VisualDependenciesStatus, VisualDependencyProgress } from "../../../shared/types";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
 import type { DbMasterApi } from "../../services/dbmaster-api";
 import { LeagueEditorService } from "../../services/league-editor.service";
@@ -34,7 +34,7 @@ interface TableListItem {
   templateUrl: "./app.component.html",
   styleUrl: "./app.component.scss"
 })
-export class AppComponent implements AfterViewInit {
+export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   @ViewChild("gridWrap") private gridWrap?: ElementRef<HTMLElement>;
   @ViewChild("dataGrid") private dataGrid?: ElementRef<HTMLTableElement>;
   @ViewChild("horizontalScroll") private horizontalScroll?: ElementRef<HTMLElement>;
@@ -42,6 +42,7 @@ export class AppComponent implements AfterViewInit {
 
   private readonly api: DbMasterApi = window.dbmaster;
   private readonly minimumLoadingDurationMs = 400;
+  private removeVisualDependencyProgressListener?: () => void;
   readonly appName = "DBM Studio";
   readonly appVersion = packageInfo.version;
 
@@ -88,9 +89,28 @@ export class AppComponent implements AfterViewInit {
   loadingActive = false;
   loadingTitle = "Loading";
   loadingDetail = "Please wait";
+  visualDependencyModalVisible = false;
+  visualDependencyInstalling = false;
+  visualDependencyStatus?: VisualDependenciesStatus;
+  visualDependencyProgress?: VisualDependencyProgress;
+  visualDependencyMessage = "";
+  visualDependencyError = "";
+
+  ngOnInit(): void {
+    this.removeVisualDependencyProgressListener = this.api.onVisualDependenciesProgress((progress) => {
+      this.visualDependencyProgress = progress;
+      this.visualDependencyMessage = progress.message;
+      this.changeDetector.detectChanges();
+    });
+    void this.loadVisualDependencyStatus();
+  }
 
   ngAfterViewInit(): void {
     this.syncHorizontalScrollbar();
+  }
+
+  ngOnDestroy(): void {
+    this.removeVisualDependencyProgressListener?.();
   }
 
   get projectSubtitle(): string {
@@ -155,6 +175,10 @@ export class AppComponent implements AfterViewInit {
 
   get canSaveDatabase(): boolean {
     return this.project?.sourceKind === "database" && this.project.binaryReadMode !== "none" && Boolean(this.project.dbPath);
+  }
+
+  get visualDependencyProgressPercent(): number {
+    return Math.max(0, Math.min(100, Math.round(this.visualDependencyProgress?.percent ?? 0)));
   }
 
   get hasTable(): boolean {
@@ -374,6 +398,56 @@ export class AppComponent implements AfterViewInit {
         this.showToast(`${result.message ?? "Extraction complete."}${warnings}`, result.warnings?.length ? "warn" : "info");
       }
     });
+  }
+
+  async installVisualDependencies(): Promise<void> {
+    this.visualDependencyInstalling = true;
+    this.visualDependencyError = "";
+    this.visualDependencyMessage = "Downloading visual dependencies";
+    this.visualDependencyProgress = {
+      id: "visual-dependencies",
+      label: "Visual dependencies",
+      phase: "queued",
+      receivedBytes: 0,
+      percent: 0,
+      message: "Preparing visual dependency download"
+    };
+    try {
+      const result = await this.api.installVisualDependencies();
+      this.visualDependencyStatus = result;
+      this.visualDependencyMessage = result.warnings.length > 0
+        ? `Installed with ${result.warnings.length} warning(s).`
+        : `Installed ${result.installed.length} visual package(s).`;
+      if (result.warnings.length > 0) {
+        this.visualDependencyError = result.warnings.join(" ");
+      }
+      const dependency = result.dependencies.find((candidate) => candidate.id === result.installed[0]) ?? result.dependencies[0];
+      this.visualDependencyProgress = {
+        id: dependency?.id ?? "visual-dependencies",
+        label: dependency?.label ?? "Visual dependencies",
+        phase: result.warnings.length > 0 ? "error" : "installed",
+        receivedBytes: 0,
+        percent: result.warnings.length > 0 ? this.visualDependencyProgressPercent : 100,
+        message: this.visualDependencyMessage
+      };
+    } catch (error) {
+      this.visualDependencyError = error instanceof Error ? error.message : String(error);
+      this.visualDependencyMessage = "Visual dependency download failed";
+      this.visualDependencyProgress = {
+        id: this.visualDependencyProgress?.id ?? "visual-dependencies",
+        label: this.visualDependencyProgress?.label ?? "Visual dependencies",
+        phase: "error",
+        receivedBytes: 0,
+        percent: this.visualDependencyProgressPercent,
+        message: this.visualDependencyMessage
+      };
+    } finally {
+      this.visualDependencyInstalling = false;
+    }
+  }
+
+  closeVisualDependencyModal(): void {
+    this.visualDependencyModalVisible = false;
   }
 
   async calculateHashes(): Promise<void> {
@@ -922,6 +996,19 @@ export class AppComponent implements AfterViewInit {
     this.sort = undefined;
     this.setStatus(project.warnings.length > 0 ? `${project.title} loaded with ${project.warnings.length} warning(s)` : `${project.title} loaded`);
     this.resetHorizontalScroll();
+  }
+
+  private async loadVisualDependencyStatus(): Promise<void> {
+    try {
+      this.visualDependencyStatus = await this.api.getVisualDependenciesStatus();
+      this.visualDependencyProgress = undefined;
+      this.visualDependencyMessage = this.visualDependencyStatus.allInstalled
+        ? "Visual dependencies are already installed."
+        : "Visual dependencies are optional and can be downloaded now.";
+      this.visualDependencyModalVisible = true;
+    } catch (error) {
+      this.visualDependencyError = error instanceof Error ? error.message : String(error);
+    }
   }
 
   private mergeImportedTable(imported: DataTable): void {

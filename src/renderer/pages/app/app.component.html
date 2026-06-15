@@ -519,6 +519,53 @@
   </section>
 </ng-container>
 
+<div class="dependency-modal-backdrop" *ngIf="visualDependencyModalVisible">
+  <section class="dependency-modal" role="dialog" aria-modal="true" aria-labelledby="visual-dependencies-title">
+    <div class="dependency-modal-header">
+      <div>
+        <span class="module-kicker">Optional setup</span>
+        <h2 id="visual-dependencies-title">Visual dependencies</h2>
+      </div>
+      <button type="button" [disabled]="visualDependencyInstalling" (click)="closeVisualDependencyModal()">Skip</button>
+    </div>
+
+    <p>{{ visualDependencyMessage }}</p>
+    <p class="dependency-storage" *ngIf="visualDependencyStatus?.rootPath as rootPath">
+      <strong>Storage folder</strong>
+      <span>{{ rootPath }}</span>
+    </p>
+
+    <div class="dependency-list" *ngIf="visualDependencyStatus as status">
+      <div class="dependency-row" *ngFor="let dependency of status.dependencies">
+        <div>
+          <strong>{{ dependency.label }}</strong>
+          <span>{{ dependency.installed ? dependency.filesCount + ' file(s) installed' : 'Not installed' }}</span>
+        </div>
+        <small>{{ dependency.targetPath }}</small>
+      </div>
+    </div>
+
+    <div class="dependency-progress" *ngIf="visualDependencyInstalling || visualDependencyProgress">
+      <div class="dependency-progress-label">
+        <span>{{ visualDependencyProgress?.message || 'Preparing download' }}</span>
+        <strong>{{ visualDependencyProgressPercent }}%</strong>
+      </div>
+      <div class="dependency-progress-track" aria-label="Visual dependency download progress">
+        <div class="dependency-progress-bar" [style.width.%]="visualDependencyProgressPercent"></div>
+      </div>
+    </div>
+
+    <p class="dependency-error" *ngIf="visualDependencyError">{{ visualDependencyError }}</p>
+
+    <div class="dependency-actions">
+      <button type="button" [disabled]="visualDependencyInstalling" (click)="closeVisualDependencyModal()">Not now</button>
+      <button type="button" class="primary-action" [disabled]="visualDependencyInstalling" (click)="installVisualDependencies()">
+        {{ visualDependencyInstalling ? 'Downloading...' : visualDependencyStatus?.allInstalled ? 'Download again' : 'Download' }}
+      </button>
+    </div>
+  </section>
+</div>
+
 <div class="toast" [class.hidden]="!toastVisible" [class.warn]="toastTone === 'warn'" [class.error]="toastTone === 'error'">
   {{ toastMessage }}
 </div>

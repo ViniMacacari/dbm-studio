@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DataTable, DbProject } from "../shared/types";
+import type { DataTable, DbProject, VisualDependencyProgress } from "../shared/types";
 
 contextBridge.exposeInMainWorld("dbmaster", {
   openXml: () => ipcRenderer.invoke("project:openXml"),
@@ -12,5 +12,13 @@ contextBridge.exposeInMainWorld("dbmaster", {
   importAll: () => ipcRenderer.invoke("table:importAll"),
   computeLanguageHashes: (values: string[]) => ipcRenderer.invoke("hash:language", values),
   listBig: () => ipcRenderer.invoke("big:list"),
-  extractDatabasesFromBig: () => ipcRenderer.invoke("big:extractDatabases")
+  extractDatabasesFromBig: () => ipcRenderer.invoke("big:extractDatabases"),
+  getVisualDependenciesStatus: () => ipcRenderer.invoke("visualDependencies:getStatus"),
+  installVisualDependencies: () => ipcRenderer.invoke("visualDependencies:install"),
+  onVisualDependenciesProgress: (listener: (progress: VisualDependencyProgress) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, progress: VisualDependencyProgress) => listener(progress);
+    ipcRenderer.on("visualDependencies:progress", subscription);
+    return () => ipcRenderer.removeListener("visualDependencies:progress", subscription);
+  },
+  getPlayerMiniface: (playerId: string) => ipcRenderer.invoke("visualDependencies:getMiniface", playerId)
 });

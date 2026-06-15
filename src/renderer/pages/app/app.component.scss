@@ -817,6 +817,155 @@ td.row-select {
   color: var(--text);
 }
 
+.dependency-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgba(24, 31, 27, 0.38);
+  padding: 18px;
+}
+
+.dependency-modal {
+  width: min(560px, 100%);
+  max-height: min(680px, calc(100vh - 36px));
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 22px 54px rgba(29, 37, 33, 0.24);
+  padding: 18px;
+}
+
+.dependency-modal-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.dependency-modal h2 {
+  margin: 2px 0 0;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.dependency-modal p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dependency-storage {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbf9;
+  padding: 9px 10px;
+}
+
+.dependency-storage strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.dependency-storage span {
+  overflow-wrap: anywhere;
+}
+
+.dependency-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dependency-row {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbf9;
+  padding: 10px;
+}
+
+.dependency-row div {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dependency-row span,
+.dependency-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dependency-row small {
+  overflow-wrap: anywhere;
+}
+
+.dependency-progress {
+  display: grid;
+  gap: 7px;
+}
+
+.dependency-progress-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dependency-progress-label span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dependency-progress-label strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.dependency-progress-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dce6e0;
+}
+
+.dependency-progress-bar {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 140ms ease-out;
+}
+
+.dependency-error {
+  border-left: 4px solid var(--danger);
+  background: #fff7f7;
+  color: var(--danger) !important;
+  padding: 8px 10px;
+}
+
+.dependency-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .toast.warn {
   border-left-color: var(--warn);
 }
