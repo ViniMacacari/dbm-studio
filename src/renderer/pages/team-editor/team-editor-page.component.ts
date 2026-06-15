@@ -2,15 +2,25 @@ import { CommonModule } from "@angular/common";
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../../../shared/types";
+import { InputColorComponent } from "../../components/input-color/input-color.component";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
 import { TeamEditorService } from "../../services/team-editor.service";
-import type { TeamEditorDraft, TeamEditorFieldDraft } from "../../services/team-editor.service";
+import type {
+  TeamColorGroupDraft,
+  TeamEditorDraft,
+  TeamEditorFieldDraft,
+  TeamKitColorDraft,
+  TeamKitDraft,
+  TeamKitFieldDraft,
+  TeamNationLinkDraft,
+  TeamRivalDraft
+} from "../../services/team-editor.service";
 import type { TeamPlayerLinkDraft } from "../../services/transfer.service";
 
 @Component({
   selector: "app-team-editor-page",
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchListComponent],
+  imports: [CommonModule, FormsModule, SearchListComponent, InputColorComponent],
   templateUrl: "./team-editor-page.component.html",
   styleUrl: "./team-editor-page.component.scss"
 })
@@ -100,6 +110,55 @@ export class TeamEditorPageComponent implements OnChanges {
     this.teamEditor.removePlayerFromDraft(this.draft, playerId);
   }
 
+  addNation(): void {
+    if (!this.draft) {
+      return;
+    }
+    this.runDraftAction(() => this.teamEditor.addNationToDraft(this.draft!, this.draft!.nationToAdd));
+  }
+
+  removeNation(key: string): void {
+    if (!this.draft) {
+      return;
+    }
+    this.teamEditor.removeNationFromDraft(this.draft, key);
+  }
+
+  addRival(): void {
+    if (!this.draft) {
+      return;
+    }
+    this.runDraftAction(() => this.teamEditor.addRivalToDraft(this.draft!, this.draft!.rivalToAdd));
+  }
+
+  removeRival(key: string): void {
+    if (!this.draft) {
+      return;
+    }
+    this.teamEditor.removeRivalFromDraft(this.draft, key);
+  }
+
+  addKit(kitType: string): void {
+    if (!this.draft) {
+      return;
+    }
+    this.runDraftAction(() => this.teamEditor.addKitToDraft(this.project, this.draft!, kitType));
+  }
+
+  addKitFromInput(): void {
+    if (!this.draft) {
+      return;
+    }
+    this.addKit(this.draft.kitTypeToAdd);
+  }
+
+  removeKit(key: string): void {
+    if (!this.draft) {
+      return;
+    }
+    this.runDraftAction(() => this.teamEditor.removeKitFromDraft(this.draft!, key));
+  }
+
   trackBySection(_index: number, section: { id: string }): string {
     return section.id;
   }
@@ -108,8 +167,42 @@ export class TeamEditorPageComponent implements OnChanges {
     return field.column;
   }
 
+  trackByColorGroup(_index: number, group: TeamColorGroupDraft): string {
+    return group.id;
+  }
+
   trackByTeamPlayer(_index: number, player: TeamPlayerLinkDraft): string {
     return `${player.rowIndex}:${player.playerId}`;
+  }
+
+  trackByNation(_index: number, link: TeamNationLinkDraft): string {
+    return link.key;
+  }
+
+  trackByRival(_index: number, rival: TeamRivalDraft): string {
+    return rival.key;
+  }
+
+  trackByKit(_index: number, kit: TeamKitDraft): string {
+    return kit.key;
+  }
+
+  trackByKitField(_index: number, field: TeamKitFieldDraft): string {
+    return field.column;
+  }
+
+  trackByKitColor(_index: number, color: TeamKitColorDraft): string {
+    return color.id;
+  }
+
+  private runDraftAction(action: () => string): void {
+    try {
+      this.lastApplied = action();
+      this.lastAppliedTone = "info";
+    } catch (error) {
+      this.lastApplied = error instanceof Error ? error.message : String(error);
+      this.lastAppliedTone = "error";
+    }
   }
 
   private loadDraft(resetTab = true): void {

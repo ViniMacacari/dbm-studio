@@ -28,21 +28,35 @@
       {{ section.title }}
     </button>
     <button type="button" [class.active]="activeTab === 'players'" (click)="setTab('players')">Players</button>
+    <button type="button" [class.active]="activeTab === 'countries'" (click)="setTab('countries')">Countries</button>
+    <button type="button" [class.active]="activeTab === 'rivals'" (click)="setTab('rivals')">Rivals</button>
+    <button type="button" [class.active]="activeTab === 'kits'" (click)="setTab('kits')">Kits</button>
   </nav>
 
   <div class="player-editor-body">
     <section class="editor-panel" *ngFor="let section of sections; trackBy: trackBySection" [class.hidden]="activeTab !== section.id">
+      <div class="team-color-grid" *ngIf="section.colorGroups.length > 0">
+        <app-input-color
+          *ngFor="let color of section.colorGroups; trackBy: trackByColorGroup"
+          [label]="color.label"
+          [(red)]="color.redField.value"
+          [(green)]="color.greenField.value"
+          [(blue)]="color.blueField.value"
+        ></app-input-color>
+      </div>
       <div class="editor-grid">
-        <label class="field-block" *ngFor="let field of section.fields; trackBy: trackByField">
-          <span>{{ field.label }}</span>
-          <input
-            [type]="field.inputType"
-            [(ngModel)]="field.value"
-            [readonly]="field.readonly"
-            [min]="field.min"
-            [max]="field.max"
-          />
-        </label>
+        <ng-container *ngFor="let field of section.fields; trackBy: trackByField">
+          <label class="field-block" *ngIf="!field.isColorChannel">
+            <span>{{ field.label }}</span>
+            <input
+              [type]="field.inputType"
+              [(ngModel)]="field.value"
+              [readonly]="field.readonly"
+              [min]="field.min"
+              [max]="field.max"
+            />
+          </label>
+        </ng-container>
       </div>
     </section>
 
@@ -96,6 +110,135 @@
       <ng-template #noTeamPlayers>
         <div class="empty-state module-empty">
           <strong>No players linked.</strong>
+        </div>
+      </ng-template>
+    </section>
+
+    <section class="editor-panel" [class.hidden]="activeTab !== 'countries'">
+      <div class="league-team-toolbar">
+        <app-search-list
+          [options]="team.nationOptions"
+          [(value)]="team.nationToAdd"
+          placeholder="Search country to link"
+        ></app-search-list>
+        <button type="button" class="create-player-button" (click)="addNation()">
+          <span class="plus-icon" aria-hidden="true"></span>
+          <span>Add Country</span>
+        </button>
+      </div>
+
+      <div class="league-team-list" *ngIf="team.nationLinks.length > 0; else noTeamCountries">
+        <div class="league-team-row country-link-row" *ngFor="let link of team.nationLinks; trackBy: trackByNation">
+          <div class="league-team-main">
+            <strong>{{ link.nationName || 'Country ' + link.nationId }}</strong>
+            <span>Nation ID {{ link.nationId }}</span>
+          </div>
+          <label class="inline-field">
+            <span>League ID</span>
+            <input type="number" [(ngModel)]="link.leagueId" />
+          </label>
+          <label class="inline-field country-search-field">
+            <span>Country</span>
+            <app-search-list
+              [options]="team.nationOptions"
+              [(value)]="link.nationId"
+              placeholder="Search country"
+            ></app-search-list>
+          </label>
+          <button type="button" class="danger-button" (click)="removeNation(link.key)">Remove</button>
+        </div>
+      </div>
+
+      <ng-template #noTeamCountries>
+        <div class="empty-state module-empty">
+          <strong>No country links.</strong>
+        </div>
+      </ng-template>
+    </section>
+
+    <section class="editor-panel" [class.hidden]="activeTab !== 'rivals'">
+      <div class="league-team-toolbar">
+        <app-search-list
+          [options]="team.rivalTeamOptions"
+          [(value)]="team.rivalToAdd"
+          placeholder="Search rival team"
+        ></app-search-list>
+        <button type="button" class="create-player-button" (click)="addRival()">
+          <span class="plus-icon" aria-hidden="true"></span>
+          <span>Add Rival</span>
+        </button>
+      </div>
+
+      <div class="league-team-list" *ngIf="team.rivalLinks.length > 0; else noTeamRivals">
+        <div class="league-team-row rival-link-row" *ngFor="let rival of team.rivalLinks; trackBy: trackByRival">
+          <div class="league-team-main">
+            <strong>{{ rival.displayName }}</strong>
+            <span>ID {{ rival.rivalTeamId }}</span>
+          </div>
+          <label class="inline-field rival-search-field">
+            <span>Team</span>
+            <app-search-list
+              [options]="team.rivalTeamOptions"
+              [(value)]="rival.rivalTeamId"
+              placeholder="Search team"
+            ></app-search-list>
+          </label>
+          <label class="inline-field">
+            <span>Type</span>
+            <input type="number" [(ngModel)]="rival.rivalType" />
+          </label>
+          <button type="button" class="danger-button" (click)="removeRival(rival.key)">Remove</button>
+        </div>
+      </div>
+
+      <ng-template #noTeamRivals>
+        <div class="empty-state module-empty">
+          <strong>No rivals linked.</strong>
+        </div>
+      </ng-template>
+    </section>
+
+    <section class="editor-panel kit-panel" [class.hidden]="activeTab !== 'kits'">
+      <div class="kit-toolbar">
+        <label class="kit-type-add">
+          <span>Kit type</span>
+          <input type="number" min="0" [(ngModel)]="team.kitTypeToAdd" />
+        </label>
+        <button type="button" class="create-player-button" (click)="addKitFromInput()">
+          <span class="plus-icon" aria-hidden="true"></span>
+          <span>Add Extra Kit</span>
+        </button>
+      </div>
+
+      <div class="kit-list" *ngIf="team.kitLinks.length > 0; else noTeamKits">
+        <article class="kit-card" *ngFor="let kit of team.kitLinks; trackBy: trackByKit">
+          <header class="kit-card-header">
+            <strong>{{ kit.displayName }}</strong>
+            <button *ngIf="!kit.required" type="button" class="danger-button" (click)="removeKit(kit.key)">Remove</button>
+          </header>
+
+          <div class="kit-field-grid">
+            <label class="field-block compact-field" *ngFor="let field of kit.fields; trackBy: trackByKitField">
+              <span>{{ field.label }}</span>
+              <input [type]="field.inputType" [(ngModel)]="field.value" [readonly]="field.readonly" [min]="field.min" [max]="field.max" />
+            </label>
+          </div>
+
+          <div class="kit-color-grid">
+            <app-input-color
+              *ngFor="let color of kit.colorGroups; trackBy: trackByKitColor"
+              [label]="color.label"
+              [(red)]="color.red"
+              [(green)]="color.green"
+              [(blue)]="color.blue"
+            ></app-input-color>
+          </div>
+        </article>
+      </div>
+
+      <ng-template #noTeamKits>
+        <div class="empty-state module-empty">
+          <strong>No kits linked.</strong>
         </div>
       </ng-template>
     </section>

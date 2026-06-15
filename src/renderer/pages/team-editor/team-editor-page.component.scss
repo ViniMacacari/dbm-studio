@@ -1,1 +1,117 @@
 @use "../shared/editor-page";
+
+.team-color-grid,
+.kit-color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.team-color-grid app-input-color,
+.kit-color-grid app-input-color {
+  min-width: 0;
+  min-height: 70px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 10px;
+}
+
+.country-link-row {
+  grid-template-columns: minmax(180px, 1fr) minmax(100px, 130px) minmax(260px, 360px) auto;
+}
+
+.rival-link-row {
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 380px) minmax(90px, 120px) auto;
+}
+
+.country-search-field,
+.rival-search-field {
+  align-self: stretch;
+}
+
+.kit-panel {
+  max-width: none;
+}
+
+.kit-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.kit-type-add {
+  min-width: 112px;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.kit-type-add input {
+  width: 100%;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--cell);
+  padding: 0 8px;
+}
+
+.kit-list {
+  display: grid;
+  gap: 12px;
+}
+
+.kit-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 12px;
+}
+
+.kit-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.kit-card-header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kit-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.compact-field {
+  min-height: 62px;
+  padding: 8px;
+}
+
+.compact-field input {
+  height: 30px;
+}
+
+@media (max-width: 900px) {
+  .country-link-row,
+  .rival-link-row {
+    grid-template-columns: 1fr;
+  }
+
+  .kit-card-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

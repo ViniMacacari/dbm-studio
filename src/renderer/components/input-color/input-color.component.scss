@@ -1,0 +1,57 @@
+.input-color {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.color-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.color-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px repeat(3, minmax(44px, 1fr));
+  align-items: end;
+  gap: 6px;
+}
+
+.color-picker {
+  width: 34px;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid #d7dfda;
+  border-radius: 6px;
+  background: #fbfcfa;
+  padding: 2px;
+}
+
+.color-row label {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.color-row input[type="number"] {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid #d7dfda;
+  border-radius: 6px;
+  background: #fbfcfa;
+  color: var(--text);
+  padding: 0 5px;
+}
+
+.color-row input:focus {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+}
