@@ -218,7 +218,6 @@ export class TeamEditorService {
         { column: "foundationyear", label: "Foundation year" },
         { column: "gender", label: "Gender" },
         { column: "cityid", label: "City ID" },
-        { column: "rivalteam", label: "Rival team" },
         { column: "teamstadiumcapacity", label: "Stadium capacity" }
       ]
     },
@@ -301,21 +300,6 @@ export class TeamEditorService {
         { column: "pitchwear", label: "Pitch wear" }
       ]
     },
-    {
-      id: "stadium",
-      title: "Stadium",
-      fields: [
-        { column: "trainingstadium", label: "Training stadium" },
-        { column: "playsurfacetype", label: "Surface type" },
-        { column: "stadiummowpattern_code", label: "Mow pattern" },
-        { column: "stadiumgoalnetstyle", label: "Goal net style" },
-        { column: "stadiumgoalnetpattern", label: "Goal net pattern" },
-        { column: "hasstandingcrowd", label: "Standing crowd" },
-        { column: "hassubstitutionboard", label: "Substitution board" },
-        { column: "hastifo", label: "Tifo" },
-        { column: "isbannerenabled", label: "Banner enabled" }
-      ]
-    }
   ];
 
   findTeamsTable(project?: DbProject): DataTable | undefined {
@@ -599,6 +583,9 @@ export class TeamEditorService {
     if (rivalResult) {
       changedTables.add(rivalResult.name);
     }
+    if (this.syncMainRival(teams, draft)) {
+      changedTables.add(teams.name);
+    }
 
     for (const tableName of this.applyStadium(project, draft)) {
       changedTables.add(tableName);
@@ -690,6 +677,34 @@ export class TeamEditorService {
 
     rivals.changed = true;
     return rivals;
+  }
+
+  private syncMainRival(teams: DataTable, draft: TeamEditorDraft): boolean {
+    if (this.columnIndex(teams, "rivalteam") < 0) {
+      return false;
+    }
+
+    const mainRival = [...draft.rivalLinks]
+      .filter((rival) => rival.rivalTeamId)
+      .sort((left, right) =>
+        this.numericValue(right.rivalType) - this.numericValue(left.rivalType) ||
+        this.rivalOrder(left) - this.rivalOrder(right) ||
+        left.displayName.localeCompare(right.displayName)
+      )[0];
+
+    const nextRivalTeamId = mainRival?.rivalTeamId ?? this.defaultValueForColumn(teams, "rivalteam");
+    if (this.read(teams, draft.rowIndex, "rivalteam") === nextRivalTeamId) {
+      return false;
+    }
+
+    this.write(
+      teams,
+      draft.rowIndex,
+      "rivalteam",
+      this.validateTableNumericValue(teams, "rivalteam", nextRivalTeamId, "Main rival")
+    );
+    teams.changed = true;
+    return true;
   }
 
   private applyStadium(project: DbProject, draft: TeamEditorDraft): string[] {
@@ -1592,6 +1607,15 @@ export class TeamEditorService {
       min: Math.trunc(field.rangeLow),
       max: Math.trunc(field.rangeHigh)
     };
+  }
+
+  private numericValue(value: string): number {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  private rivalOrder(rival: TeamRivalDraft): number {
+    return rival.rowIndex >= 0 ? rival.rowIndex : Number.MAX_SAFE_INTEGER;
   }
 
   private normalizeSearch(value: string): string {

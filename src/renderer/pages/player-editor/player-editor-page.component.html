@@ -1,6 +1,9 @@
 <section class="player-editor-page" *ngIf="draft as player; else missingPlayer">
   <header class="player-editor-header">
     <button type="button" class="back-button" (click)="closeEditor.emit()">Back</button>
+    <div class="player-miniface" [class.placeholder]="minifaceSource !== 'player'">
+      <img *ngIf="minifaceDataUrl" [src]="minifaceDataUrl" [alt]="player.displayName" />
+    </div>
     <div class="player-title">
       <span class="player-kicker">Player {{ player.playerId }}</span>
       <h2>{{ player.displayName }}</h2>

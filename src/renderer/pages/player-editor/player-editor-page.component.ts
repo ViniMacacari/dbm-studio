@@ -4,6 +4,7 @@ import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../../../shared/types";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
 import type { SearchListOption } from "../../components/search-list/search-list.component";
+import type { DbMasterApi } from "../../services/dbmaster-api";
 import { NationService } from "../../services/nation.service";
 import { PlayerEditorService } from "../../services/player-editor.service";
 import type { PlayerEditorDraft, PlayerEditorFieldDraft } from "../../services/player-editor.service";
@@ -28,6 +29,10 @@ export class PlayerEditorPageComponent implements OnChanges {
   activeTab = "identity";
   lastApplied = "";
   lastAppliedTone: "info" | "error" = "info";
+  minifaceDataUrl = "";
+  minifaceSource: "player" | "generic" | "missing" = "missing";
+  private readonly api: DbMasterApi = window.dbmaster;
+  private minifaceRequestId = 0;
 
   constructor(
     private readonly playerEditor: PlayerEditorService,
@@ -94,10 +99,34 @@ export class PlayerEditorPageComponent implements OnChanges {
   private loadDraft(resetTab = true): void {
     this.draft = this.project ? this.playerEditor.createDraft(this.project, this.rowIndex) : undefined;
     this.nationOptions = this.nations.nationOptions(this.project);
+    if (this.draft) {
+      void this.loadMiniface(this.draft.playerId);
+    } else {
+      this.minifaceDataUrl = "";
+      this.minifaceSource = "missing";
+    }
     if (resetTab) {
       this.activeTab = "identity";
       this.lastApplied = "";
       this.lastAppliedTone = "info";
+    }
+  }
+
+  private async loadMiniface(playerId: string): Promise<void> {
+    const requestId = ++this.minifaceRequestId;
+    try {
+      const result = await this.api.getPlayerMiniface(playerId);
+      if (requestId !== this.minifaceRequestId) {
+        return;
+      }
+      this.minifaceDataUrl = result.dataUrl;
+      this.minifaceSource = result.source;
+    } catch {
+      if (requestId !== this.minifaceRequestId) {
+        return;
+      }
+      this.minifaceDataUrl = "";
+      this.minifaceSource = "missing";
     }
   }
 }
