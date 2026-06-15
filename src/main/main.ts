@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, screen } from "electron";
 import { existsSync, mkdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -14,6 +14,9 @@ import {
 import type { DataTable, DbProject } from "../shared/types";
 
 let mainWindow: BrowserWindow | undefined;
+let lastBlurDisplayState: WindowDisplayState | undefined;
+const windowDisplayRestoreDelays = [0, 75, 250, 750, 1500];
+const workAreaTolerancePx = 64;
 
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("disable-gpu");
@@ -40,6 +43,8 @@ function createWindow(): void {
   const angularIndex = join(__dirname, "../renderer/browser/index.html");
   const legacyIndex = join(__dirname, "../renderer/index.html");
   void mainWindow.loadFile(existsSync(angularIndex) ? angularIndex : legacyIndex);
+
+  trackWindowDisplayState(mainWindow);
 }
 
 function activeWindow(): BrowserWindow | undefined {
@@ -50,35 +55,71 @@ interface WindowDisplayState {
   window?: BrowserWindow;
   wasFullScreen: boolean;
   wasMaximized: boolean;
+  wasWorkAreaSized: boolean;
+  bounds?: Electron.Rectangle;
+  workArea?: Electron.Rectangle;
 }
 
 function captureWindowDisplayState(): WindowDisplayState {
   const window = activeWindow();
+  const bounds = window?.getBounds();
+  const workArea = bounds ? screen.getDisplayMatching(bounds).workArea : undefined;
   return {
     window,
     wasFullScreen: window?.isFullScreen() ?? false,
-    wasMaximized: window?.isMaximized() ?? false
+    wasMaximized: window?.isMaximized() ?? false,
+    wasWorkAreaSized: bounds && workArea ? isWorkAreaSized(bounds, workArea) : false,
+    bounds,
+    workArea
   };
 }
 
-function restoreWindowDisplayState(state: WindowDisplayState): void {
+function shouldRestoreWindowDisplayState(state: WindowDisplayState): boolean {
+  return state.wasFullScreen || state.wasMaximized || state.wasWorkAreaSized;
+}
+
+function isWorkAreaSized(bounds: Electron.Rectangle, workArea: Electron.Rectangle): boolean {
+  return bounds.width >= workArea.width - workAreaTolerancePx && bounds.height >= workArea.height - workAreaTolerancePx;
+}
+
+function applyWindowDisplayState(state: WindowDisplayState): void {
   const window = state.window;
   if (!window || window.isDestroyed()) {
     return;
   }
 
-  setTimeout(() => {
-    if (window.isDestroyed()) {
-      return;
+  if (state.wasFullScreen && !window.isFullScreen()) {
+    window.setFullScreen(true);
+    return;
+  }
+  if (state.wasMaximized && !window.isMaximized()) {
+    window.maximize();
+    return;
+  }
+  if (state.wasWorkAreaSized) {
+    const restoreBounds = state.workArea ?? state.bounds;
+    if (restoreBounds) {
+      window.setBounds(restoreBounds);
     }
-    if (state.wasFullScreen && !window.isFullScreen()) {
-      window.setFullScreen(true);
-      return;
-    }
-    if (state.wasMaximized && !window.isMaximized()) {
-      window.maximize();
-    }
-  }, 50);
+  }
+}
+
+function queueWindowDisplayStateRestore(state: WindowDisplayState): void {
+  if (!shouldRestoreWindowDisplayState(state)) {
+    return;
+  }
+  for (const delay of windowDisplayRestoreDelays) {
+    setTimeout(() => applyWindowDisplayState(state), delay);
+  }
+}
+
+async function restoreWindowDisplayState(state: WindowDisplayState): Promise<void> {
+  queueWindowDisplayStateRestore(state);
+  if (!shouldRestoreWindowDisplayState(state)) {
+    return;
+  }
+  await new Promise<void>((resolve) => setTimeout(resolve, 90));
+  applyWindowDisplayState(state);
 }
 
 async function keepWindowDisplayState<T>(action: () => T | Promise<T>): Promise<T> {
@@ -86,8 +127,32 @@ async function keepWindowDisplayState<T>(action: () => T | Promise<T>): Promise<
   try {
     return await action();
   } finally {
-    restoreWindowDisplayState(state);
+    await restoreWindowDisplayState(state);
   }
+}
+
+function trackWindowDisplayState(window: BrowserWindow): void {
+  window.on("blur", () => {
+    const state = captureWindowDisplayState();
+    lastBlurDisplayState = shouldRestoreWindowDisplayState(state) ? state : undefined;
+  });
+
+  window.on("focus", () => {
+    if (lastBlurDisplayState) {
+      queueWindowDisplayStateRestore(lastBlurDisplayState);
+    }
+  });
+
+  window.on("closed", () => {
+    if (mainWindow === window) {
+      mainWindow = undefined;
+      lastBlurDisplayState = undefined;
+    }
+  });
+}
+
+function shouldParentNativeDialog(): boolean {
+  return process.platform !== "linux";
 }
 
 async function pickFile(title: string, filters: Electron.FileFilter[]): Promise<string | undefined> {
@@ -97,7 +162,9 @@ async function pickFile(title: string, filters: Electron.FileFilter[]): Promise<
     filters
   };
   const window = activeWindow();
-  const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+  const result = await keepWindowDisplayState(() =>
+    window && shouldParentNativeDialog() ? dialog.showOpenDialog(window, options) : dialog.showOpenDialog(options)
+  );
   return result.canceled ? undefined : result.filePaths[0];
 }
 
@@ -107,7 +174,9 @@ async function pickFolder(title: string): Promise<string | undefined> {
     properties: ["openDirectory", "createDirectory"]
   };
   const window = activeWindow();
-  const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+  const result = await keepWindowDisplayState(() =>
+    window && shouldParentNativeDialog() ? dialog.showOpenDialog(window, options) : dialog.showOpenDialog(options)
+  );
   return result.canceled ? undefined : result.filePaths[0];
 }
 
@@ -118,7 +187,9 @@ async function pickSaveFile(title: string, defaultPath: string, filters: Electro
     filters
   };
   const window = activeWindow();
-  const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+  const result = await keepWindowDisplayState(() =>
+    window && shouldParentNativeDialog() ? dialog.showSaveDialog(window, options) : dialog.showSaveDialog(options)
+  );
   return result.canceled ? undefined : result.filePath;
 }
 
