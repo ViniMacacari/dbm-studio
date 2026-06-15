@@ -43,21 +43,9 @@
   margin-bottom: 12px;
 }
 
-.kit-type-add {
-  min-width: 112px;
-  display: grid;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.kit-type-add input {
-  width: 100%;
-  height: 38px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--cell);
-  padding: 0 8px;
+.kit-type-field {
+  width: 128px;
+  margin: 0;
 }
 
 .kit-list {
