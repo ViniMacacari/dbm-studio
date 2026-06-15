@@ -82,6 +82,25 @@ export interface TeamKitDraft {
   colorGroups: TeamKitColorDraft[];
 }
 
+export interface TeamStadiumOption extends SearchListOption {
+  stadiumName: string;
+  forcedHome: string;
+  swapCrowdPlacement: string;
+  baseValues: Record<string, string>;
+}
+
+export interface TeamStadiumLinkDraft {
+  key: string;
+  rowIndex: number;
+  sourceRow?: string[];
+  stadiumId: string;
+  stadiumName: string;
+  customName: string;
+  forcedHome: string;
+  swapCrowdPlacement: string;
+  baseValues: Record<string, string>;
+}
+
 export interface TeamEditorDraft {
   teamId: string;
   rowIndex: number;
@@ -101,6 +120,9 @@ export interface TeamEditorDraft {
   rivalLinks: TeamRivalDraft[];
   rivalTeamOptions: SearchListOption[];
   rivalToAdd: string;
+  stadiumLink?: TeamStadiumLinkDraft;
+  stadiumOptions: TeamStadiumOption[];
+  stadiumToAssign: string;
   kitLinks: TeamKitDraft[];
   kitTypeToAdd: string;
 }
@@ -312,6 +334,14 @@ export class TeamEditorService {
     return this.findTable(project, "teamnationlinks");
   }
 
+  findTeamStadiumLinksTable(project?: DbProject): DataTable | undefined {
+    return this.findTable(project, "teamstadiumlinks");
+  }
+
+  findStadiumAssignmentsTable(project?: DbProject): DataTable | undefined {
+    return this.findTable(project, "stadiumassignments");
+  }
+
   invalidateTable(table?: DataTable): void {
     this.nations.invalidateTable(table);
   }
@@ -376,6 +406,7 @@ export class TeamEditorService {
     const displayName = this.displayName(teams, rowIndex, teamId);
     const teamOptions = this.teamOptions(project);
     const kitLinks = this.withRequiredDefaultKits(project, teamId, this.linkedKits(project, teamId));
+    const stadiumOptions = this.stadiumOptions(project);
 
     return {
       teamId,
@@ -398,6 +429,9 @@ export class TeamEditorService {
       rivalLinks: this.linkedRivals(project, teamId),
       rivalTeamOptions: teamOptions,
       rivalToAdd: "",
+      stadiumLink: this.linkedStadium(project, teamId),
+      stadiumOptions,
+      stadiumToAssign: "",
       kitLinks,
       kitTypeToAdd: this.nextAvailableKitType(kitLinks)
     };
@@ -471,6 +505,33 @@ export class TeamEditorService {
     draft.rivalLinks = draft.rivalLinks.filter((link) => link.key !== key);
   }
 
+  assignStadiumToDraft(draft: TeamEditorDraft, stadiumId: string): string {
+    if (!stadiumId) {
+      throw new Error("Choose a stadium first.");
+    }
+
+    const option = draft.stadiumOptions.find((candidate) => candidate.value === stadiumId);
+    if (!option) {
+      throw new Error("Selected stadium was not found.");
+    }
+
+    const previousLink = draft.stadiumLink;
+    const previousCustomName = previousLink?.customName.trim();
+    draft.stadiumLink = {
+      key: previousLink?.key ?? `new:${Date.now()}:${stadiumId}`,
+      rowIndex: previousLink?.rowIndex ?? -1,
+      sourceRow: previousLink?.sourceRow,
+      stadiumId: option.value,
+      stadiumName: option.stadiumName,
+      customName: previousCustomName && previousCustomName !== previousLink?.stadiumName ? previousCustomName : option.stadiumName,
+      forcedHome: option.forcedHome,
+      swapCrowdPlacement: option.swapCrowdPlacement,
+      baseValues: { ...option.baseValues }
+    };
+    draft.stadiumToAssign = "";
+    return `${option.stadiumName} linked to ${draft.displayName}`;
+  }
+
   addKitToDraft(project: DbProject, draft: TeamEditorDraft, kitType: string): string {
     const teamKits = this.findTeamKitsTable(project);
     if (!teamKits) {
@@ -537,6 +598,10 @@ export class TeamEditorService {
     const rivalResult = this.applyRivals(project, draft);
     if (rivalResult) {
       changedTables.add(rivalResult.name);
+    }
+
+    for (const tableName of this.applyStadium(project, draft)) {
+      changedTables.add(tableName);
     }
 
     const kitResult = this.applyKits(project, draft);
@@ -625,6 +690,129 @@ export class TeamEditorService {
 
     rivals.changed = true;
     return rivals;
+  }
+
+  private applyStadium(project: DbProject, draft: TeamEditorDraft): string[] {
+    const changedTables = new Set<string>();
+    const linkResult = this.applyStadiumLink(project, draft);
+    if (linkResult) {
+      changedTables.add(linkResult.name);
+    }
+    const assignmentResult = this.applyStadiumAssignment(project, draft);
+    if (assignmentResult) {
+      changedTables.add(assignmentResult.name);
+    }
+    return [...changedTables];
+  }
+
+  private applyStadiumLink(project: DbProject, draft: TeamEditorDraft): DataTable | undefined {
+    const links = this.findTeamStadiumLinksTable(project);
+    if (!links) {
+      if (draft.stadiumLink) {
+        throw new Error("teamstadiumlinks table was not found.");
+      }
+      return undefined;
+    }
+
+    const teamIdColumn = this.columnIndex(links, "teamid");
+    const stadiumIdColumn = this.columnIndex(links, "stadiumid");
+    if (teamIdColumn < 0 || stadiumIdColumn < 0) {
+      throw new Error("teamstadiumlinks needs teamid and stadiumid columns.");
+    }
+
+    if (!draft.stadiumLink) {
+      const originalLength = links.rows.length;
+      links.rows = links.rows.filter((row) => row[teamIdColumn] !== draft.teamId);
+      if (links.rows.length !== originalLength) {
+        links.changed = true;
+        return links;
+      }
+      return undefined;
+    }
+
+    const sourceRow = draft.stadiumLink.sourceRow && links.rows.includes(draft.stadiumLink.sourceRow)
+      ? draft.stadiumLink.sourceRow
+      : undefined;
+    for (let index = links.rows.length - 1; index >= 0; index -= 1) {
+      const row = links.rows[index];
+      if (row[teamIdColumn] === draft.teamId && row !== sourceRow) {
+        links.rows.splice(index, 1);
+      }
+    }
+
+    const row = sourceRow ?? links.columns.map((column, columnIndex) => {
+      const lowerColumn = column.toLowerCase();
+      return draft.stadiumLink?.baseValues[lowerColumn] ?? this.defaultValueForField(links.fields[columnIndex]);
+    });
+    if (!sourceRow) {
+      links.rows.push(row);
+    }
+
+    const rowIndex = links.rows.indexOf(row);
+    links.columns.forEach((column, columnIndex) => {
+      const value = draft.stadiumLink?.baseValues[column.toLowerCase()];
+      if (value !== undefined) {
+        row[columnIndex] = value;
+      }
+    });
+    this.write(links, rowIndex, "stadiumname", draft.stadiumLink.stadiumName);
+    this.write(links, rowIndex, "stadiumid", this.validateTableNumericValue(links, "stadiumid", draft.stadiumLink.stadiumId, "Stadium ID"));
+    this.write(links, rowIndex, "teamid", this.validateTableNumericValue(links, "teamid", draft.teamId, "Team ID"));
+    this.writeIfPresent(links, rowIndex, "forcedhome", this.validateTableNumericValue(links, "forcedhome", draft.stadiumLink.forcedHome, "Forced home"));
+    this.writeIfPresent(
+      links,
+      rowIndex,
+      "swapcrowdplacement",
+      this.validateTableNumericValue(links, "swapcrowdplacement", draft.stadiumLink.swapCrowdPlacement, "Swap crowd placement")
+    );
+    draft.stadiumLink.sourceRow = row;
+    draft.stadiumLink.rowIndex = rowIndex;
+    links.changed = true;
+    return links;
+  }
+
+  private applyStadiumAssignment(project: DbProject, draft: TeamEditorDraft): DataTable | undefined {
+    const assignments = this.findStadiumAssignmentsTable(project);
+    if (!assignments) {
+      if (draft.stadiumLink?.customName.trim()) {
+        throw new Error("stadiumassignments table was not found.");
+      }
+      return undefined;
+    }
+
+    const teamIdColumn = this.columnIndex(assignments, "teamid");
+    const customNameColumn = this.columnIndex(assignments, "stadiumcustomname");
+    if (teamIdColumn < 0 || customNameColumn < 0) {
+      throw new Error("stadiumassignments needs teamid and stadiumcustomname columns.");
+    }
+
+    const existingRows = assignments.rows.filter((row) => row[teamIdColumn] === draft.teamId);
+    const sourceRow = existingRows[0];
+    for (let index = assignments.rows.length - 1; index >= 0; index -= 1) {
+      const row = assignments.rows[index];
+      if (row[teamIdColumn] === draft.teamId && row !== sourceRow) {
+        assignments.rows.splice(index, 1);
+      }
+    }
+
+    if (!draft.stadiumLink) {
+      if (sourceRow) {
+        assignments.rows = assignments.rows.filter((row) => row !== sourceRow);
+        assignments.changed = true;
+        return assignments;
+      }
+      return undefined;
+    }
+
+    const row = sourceRow ?? assignments.columns.map((_column, columnIndex) => this.defaultValueForField(assignments.fields[columnIndex]));
+    if (!sourceRow) {
+      assignments.rows.push(row);
+    }
+    const rowIndex = assignments.rows.indexOf(row);
+    this.write(assignments, rowIndex, "teamid", this.validateTableNumericValue(assignments, "teamid", draft.teamId, "Team ID"));
+    this.write(assignments, rowIndex, "stadiumcustomname", draft.stadiumLink.customName);
+    assignments.changed = true;
+    return assignments;
   }
 
   private applyKits(project: DbProject, draft: TeamEditorDraft): DataTable | undefined {
@@ -763,6 +951,88 @@ export class TeamEditorService {
         };
       })
       .sort((left, right) => left.displayName.localeCompare(right.displayName));
+  }
+
+  private linkedStadium(project: DbProject, teamId: string): TeamStadiumLinkDraft | undefined {
+    const links = this.findTeamStadiumLinksTable(project);
+    if (!links) {
+      return undefined;
+    }
+
+    const teamIdColumn = this.columnIndex(links, "teamid");
+    if (teamIdColumn < 0) {
+      return undefined;
+    }
+
+    const rowIndex = links.rows.findIndex((row) => row[teamIdColumn] === teamId);
+    if (rowIndex < 0) {
+      return undefined;
+    }
+
+    const row = links.rows[rowIndex];
+    const stadiumId = this.read(links, rowIndex, "stadiumid");
+    const stadiumName = this.read(links, rowIndex, "stadiumname") || `Stadium ${stadiumId}`;
+    return {
+      key: `existing:${rowIndex}`,
+      rowIndex,
+      sourceRow: row,
+      stadiumId,
+      stadiumName,
+      customName: this.stadiumAssignmentName(project, teamId) || stadiumName,
+      forcedHome: this.read(links, rowIndex, "forcedhome") || "0",
+      swapCrowdPlacement: this.read(links, rowIndex, "swapcrowdplacement") || "0",
+      baseValues: this.valuesFromRow(links, row)
+    };
+  }
+
+  private stadiumAssignmentName(project: DbProject, teamId: string): string {
+    const assignments = this.findStadiumAssignmentsTable(project);
+    if (!assignments) {
+      return "";
+    }
+
+    const teamIdColumn = this.columnIndex(assignments, "teamid");
+    const customNameColumn = this.columnIndex(assignments, "stadiumcustomname");
+    if (teamIdColumn < 0 || customNameColumn < 0) {
+      return "";
+    }
+
+    const row = assignments.rows.find((candidate) => candidate[teamIdColumn] === teamId);
+    return row?.[customNameColumn]?.trim() ?? "";
+  }
+
+  private stadiumOptions(project: DbProject): TeamStadiumOption[] {
+    const links = this.findTeamStadiumLinksTable(project);
+    if (!links) {
+      return [];
+    }
+
+    const stadiumIdColumn = this.columnIndex(links, "stadiumid");
+    const stadiumNameColumn = this.columnIndex(links, "stadiumname");
+    if (stadiumIdColumn < 0) {
+      return [];
+    }
+
+    const optionsById = new Map<string, TeamStadiumOption>();
+    for (const row of links.rows) {
+      const stadiumId = row[stadiumIdColumn]?.trim() ?? "";
+      if (!stadiumId || optionsById.has(stadiumId)) {
+        continue;
+      }
+
+      const stadiumName = stadiumNameColumn >= 0 ? row[stadiumNameColumn]?.trim() ?? "" : "";
+      optionsById.set(stadiumId, {
+        value: stadiumId,
+        label: stadiumName || `Stadium ${stadiumId}`,
+        meta: `ID ${stadiumId}`,
+        stadiumName: stadiumName || `Stadium ${stadiumId}`,
+        forcedHome: this.valueFromRow(links, row, "forcedhome") || "0",
+        swapCrowdPlacement: this.valueFromRow(links, row, "swapcrowdplacement") || "0",
+        baseValues: this.valuesFromRow(links, row)
+      });
+    }
+
+    return [...optionsById.values()].sort((left, right) => left.label.localeCompare(right.label));
   }
 
   private linkedKits(project: DbProject, teamId: string): TeamKitDraft[] {
@@ -1077,6 +1347,11 @@ export class TeamEditorService {
     return values;
   }
 
+  private valueFromRow(table: DataTable, row: string[], column: string): string {
+    const index = this.columnIndex(table, column);
+    return index >= 0 ? row[index] ?? "" : "";
+  }
+
   private rowFromValues(table: DataTable, values: Record<string, string>): string[] {
     return table.columns.map((column, columnIndex) => values[column.toLowerCase()] ?? this.defaultValueForField(table.fields[columnIndex]));
   }
@@ -1297,6 +1572,12 @@ export class TeamEditorService {
       row.push("");
     }
     row[index] = value;
+  }
+
+  private writeIfPresent(table: DataTable, rowIndex: number, column: string, value: string): void {
+    if (this.columnIndex(table, column) >= 0) {
+      this.write(table, rowIndex, column, value);
+    }
   }
 
   private inputTypeForField(field: FieldDescriptor | undefined): "number" | "text" {

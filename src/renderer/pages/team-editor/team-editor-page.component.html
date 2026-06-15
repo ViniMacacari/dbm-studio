@@ -30,6 +30,7 @@
     <button type="button" [class.active]="activeTab === 'players'" (click)="setTab('players')">Players</button>
     <button type="button" [class.active]="activeTab === 'countries'" (click)="setTab('countries')">Countries</button>
     <button type="button" [class.active]="activeTab === 'rivals'" (click)="setTab('rivals')">Rivals</button>
+    <button type="button" [class.active]="activeTab === 'stadiums'" (click)="setTab('stadiums')">Stadiums</button>
     <button type="button" [class.active]="activeTab === 'kits'" (click)="setTab('kits')">Kits</button>
   </nav>
 
@@ -194,6 +195,47 @@
       <ng-template #noTeamRivals>
         <div class="empty-state module-empty">
           <strong>No rivals linked.</strong>
+        </div>
+      </ng-template>
+    </section>
+
+    <section class="editor-panel stadium-panel" [class.hidden]="activeTab !== 'stadiums'">
+      <div class="league-team-toolbar stadium-toolbar">
+        <app-search-list
+          [options]="team.stadiumOptions"
+          [(value)]="team.stadiumToAssign"
+          placeholder="Search stadium"
+        ></app-search-list>
+        <button type="button" class="create-player-button" [disabled]="!team.stadiumToAssign" (click)="assignStadium()">
+          <span class="plus-icon" aria-hidden="true"></span>
+          <span>Link Stadium</span>
+        </button>
+      </div>
+
+      <div class="league-team-list" *ngIf="team.stadiumLink as stadium; else noTeamStadium">
+        <div class="league-team-row stadium-link-row">
+          <div class="league-team-main">
+            <strong>{{ stadium.customName || stadium.stadiumName }}</strong>
+            <span>{{ stadium.stadiumName }} / ID {{ stadium.stadiumId }}</span>
+          </div>
+          <label class="inline-field stadium-name-field">
+            <span>Custom name</span>
+            <input type="text" [(ngModel)]="stadium.customName" />
+          </label>
+          <label class="inline-field">
+            <span>Swap crowd</span>
+            <input type="number" [(ngModel)]="stadium.swapCrowdPlacement" />
+          </label>
+          <label class="inline-field">
+            <span>Forced home</span>
+            <input type="number" [(ngModel)]="stadium.forcedHome" />
+          </label>
+        </div>
+      </div>
+
+      <ng-template #noTeamStadium>
+        <div class="empty-state module-empty">
+          <strong>No stadium linked.</strong>
         </div>
       </ng-template>
     </section>

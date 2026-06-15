@@ -26,9 +26,22 @@
   grid-template-columns: minmax(180px, 1fr) minmax(260px, 380px) minmax(90px, 120px) auto;
 }
 
+.stadium-link-row {
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 420px) minmax(120px, 160px) minmax(110px, 150px);
+}
+
 .country-search-field,
-.rival-search-field {
+.rival-search-field,
+.stadium-name-field {
   align-self: stretch;
+}
+
+.stadium-panel {
+  max-width: none;
+}
+
+.stadium-toolbar {
+  margin-bottom: 12px;
 }
 
 .kit-panel {
@@ -94,7 +107,8 @@
 
 @media (max-width: 900px) {
   .country-link-row,
-  .rival-link-row {
+  .rival-link-row,
+  .stadium-link-row {
     grid-template-columns: 1fr;
   }
 

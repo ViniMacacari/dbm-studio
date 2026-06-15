@@ -13,7 +13,8 @@ import type {
   TeamKitDraft,
   TeamKitFieldDraft,
   TeamNationLinkDraft,
-  TeamRivalDraft
+  TeamRivalDraft,
+  TeamStadiumLinkDraft
 } from "../../services/team-editor.service";
 import type { TeamPlayerLinkDraft } from "../../services/transfer.service";
 
@@ -138,6 +139,13 @@ export class TeamEditorPageComponent implements OnChanges {
     this.teamEditor.removeRivalFromDraft(this.draft, key);
   }
 
+  assignStadium(): void {
+    if (!this.draft) {
+      return;
+    }
+    this.runDraftAction(() => this.teamEditor.assignStadiumToDraft(this.draft!, this.draft!.stadiumToAssign));
+  }
+
   addKit(kitType: string): void {
     if (!this.draft) {
       return;
@@ -181,6 +189,10 @@ export class TeamEditorPageComponent implements OnChanges {
 
   trackByRival(_index: number, rival: TeamRivalDraft): string {
     return rival.key;
+  }
+
+  trackByStadium(_index: number, stadium: TeamStadiumLinkDraft): string {
+    return stadium.key;
   }
 
   trackByKit(_index: number, kit: TeamKitDraft): string {
