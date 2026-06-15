@@ -8,6 +8,7 @@
     "lib": ["ES2022"]
   },
   "include": [
+    "src/app-config.ts",
     "src/core/**/*.ts",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
