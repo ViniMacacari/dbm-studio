@@ -568,11 +568,14 @@ export class TeamEditorService {
     links.rows = links.rows.filter((row) => row[teamIdColumn] !== draft.teamId || keptRows.has(row));
 
     for (const link of draft.nationLinks) {
+      const leagueId = this.validateTableNumericValue(links, "leagueid", link.leagueId, "League ID");
+      const teamId = this.validateTableNumericValue(links, "teamid", draft.teamId, "Team ID");
+      const nationId = this.validateTableNumericValue(links, "nationid", link.nationId, "Country");
       const row = this.resolveDraftRow(links, link.sourceRow);
       const rowIndex = links.rows.indexOf(row);
-      this.write(links, rowIndex, "leagueid", this.validateNumericValue(link.leagueId, "League ID"));
-      this.write(links, rowIndex, "teamid", draft.teamId);
-      this.write(links, rowIndex, "nationid", this.validateNumericValue(link.nationId, "Country"));
+      this.write(links, rowIndex, "leagueid", leagueId);
+      this.write(links, rowIndex, "teamid", teamId);
+      this.write(links, rowIndex, "nationid", nationId);
     }
 
     links.changed = true;
@@ -986,8 +989,11 @@ export class TeamEditorService {
     const nationTeamIdColumn = nationLinks ? this.columnIndex(nationLinks, "teamid") : -1;
     const nationLeagueIdColumn = nationLinks ? this.columnIndex(nationLinks, "leagueid") : -1;
     const existingNationLink = nationLinks?.rows.find((row) => row[nationTeamIdColumn] === teamId);
-    if (existingNationLink && nationLeagueIdColumn >= 0) {
-      return existingNationLink[nationLeagueIdColumn] ?? "0";
+    if (nationLinks && existingNationLink && nationLeagueIdColumn >= 0) {
+      const leagueId = existingNationLink[nationLeagueIdColumn] ?? "";
+      if (this.isValueInColumnRange(nationLinks, "leagueid", leagueId)) {
+        return leagueId;
+      }
     }
 
     const leagueLinks = this.findTable(project, "leagueteamlinks");
@@ -995,10 +1001,13 @@ export class TeamEditorService {
     const leagueIdColumn = leagueLinks ? this.columnIndex(leagueLinks, "leagueid") : -1;
     const existingLeagueLink = leagueLinks?.rows.find((row) => row[leagueTeamIdColumn] === teamId);
     if (existingLeagueLink && leagueIdColumn >= 0) {
-      return existingLeagueLink[leagueIdColumn] ?? "0";
+      const leagueId = existingLeagueLink[leagueIdColumn] ?? "";
+      if (!nationLinks || this.isValueInColumnRange(nationLinks, "leagueid", leagueId)) {
+        return leagueId;
+      }
     }
 
-    return "0";
+    return nationLinks ? this.defaultValueForColumn(nationLinks, "leagueid") : "0";
   }
 
   private fieldValue(fields: Array<{ column: string; value: string }>, column: string): string {
@@ -1113,6 +1122,23 @@ export class TeamEditorService {
     return raw;
   }
 
+  private validateTableNumericValue(table: DataTable, column: string, value: string, label: string): string {
+    const raw = this.validateNumericValue(value, label);
+    const field = this.fieldForColumn(table, column);
+    if (!field || field.rangeHigh < field.rangeLow) {
+      return raw;
+    }
+
+    const numeric = Number(raw);
+    if (numeric < field.rangeLow) {
+      throw new Error(`${label}: value must be at least ${field.rangeLow}.`);
+    }
+    if (numeric > field.rangeHigh) {
+      throw new Error(`${label}: value must be at most ${field.rangeHigh}.`);
+    }
+    return raw;
+  }
+
   private validateNumericField(field: TeamEditorFieldDraft): string {
     const raw = this.validateNumericValue(field.value, field.label);
     const numeric = Number(raw);
@@ -1192,6 +1218,27 @@ export class TeamEditorService {
       return String(Math.trunc(field.rangeLow));
     }
     return "0";
+  }
+
+  private defaultValueForColumn(table: DataTable, column: string): string {
+    const field = this.fieldForColumn(table, column);
+    const fallback = this.defaultValueForField(field);
+    return fallback || "0";
+  }
+
+  private isValueInColumnRange(table: DataTable, column: string, value: string): boolean {
+    const raw = value.trim();
+    if (!/^-?\d+$/.test(raw)) {
+      return false;
+    }
+
+    const numeric = Number(raw);
+    if (!Number.isSafeInteger(numeric)) {
+      return false;
+    }
+
+    const field = this.fieldForColumn(table, column);
+    return !field || field.rangeHigh < field.rangeLow || (numeric >= field.rangeLow && numeric <= field.rangeHigh);
   }
 
   private clampFieldValue(table: DataTable, column: string, value: string, fallback: string): string {
