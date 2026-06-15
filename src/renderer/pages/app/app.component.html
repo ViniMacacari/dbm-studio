@@ -539,7 +539,15 @@
       <div class="dependency-row" *ngFor="let dependency of status.dependencies">
         <div>
           <strong>{{ dependency.label }}</strong>
-          <span>{{ dependency.installed ? dependency.filesCount + ' file(s) installed' : 'Not installed' }}</span>
+          <span>
+            {{ dependency.updateAvailable
+              ? 'Update available'
+              : dependency.current
+                ? dependency.filesCount + ' file(s) installed'
+                : dependency.installed
+                  ? dependency.filesCount + ' file(s) installed, zip missing'
+                  : 'Not installed' }}
+          </span>
         </div>
         <small>{{ dependency.targetPath }}</small>
       </div>
@@ -560,7 +568,7 @@
     <div class="dependency-actions">
       <button type="button" [disabled]="visualDependencyInstalling" (click)="closeVisualDependencyModal()">Not now</button>
       <button type="button" class="primary-action" [disabled]="visualDependencyInstalling" (click)="installVisualDependencies()">
-        {{ visualDependencyInstalling ? 'Downloading...' : visualDependencyStatus?.allInstalled ? 'Download again' : 'Download' }}
+        {{ visualDependencyPrimaryActionLabel }}
       </button>
     </div>
   </section>

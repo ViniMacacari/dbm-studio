@@ -181,6 +181,19 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     return Math.max(0, Math.min(100, Math.round(this.visualDependencyProgress?.percent ?? 0)));
   }
 
+  get visualDependencyPrimaryActionLabel(): string {
+    if (this.visualDependencyInstalling) {
+      return "Downloading...";
+    }
+    if (this.visualDependencyStatus?.dependencies.some((dependency) => dependency.updateAvailable)) {
+      return "Update";
+    }
+    if (this.visualDependencyStatus?.allInstalled) {
+      return "Check";
+    }
+    return "Download";
+  }
+
   get hasTable(): boolean {
     return Boolean(this.currentTable());
   }
@@ -417,7 +430,11 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       this.visualDependencyStatus = result;
       this.visualDependencyMessage = result.warnings.length > 0
         ? `Installed with ${result.warnings.length} warning(s).`
-        : `Installed ${result.installed.length} visual package(s).`;
+        : result.installed.length > 0
+          ? `Installed ${result.installed.length} visual package(s).`
+          : result.skipped.length > 0
+            ? "Visual packages are already up to date."
+            : "No visual packages needed downloading.";
       if (result.warnings.length > 0) {
         this.visualDependencyError = result.warnings.join(" ");
       }
@@ -1002,10 +1019,13 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     try {
       this.visualDependencyStatus = await this.api.getVisualDependenciesStatus();
       this.visualDependencyProgress = undefined;
-      this.visualDependencyMessage = this.visualDependencyStatus.allInstalled
+      const hasUpdate = this.visualDependencyStatus.dependencies.some((dependency) => dependency.updateAvailable);
+      this.visualDependencyMessage = this.visualDependencyStatus.allCurrent
         ? "Visual dependencies are already installed."
-        : "Visual dependencies are optional and can be downloaded now.";
-      this.visualDependencyModalVisible = true;
+        : hasUpdate
+          ? "A newer visual dependency package is available."
+          : "Visual dependencies are optional and can be downloaded now.";
+      this.visualDependencyModalVisible = !this.visualDependencyStatus.allCurrent;
     } catch (error) {
       this.visualDependencyError = error instanceof Error ? error.message : String(error);
     }

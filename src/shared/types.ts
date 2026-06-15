@@ -81,17 +81,26 @@ export interface VisualDependencyStatus {
   downloadUrl: string;
   targetPath: string;
   installed: boolean;
+  downloaded: boolean;
+  current: boolean;
+  updateAvailable: boolean;
   filesCount: number;
+  downloadedSize: number;
+  recordedDownloadedSize?: number;
+  remoteSize?: number;
+  remoteCheckError?: string;
 }
 
 export interface VisualDependenciesStatus {
   rootPath: string;
   dependencies: VisualDependencyStatus[];
   allInstalled: boolean;
+  allCurrent: boolean;
 }
 
 export interface VisualDependenciesInstallResult extends VisualDependenciesStatus {
   installed: string[];
+  skipped: string[];
   warnings: string[];
 }
 

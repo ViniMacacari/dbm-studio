@@ -1,6 +1,6 @@
 import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { Agent as HttpAgent, get, type IncomingMessage, type RequestOptions } from "node:http";
-import { Agent as HttpsAgent, get as getSecure } from "node:https";
+import { Agent as HttpAgent, get, request as requestHttp, type IncomingMessage, type RequestOptions } from "node:http";
+import { Agent as HttpsAgent, get as getSecure, request as requestSecure } from "node:https";
 import { basename, dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -27,9 +27,27 @@ interface RgbaImage {
   pixels: Uint8Array;
 }
 
+interface RemoteFileInfo {
+  size?: number;
+  etag?: string;
+  lastModified?: string;
+  acceptsRanges: boolean;
+}
+
+interface DownloadMetadata {
+  fileName: string;
+  url: string;
+  downloadedSize: number;
+  remoteSize?: number;
+  etag?: string;
+  lastModified?: string;
+  downloadedAt: string;
+}
+
 type VisualDependencyProgressCallback = (progress: VisualDependencyProgress) => void;
 type DownloadProgressCallback = (receivedBytes: number, totalBytes?: number) => void;
 type ExtractProgressCallback = (extractedFiles: number, totalFiles: number) => void;
+type DependencyInstallAction = "downloaded" | "extracted" | "skipped";
 
 const downloadHttpAgent = new HttpAgent({ keepAlive: true, maxSockets: 2 });
 const downloadHttpsAgent = new HttpsAgent({ keepAlive: true, maxSockets: 2 });
@@ -47,18 +65,20 @@ export class VisualDependencyManager {
     this.downloadsPath = join(this.rootPath, "downloads");
   }
 
-  getStatus(): VisualDependenciesStatus {
-    const dependencies = AppConfig.visualDependencies.map((dependency) => this.dependencyStatus(dependency));
+  async getStatus(): Promise<VisualDependenciesStatus> {
+    const dependencies = await Promise.all(AppConfig.visualDependencies.map((dependency) => this.dependencyStatus(dependency)));
     return {
       rootPath: this.rootPath,
       dependencies,
-      allInstalled: dependencies.every((dependency) => dependency.installed)
+      allInstalled: dependencies.every((dependency) => dependency.installed),
+      allCurrent: dependencies.every((dependency) => dependency.current)
     };
   }
 
   async installAll(onProgress?: VisualDependencyProgressCallback): Promise<VisualDependenciesInstallResult> {
     mkdirSync(this.downloadsPath, { recursive: true });
     const installed: string[] = [];
+    const skipped: string[] = [];
     const warnings: string[] = [];
 
     for (const dependency of AppConfig.visualDependencies) {
@@ -71,8 +91,12 @@ export class VisualDependencyManager {
           percent: 0,
           message: `Preparing ${dependency.label}`
         });
-        await this.installDependency(dependency, onProgress);
-        installed.push(dependency.id);
+        const action = await this.installDependency(dependency, onProgress);
+        if (action === "skipped") {
+          skipped.push(dependency.id);
+        } else {
+          installed.push(dependency.id);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         onProgress?.({
@@ -88,8 +112,9 @@ export class VisualDependencyManager {
     }
 
     return {
-      ...this.getStatus(),
+      ...(await this.getStatus()),
       installed,
+      skipped,
       warnings
     };
   }
@@ -98,22 +123,27 @@ export class VisualDependencyManager {
     const normalizedPlayerId = playerId.trim();
     const minifacesPath = this.dependencyTargetPath("minifaces");
     const candidates = [
-      normalizedPlayerId ? join(minifacesPath, `${normalizedPlayerId}.dds`) : "",
-      join(minifacesPath, "generic.dds"),
-      join(minifacesPath, "default.dds"),
-      join(minifacesPath, "0.dds")
-    ].filter(Boolean);
+      ...[
+        normalizedPlayerId && !normalizedPlayerId.toLowerCase().startsWith("p") ? join(minifacesPath, `p${normalizedPlayerId}.dds`) : "",
+        normalizedPlayerId ? join(minifacesPath, `${normalizedPlayerId}.dds`) : ""
+      ].filter(Boolean).map((filePath) => ({ filePath, source: "player" as const })),
+      ...[
+        join(minifacesPath, "generic.dds"),
+        join(minifacesPath, "default.dds"),
+        join(minifacesPath, "0.dds")
+      ].map((filePath) => ({ filePath, source: "generic" as const }))
+    ];
 
-    for (const [index, filePath] of candidates.entries()) {
-      if (!existsSync(filePath)) {
+    for (const candidate of candidates) {
+      if (!existsSync(candidate.filePath)) {
         continue;
       }
       try {
         return {
           playerId,
-          dataUrl: ddsToBmpDataUrl(readFileSync(filePath)),
-          found: index === 0,
-          source: index === 0 ? "player" : "generic"
+          dataUrl: ddsToBmpDataUrl(readFileSync(candidate.filePath)),
+          found: candidate.source === "player",
+          source: candidate.source
         };
       } catch {
         continue;
@@ -128,9 +158,10 @@ export class VisualDependencyManager {
     };
   }
 
-  private async installDependency(dependency: VisualDependencyConfig, onProgress?: VisualDependencyProgressCallback): Promise<void> {
+  private async installDependency(dependency: VisualDependencyConfig, onProgress?: VisualDependencyProgressCallback): Promise<DependencyInstallAction> {
     const downloadPath = join(this.downloadsPath, dependency.fileName);
     const targetPath = this.dependencyTargetPath(dependency.id);
+    const url = AppConfig.dependencyUrl(dependency.fileName);
     let lastProgressPercent = -1;
     let lastProgressAt = 0;
     const emit = (progress: Omit<VisualDependencyProgress, "id" | "label">, force = false): void => {
@@ -149,25 +180,58 @@ export class VisualDependencyManager {
       });
     };
 
-    await downloadFile(AppConfig.dependencyUrl(dependency.fileName), downloadPath, (receivedBytes, totalBytes) => {
-      const downloadPercent = totalBytes ? (receivedBytes / totalBytes) * 85 : 5;
-      const detail = totalBytes
-        ? `${formatBytes(receivedBytes)} of ${formatBytes(totalBytes)}`
-        : formatBytes(receivedBytes);
+    emit({
+      phase: "queued",
+      receivedBytes: 0,
+      percent: 0,
+      message: `Checking ${dependency.label}`
+    }, true);
+
+    const remoteInfo = await this.remoteInfoForInstall(url);
+    const downloadedSize = fileSize(downloadPath);
+    const canUseExistingDownload = downloadedSize > 0 && (remoteInfo.size === undefined || downloadedSize >= remoteInfo.size);
+    const alreadyInstalled = this.isDependencyInstalled(dependency);
+
+    if (canUseExistingDownload) {
+      writeDownloadMetadata(downloadPath, dependency, url, remoteInfo);
+    }
+
+    if (alreadyInstalled && canUseExistingDownload) {
       emit({
-        phase: "downloading",
-        receivedBytes,
-        totalBytes,
-        percent: downloadPercent,
-        message: `Downloading ${dependency.label} (${detail})`
+        phase: "installed",
+        receivedBytes: downloadedSize,
+        totalBytes: remoteInfo.size,
+        percent: 100,
+        message: `${dependency.label} is already up to date`
+      }, true);
+      this.writeInstalledMetadata(targetPath, dependency, downloadPath, remoteInfo);
+      return "skipped";
+    }
+
+    if (!canUseExistingDownload) {
+      await downloadFile(url, downloadPath, (receivedBytes, totalBytes) => {
+        const downloadPercent = totalBytes ? (receivedBytes / totalBytes) * 85 : 5;
+        const detail = totalBytes
+          ? `${formatBytes(receivedBytes)} of ${formatBytes(totalBytes)}`
+          : formatBytes(receivedBytes);
+        emit({
+          phase: "downloading",
+          receivedBytes,
+          totalBytes,
+          percent: downloadPercent,
+          message: `Downloading ${dependency.label} (${detail})`
+        });
       });
-    });
+      writeDownloadMetadata(downloadPath, dependency, url, remoteInfo);
+    }
 
     emit({
       phase: "extracting",
       receivedBytes: 0,
       percent: 85,
-      message: `Extracting ${dependency.label}`
+      message: canUseExistingDownload
+        ? `Extracting existing ${dependency.label} download`
+        : `Extracting ${dependency.label}`
     }, true);
     resetDirectory(targetPath, this.rootPath);
     extractZip(downloadPath, targetPath, dependency.stripRootDirectory, (extractedFiles, totalFiles) => {
@@ -180,30 +244,52 @@ export class VisualDependencyManager {
           : `Extracting ${dependency.label}`
       });
     });
-    writeFileSync(
-      join(targetPath, ".dbm-studio-installed.json"),
-      JSON.stringify({ id: dependency.id, installedAt: new Date().toISOString() }, null, 2),
-      "utf8"
-    );
+    this.writeInstalledMetadata(targetPath, dependency, downloadPath, remoteInfo);
     emit({
       phase: "installed",
       receivedBytes: 0,
       percent: 100,
       message: `${dependency.label} installed`
     }, true);
+    return canUseExistingDownload ? "extracted" : "downloaded";
   }
 
-  private dependencyStatus(dependency: VisualDependencyConfig): VisualDependencyStatus {
+  private async dependencyStatus(dependency: VisualDependencyConfig): Promise<VisualDependencyStatus> {
     const targetPath = this.dependencyTargetPath(dependency.id);
     const filesCount = countFilesByExtension(targetPath, dependency.expectedExtension);
+    const installed = filesCount > 0;
+    const downloadPath = join(this.downloadsPath, dependency.fileName);
+    const downloadUrl = AppConfig.dependencyUrl(dependency.fileName);
+    const downloadedSize = fileSize(downloadPath);
+    let metadata = readDownloadMetadata(downloadPath);
+    let remoteInfo: RemoteFileInfo | undefined;
+    let remoteCheckError: string | undefined;
+    try {
+      remoteInfo = await fetchRemoteFileInfo(downloadUrl);
+      if (downloadedSize > 0) {
+        writeDownloadMetadata(downloadPath, dependency, downloadUrl, remoteInfo);
+        metadata = readDownloadMetadata(downloadPath);
+      }
+    } catch (error) {
+      remoteCheckError = error instanceof Error ? error.message : String(error);
+    }
+    const remoteSize = remoteInfo?.size;
+    const updateAvailable = remoteSize !== undefined && downloadedSize > 0 && remoteSize > downloadedSize;
     return {
       id: dependency.id,
       label: dependency.label,
       fileName: dependency.fileName,
-      downloadUrl: AppConfig.dependencyUrl(dependency.fileName),
+      downloadUrl,
       targetPath,
-      installed: filesCount > 0,
-      filesCount
+      installed,
+      downloaded: downloadedSize > 0,
+      current: installed && downloadedSize > 0 && !updateAvailable,
+      updateAvailable,
+      filesCount,
+      downloadedSize,
+      recordedDownloadedSize: metadata?.downloadedSize,
+      remoteSize,
+      remoteCheckError
     };
   }
 
@@ -211,6 +297,149 @@ export class VisualDependencyManager {
     const dependency = AppConfig.visualDependencies.find((candidate) => candidate.id === id);
     return join(this.rootPath, dependency?.targetDirectory ?? id);
   }
+
+  private isDependencyInstalled(dependency: VisualDependencyConfig): boolean {
+    return countFilesByExtension(this.dependencyTargetPath(dependency.id), dependency.expectedExtension) > 0;
+  }
+
+  private async remoteInfoForInstall(url: string): Promise<RemoteFileInfo> {
+    try {
+      return await fetchRemoteFileInfo(url);
+    } catch {
+      return { acceptsRanges: false };
+    }
+  }
+
+  private writeInstalledMetadata(targetPath: string, dependency: VisualDependencyConfig, downloadPath: string, remoteInfo: RemoteFileInfo): void {
+    writeFileSync(
+      join(targetPath, ".dbm-studio-installed.json"),
+      JSON.stringify({
+        id: dependency.id,
+        installedAt: new Date().toISOString(),
+        fileName: dependency.fileName,
+        downloadedSize: fileSize(downloadPath),
+        remoteSize: remoteInfo.size,
+        etag: remoteInfo.etag,
+        lastModified: remoteInfo.lastModified
+      }, null, 2),
+      "utf8"
+    );
+  }
+}
+
+function readDownloadMetadata(downloadPath: string): DownloadMetadata | undefined {
+  try {
+    const parsed = JSON.parse(readFileSync(downloadMetadataPath(downloadPath), "utf8")) as Partial<DownloadMetadata>;
+    if (typeof parsed.fileName !== "string" || typeof parsed.url !== "string" || !isPositiveSafeInteger(parsed.downloadedSize)) {
+      return undefined;
+    }
+    return {
+      fileName: parsed.fileName,
+      url: parsed.url,
+      downloadedSize: parsed.downloadedSize,
+      remoteSize: isPositiveSafeInteger(parsed.remoteSize) ? parsed.remoteSize : undefined,
+      etag: typeof parsed.etag === "string" ? parsed.etag : undefined,
+      lastModified: typeof parsed.lastModified === "string" ? parsed.lastModified : undefined,
+      downloadedAt: typeof parsed.downloadedAt === "string" ? parsed.downloadedAt : ""
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function writeDownloadMetadata(downloadPath: string, dependency: VisualDependencyConfig, url: string, remoteInfo: RemoteFileInfo): void {
+  const downloadedSize = fileSize(downloadPath);
+  if (downloadedSize <= 0) {
+    return;
+  }
+  const metadata: DownloadMetadata = {
+    fileName: dependency.fileName,
+    url,
+    downloadedSize,
+    remoteSize: remoteInfo.size,
+    etag: remoteInfo.etag,
+    lastModified: remoteInfo.lastModified,
+    downloadedAt: new Date().toISOString()
+  };
+  writeFileSync(downloadMetadataPath(downloadPath), JSON.stringify(metadata, null, 2), "utf8");
+}
+
+function downloadMetadataPath(downloadPath: string): string {
+  return `${downloadPath}.dbm-studio.json`;
+}
+
+async function fetchRemoteFileInfo(url: string): Promise<RemoteFileInfo> {
+  return requestRemoteFileInfo(url, "HEAD");
+}
+
+async function requestRemoteFileInfo(url: string, method: "HEAD" | "GET", redirects = 0): Promise<RemoteFileInfo> {
+  if (redirects > downloadMaxRedirects) {
+    throw new Error("Too many redirects while checking dependency.");
+  }
+
+  const parsedUrl = new URL(url);
+  const response = await openMetadataResponse(parsedUrl, method);
+  const statusCode = response.statusCode ?? 0;
+  const redirect = response.headers.location;
+
+  if (statusCode >= 300 && statusCode < 400 && redirect) {
+    closeMetadataResponse(response);
+    return requestRemoteFileInfo(new URL(redirect, parsedUrl).toString(), method, redirects + 1);
+  }
+
+  if (method === "HEAD" && (statusCode === 405 || statusCode === 501)) {
+    closeMetadataResponse(response);
+    return requestRemoteFileInfo(url, "GET", redirects);
+  }
+
+  if (statusCode < 200 || statusCode >= 300) {
+    closeMetadataResponse(response);
+    throw new DownloadHttpError(`Dependency check failed with HTTP ${statusCode}.`, isRetryableHttpStatus(statusCode));
+  }
+
+  const contentRange = parseContentRange(headerValue(response.headers["content-range"]));
+  const contentLength = parseContentLength(response.headers["content-length"]);
+  const size = contentRange?.total ?? contentLength;
+  const acceptsRanges = headerValue(response.headers["accept-ranges"])?.toLowerCase() === "bytes" || Boolean(contentRange);
+  const info: RemoteFileInfo = {
+    size,
+    etag: headerValue(response.headers.etag),
+    lastModified: headerValue(response.headers["last-modified"]),
+    acceptsRanges
+  };
+  closeMetadataResponse(response);
+  return info;
+}
+
+function openMetadataResponse(parsedUrl: URL, method: "HEAD" | "GET"): Promise<IncomingMessage> {
+  return new Promise((resolveDownload, rejectDownload) => {
+    const client = parsedUrl.protocol === "https:" ? requestSecure : requestHttp;
+    const headers: Record<string, string> = {
+      "Accept-Encoding": "identity",
+      "User-Agent": "DBM-Studio"
+    };
+    if (method === "GET") {
+      headers.Range = "bytes=0-0";
+    }
+    const options: RequestOptions = {
+      agent: parsedUrl.protocol === "https:" ? downloadHttpsAgent : downloadHttpAgent,
+      headers,
+      method
+    };
+
+    const request = client(parsedUrl, options, (response) => {
+      resolveDownload(response);
+    });
+    request.on("error", rejectDownload);
+    request.setTimeout(downloadStallTimeoutMs, () => {
+      request.destroy(new Error(`Dependency check stalled for ${Math.round(downloadStallTimeoutMs / 1000)} seconds.`));
+    });
+    request.end();
+  });
+}
+
+function closeMetadataResponse(response: IncomingMessage): void {
+  response.destroy();
 }
 
 async function downloadFile(url: string, outputPath: string, onProgress?: DownloadProgressCallback): Promise<void> {
@@ -366,6 +595,10 @@ function parseContentRange(value?: string): ContentRange | undefined {
 function parseContentLength(value: string | string[] | undefined): number | undefined {
   const parsed = Number(headerValue(value));
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {
