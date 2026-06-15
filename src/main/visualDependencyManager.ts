@@ -1,7 +1,9 @@
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { get } from "node:http";
-import { get as getSecure } from "node:https";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { Agent as HttpAgent, get, type IncomingMessage, type RequestOptions } from "node:http";
+import { Agent as HttpsAgent, get as getSecure } from "node:https";
 import { basename, dirname, extname, join, normalize, resolve, sep } from "node:path";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { inflateRawSync } from "node:zlib";
 import { AppConfig, type VisualDependencyConfig } from "../app-config";
 import type {
@@ -28,6 +30,13 @@ interface RgbaImage {
 type VisualDependencyProgressCallback = (progress: VisualDependencyProgress) => void;
 type DownloadProgressCallback = (receivedBytes: number, totalBytes?: number) => void;
 type ExtractProgressCallback = (extractedFiles: number, totalFiles: number) => void;
+
+const downloadHttpAgent = new HttpAgent({ keepAlive: true, maxSockets: 2 });
+const downloadHttpsAgent = new HttpsAgent({ keepAlive: true, maxSockets: 2 });
+const downloadMaxRedirects = 5;
+const downloadMaxAttempts = 8;
+const downloadStallTimeoutMs = 45000;
+const downloadBaseRetryDelayMs = 900;
 
 export class VisualDependencyManager {
   private readonly rootPath: string;
@@ -204,56 +213,183 @@ export class VisualDependencyManager {
   }
 }
 
-function downloadFile(url: string, outputPath: string, onProgress?: DownloadProgressCallback, redirects = 0): Promise<void> {
-  if (redirects > 5) {
-    return Promise.reject(new Error("Too many redirects while downloading dependency."));
+async function downloadFile(url: string, outputPath: string, onProgress?: DownloadProgressCallback): Promise<void> {
+  mkdirSync(dirname(outputPath), { recursive: true });
+  const partialPath = `${outputPath}.part`;
+  let lastError: Error | undefined;
+  let attemptsUsed = 0;
+
+  for (let attempt = 1; attempt <= downloadMaxAttempts; attempt += 1) {
+    attemptsUsed = attempt;
+    try {
+      await downloadAttempt(url, partialPath, onProgress);
+      rmSync(outputPath, { force: true });
+      renameSync(partialPath, outputPath);
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (error instanceof DownloadHttpError && !error.retryable) {
+        break;
+      }
+      if (attempt < downloadMaxAttempts) {
+        await delay(retryDelayMs(attempt));
+      }
+    }
   }
 
-  mkdirSync(dirname(outputPath), { recursive: true });
+  throw new Error(`Download failed after ${attemptsUsed} ${attemptsUsed === 1 ? "attempt" : "attempts"}: ${lastError?.message ?? "unknown error"}`);
+}
+
+async function downloadAttempt(url: string, partialPath: string, onProgress?: DownloadProgressCallback, redirects = 0): Promise<void> {
+  if (redirects > downloadMaxRedirects) {
+    throw new Error("Too many redirects while downloading dependency.");
+  }
+
+  const resumeFrom = fileSize(partialPath);
+  const parsedUrl = new URL(url);
+  const response = await openDownloadResponse(parsedUrl, resumeFrom);
+  const statusCode = response.statusCode ?? 0;
+  const redirect = response.headers.location;
+
+  if (statusCode >= 300 && statusCode < 400 && redirect) {
+    response.resume();
+    await downloadAttempt(new URL(redirect, parsedUrl).toString(), partialPath, onProgress, redirects + 1);
+    return;
+  }
+
+  if (statusCode === 416) {
+    response.resume();
+    rmSync(partialPath, { force: true });
+    throw new DownloadHttpError("Download resume point is no longer valid.", true);
+  }
+
+  if (statusCode < 200 || statusCode >= 300) {
+    response.resume();
+    throw new DownloadHttpError(`Download failed with HTTP ${statusCode}.`, isRetryableHttpStatus(statusCode));
+  }
+
+  const contentRange = parseContentRange(headerValue(response.headers["content-range"]));
+  const contentLength = parseContentLength(response.headers["content-length"]);
+  const serverResumed = statusCode === 206 && contentRange?.start === resumeFrom;
+  const append = resumeFrom > 0 && serverResumed;
+  const startingBytes = append ? resumeFrom : 0;
+  const expectedResponseBytes = contentLength;
+  const totalBytes = contentRange?.total ?? (contentLength !== undefined ? startingBytes + contentLength : undefined);
+  let receivedBytes = startingBytes;
+
+  if (resumeFrom > 0 && !append) {
+    rmSync(partialPath, { force: true });
+  }
+
+  onProgress?.(receivedBytes, totalBytes);
+  const progress = new Transform({
+    transform(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null, data?: Buffer) => void) {
+      receivedBytes += chunk.length;
+      onProgress?.(receivedBytes, totalBytes);
+      callback(null, chunk);
+    }
+  });
+  const output = createWriteStream(partialPath, { flags: append ? "a" : "w" });
+  try {
+    await pipeline(response, progress, output);
+  } catch (error) {
+    throw error instanceof Error ? error : new Error(String(error));
+  }
+
+  const downloadedSize = fileSize(partialPath);
+  const responseBytes = downloadedSize - startingBytes;
+  if (!response.complete) {
+    throw new Error("Download connection closed before all bytes were received.");
+  }
+  if (expectedResponseBytes !== undefined && responseBytes !== expectedResponseBytes) {
+    throw new Error(`Download received ${formatBytes(responseBytes)} but expected ${formatBytes(expectedResponseBytes)}.`);
+  }
+  if (totalBytes !== undefined && downloadedSize < totalBytes) {
+    throw new Error(`Download stopped at ${formatBytes(downloadedSize)} of ${formatBytes(totalBytes)}.`);
+  }
+}
+
+function openDownloadResponse(parsedUrl: URL, resumeFrom: number): Promise<IncomingMessage> {
   return new Promise((resolveDownload, rejectDownload) => {
-    const parsedUrl = new URL(url);
     const client = parsedUrl.protocol === "https:" ? getSecure : get;
-    const request = client(parsedUrl, (response) => {
-      const statusCode = response.statusCode ?? 0;
-      const redirect = response.headers.location;
-      if (statusCode >= 300 && statusCode < 400 && redirect) {
-        response.resume();
-        downloadFile(new URL(redirect, parsedUrl).toString(), outputPath, onProgress, redirects + 1).then(resolveDownload, rejectDownload);
-        return;
-      }
+    const headers: Record<string, string> = {
+      "Accept-Encoding": "identity",
+      "User-Agent": "DBM-Studio"
+    };
+    if (resumeFrom > 0) {
+      headers.Range = `bytes=${resumeFrom}-`;
+    }
+    const options: RequestOptions = {
+      agent: parsedUrl.protocol === "https:" ? downloadHttpsAgent : downloadHttpAgent,
+      headers
+    };
 
-      if (statusCode < 200 || statusCode >= 300) {
-        response.resume();
-        rejectDownload(new Error(`Download failed with HTTP ${statusCode}.`));
-        return;
-      }
-
-      const contentLength = Array.isArray(response.headers["content-length"])
-        ? response.headers["content-length"][0]
-        : response.headers["content-length"];
-      const totalBytes = contentLength ? Number(contentLength) : undefined;
-      let receivedBytes = 0;
-      onProgress?.(receivedBytes, Number.isFinite(totalBytes) ? totalBytes : undefined);
-
-      const stream = createWriteStream(outputPath);
-      response.on("data", (chunk: Buffer) => {
-        receivedBytes += chunk.length;
-        onProgress?.(receivedBytes, Number.isFinite(totalBytes) ? totalBytes : undefined);
-      });
-      response.on("error", rejectDownload);
-      response.pipe(stream);
-      stream.on("finish", () => {
-        stream.close();
-        resolveDownload();
-      });
-      stream.on("error", rejectDownload);
+    const request = client(parsedUrl, options, (response) => {
+      resolveDownload(response);
     });
-
     request.on("error", rejectDownload);
-    request.setTimeout(120000, () => {
-      request.destroy(new Error("Download timed out."));
+    request.setTimeout(downloadStallTimeoutMs, () => {
+      request.destroy(new Error(`Download stalled for ${Math.round(downloadStallTimeoutMs / 1000)} seconds.`));
     });
   });
+}
+
+class DownloadHttpError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+  }
+}
+
+interface ContentRange {
+  start: number;
+  end: number;
+  total?: number;
+}
+
+function parseContentRange(value?: string): ContentRange | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const match = /^bytes\s+(\d+)-(\d+)\/(\d+|\*)$/i.exec(value.trim());
+  if (!match) {
+    return undefined;
+  }
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  const total = match[3] === "*" ? undefined : Number(match[3]);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end) {
+    return undefined;
+  }
+  return Number.isSafeInteger(total) ? { start, end, total } : { start, end };
+}
+
+function parseContentLength(value: string | string[] | undefined): number | undefined {
+  const parsed = Number(headerValue(value));
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function fileSize(path: string): number {
+  try {
+    return statSync(path).size;
+  } catch {
+    return 0;
+  }
+}
+
+function isRetryableHttpStatus(statusCode: number): boolean {
+  return statusCode === 408 || statusCode === 425 || statusCode === 429 || statusCode >= 500;
+}
+
+function retryDelayMs(attempt: number): number {
+  return Math.min(10000, downloadBaseRetryDelayMs * 2 ** (attempt - 1));
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
 }
 
 function extractZip(zipPath: string, outputPath: string, stripRootDirectory?: string, onProgress?: ExtractProgressCallback): void {
