@@ -20,7 +20,7 @@ import { TeamEditorPageComponent } from "../team-editor/team-editor-page.compone
 import packageInfo from "../../../../package.json";
 
 type ToastTone = "info" | "warn" | "error";
-type ViewMode = "home" | "launcher" | "table" | "modules" | "playerEditor" | "teamEditor" | "leagueEditor";
+type ViewMode = "home" | "launcher" | "table" | "modules" | "compdata" | "playerEditor" | "teamEditor" | "leagueEditor";
 type ModuleMode = "players" | "teams" | "leagues" | "transfers";
 
 interface TableListItem {
@@ -176,7 +176,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   }
 
   get canSaveDatabase(): boolean {
-    return this.project?.sourceKind === "database" && this.project.binaryReadMode !== "none" && Boolean(this.project.dbPath);
+    return this.project?.sourceKind === "database" && this.project.databaseWritable === true && Boolean(this.project.dbPath);
   }
 
   get visualDependencyProgressPercent(): number {
@@ -350,6 +350,11 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     }, "Opening text tables", "Reading exported .txt files");
   }
 
+  openCompdataWorkspace(): void {
+    this.viewMode = "compdata";
+    this.setStatus("Compdata workspace ready");
+  }
+
   async saveProject(title = "Saving database", detail = "Writing .db file and backup"): Promise<void> {
     await this.guarded(async () => {
       if (!this.project) {
@@ -358,16 +363,27 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       const result = await this.api.saveDatabase(this.project);
       if (result.filePath) {
         if (result.tablesWritten === 0) {
-          this.setStatus("No changes to save");
+          const warning = result.warnings[0];
+          if (warning) {
+            this.showToast(warning, "warn");
+            this.setStatus(warning);
+          } else {
+            this.setStatus("No changes to save");
+          }
           return;
         }
         for (const table of this.project.tables) {
           table.changed = false;
         }
-        for (const table of this.project.localization?.tables ?? []) {
-          table.changed = false;
+        if (!result.localizationSkipped) {
+          for (const table of this.project.localization?.tables ?? []) {
+            table.changed = false;
+          }
         }
         const warnings = result.warnings.length > 0 ? ` ${result.warnings.length} warning(s).` : "";
+        if (result.localizationSkipped && result.warnings.length > 0) {
+          this.showToast(result.warnings[result.warnings.length - 1], "warn");
+        }
         this.setStatus(`${result.tablesWritten} table(s) saved to DB.${warnings}`);
       }
     }, title, detail);
@@ -1025,6 +1041,9 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     this.selectedRows.clear();
     this.copied = undefined;
     this.sort = undefined;
+    if (project.warnings.length > 0) {
+      this.showToast(project.warnings[0], "warn");
+    }
     this.setStatus(project.warnings.length > 0 ? `${project.title} loaded with ${project.warnings.length} warning(s)` : `${project.title} loaded`);
     this.resetHorizontalScroll();
   }

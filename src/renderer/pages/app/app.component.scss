@@ -5,6 +5,7 @@
 
 .home-screen,
 .launcher-screen,
+.compdata-screen,
 .modules-screen,
 .editor-screen {
   height: 100vh;
@@ -13,15 +14,19 @@
 }
 
 .home-screen {
-  display: grid;
-  place-items: center;
-  padding: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  background:
+    linear-gradient(90deg, rgba(31, 122, 90, 0.06), transparent 40%),
+    linear-gradient(180deg, #ffffff 0%, var(--bg) 100%);
 }
 
 .home-panel {
-  width: min(720px, 100%);
+  width: min(860px, 100%);
   display: grid;
-  gap: 22px;
+  gap: 26px;
 }
 
 .brand {
@@ -95,14 +100,64 @@
   padding: 0 8px;
 }
 
-.home-actions {
-  display: flex;
-  flex-wrap: wrap;
+.home-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.home-option {
+  width: 100%;
+  min-height: 138px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  align-content: space-between;
+  gap: 22px;
+  border-radius: 8px;
+  background: white;
+  text-align: left;
+  padding: 16px;
+}
+
+.home-option:hover:not(:disabled) {
+  background: #fbfcfa;
+  transform: translateY(-1px);
+}
+
+.simple-option {
+  border-color: #89aaa0;
+}
+
+.full-option {
+  border-color: #86a1c7;
+}
+
+.compdata-option {
+  border-color: #c4a86c;
+}
+
+.option-index {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.option-copy {
+  display: grid;
   gap: 8px;
 }
 
-.home-actions button {
-  min-height: 38px;
+.option-copy strong {
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.option-copy small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
 }
 
 .primary-action,
@@ -119,9 +174,38 @@
 }
 
 .launcher-screen,
+.compdata-screen,
 .modules-screen {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.compdata-main {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-items: center;
+  padding: 24px;
+}
+
+.compdata-empty {
+  width: min(680px, 100%);
+  display: grid;
+  gap: 10px;
+}
+
+.compdata-empty h2 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.compdata-empty p {
+  max-width: 560px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .screen-header {
@@ -1094,7 +1178,10 @@ td.row-select {
     font-size: 18px;
   }
 
-  .home-actions button,
+  .home-options {
+    grid-template-columns: 1fr;
+  }
+
   .choice-card,
   .module-card {
     width: 100%;

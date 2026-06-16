@@ -10,12 +10,57 @@
         </div>
       </div>
 
-      <div class="home-actions">
-        <button type="button" class="primary-action" (click)="openDatabase()">Open DB + XML</button>
-        <button type="button" (click)="openDatabaseWithLocalization()">Open DB + XML + Language Files</button>
-        <button type="button" (click)="openTextFolder()">Open Text Folder</button>
+      <div class="home-options" aria-label="Editor mode">
+        <button type="button" class="home-option simple-option" (click)="openDatabase()">
+          <span class="option-index">01</span>
+          <span class="option-copy">
+            <strong>Simple DB Editor</strong>
+            <small>DB + XML</small>
+          </span>
+        </button>
+        <button type="button" class="home-option full-option" (click)="openDatabaseWithLocalization()">
+          <span class="option-index">02</span>
+          <span class="option-copy">
+            <strong>Full DB Editor</strong>
+            <small>DB + XML + LOC</small>
+          </span>
+        </button>
+        <button type="button" class="home-option compdata-option" (click)="openCompdataWorkspace()">
+          <span class="option-index">03</span>
+          <span class="option-copy">
+            <strong>Compdata Editor</strong>
+            <small>TXT + CSV</small>
+          </span>
+        </button>
       </div>
     </div>
+  </section>
+
+  <section class="compdata-screen" *ngSwitchCase="'compdata'">
+    <header class="screen-header">
+      <div class="brand compact-brand">
+        <div class="brand-mark">DBM</div>
+        <div>
+          <h1>Compdata Editor</h1>
+          <p>Competition data workspace</p>
+        </div>
+      </div>
+      <div class="screen-actions">
+        <button type="button" (click)="showLauncher()">Home</button>
+      </div>
+    </header>
+
+    <main class="compdata-main">
+      <section class="compdata-empty">
+        <span class="module-kicker">Compdata</span>
+        <h2>Ready for tournament files</h2>
+        <p>Send the standard compdata files and this workspace will become the tournament editor.</p>
+      </section>
+    </main>
+
+    <footer class="screen-footer">
+      <span>{{ statusLine }}</span>
+    </footer>
   </section>
 
   <section class="launcher-screen" *ngSwitchCase="'launcher'">

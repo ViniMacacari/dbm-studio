@@ -50,6 +50,7 @@ export interface DbProject {
   descriptors: TableDescriptor[];
   warnings: string[];
   binaryReadMode?: "none" | "descriptor" | "best-effort";
+  databaseWritable?: boolean;
   localization?: LocalizationProject;
 }
 
@@ -62,6 +63,7 @@ export interface LocalizationProject {
   descriptors: TableDescriptor[];
   warnings: string[];
   binaryReadMode?: "none" | "descriptor" | "best-effort";
+  databaseWritable?: boolean;
 }
 
 export interface OpenResult {

@@ -25,7 +25,7 @@ const languageHashTable = makeLanguageHashTable();
 @Injectable({ providedIn: "root" })
 export class LocalizationService {
   hasLocalization(project?: DbProject): boolean {
-    return this.languageTables(project).length > 0;
+    return this.languageTables(project).some((layout) => layout.table.rows.length > 0);
   }
 
   teamFields(project: DbProject | undefined, teamId: string, displayName: string): LocalizationFieldDraft[] {
@@ -47,7 +47,7 @@ export class LocalizationService {
   }
 
   applyFields(project: DbProject, fields: LocalizationFieldDraft[]): LocalizationApplyResult | undefined {
-    if (!fields.length || !project.localization) {
+    if (!fields.length || !project.localization || !this.hasLocalization(project)) {
       return undefined;
     }
 

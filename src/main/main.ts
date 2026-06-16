@@ -239,7 +239,8 @@ function toLocalizationProject(project: DbProject): LocalizationProject {
     tables: project.tables,
     descriptors: project.descriptors,
     warnings: project.warnings,
-    binaryReadMode: project.binaryReadMode
+    binaryReadMode: project.binaryReadMode,
+    databaseWritable: project.databaseWritable
   };
 }
 
