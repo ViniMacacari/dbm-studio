@@ -101,9 +101,21 @@ export class CompdataEditorPageComponent {
     return selected ? this.compdataProject?.objects.find((object) => object.id === selected.id) : undefined;
   }
 
+  private _cachedFilteredCompetitions: CompdataCompetitionSummary[] = [];
+  private _lastFilterString = "";
+  private _lastProjectForFilteredCompetitions?: CompdataProject;
+
   get filteredCompdataCompetitions(): CompdataCompetitionSummary[] {
     const filter = this.compdataCompetitionFilter.trim().toLowerCase();
-    return (this.compdataProject?.competitions ?? []).filter((competition) => {
+    if (
+      this.compdataProject === this._lastProjectForFilteredCompetitions &&
+      filter === this._lastFilterString &&
+      this._cachedFilteredCompetitions.length > 0 // basic sanity check
+    ) {
+      return this._cachedFilteredCompetitions;
+    }
+    
+    this._cachedFilteredCompetitions = (this.compdataProject?.competitions ?? []).filter((competition) => {
       if (!filter) {
         return true;
       }
@@ -114,6 +126,10 @@ export class CompdataEditorPageComponent {
         String(competition.id)
       ].some((value) => value.toLowerCase().includes(filter));
     });
+    
+    this._lastFilterString = filter;
+    this._lastProjectForFilteredCompetitions = this.compdataProject;
+    return this._cachedFilteredCompetitions;
   }
 
   get compdataReferenceLabel(): string {
@@ -123,22 +139,30 @@ export class CompdataEditorPageComponent {
     return this.compdataReferenceProject.localization?.title ?? this.compdataReferenceProject.title;
   }
 
+  private _cachedLeagueOptions: CompdataReferenceLeague[] = [];
+  private _lastReferenceProjectForLeagues?: DbProject;
+
   get compdataLeagueOptions(): CompdataReferenceLeague[] {
     if (!this.compdataReferenceProject) {
       return [];
+    }
+    if (this.compdataReferenceProject === this._lastReferenceProjectForLeagues) {
+      return this._cachedLeagueOptions;
     }
     const existingAssetIds = new Set(
       this.compdataProject?.settings
         .filter((setting) => setting.key === "asset_id")
         .map((setting) => setting.value) ?? []
     );
-    return this.leagueEditor.findLeagues(this.compdataReferenceProject, "", "", 10000).map((league) => ({
+    this._cachedLeagueOptions = this.leagueEditor.findLeagues(this.compdataReferenceProject, "", "", 10000).map((league) => ({
       leagueId: league.leagueId,
       displayName: league.displayName,
       countryName: league.countryName,
       teamsCount: league.teamsCount,
       alreadyInCompdata: existingAssetIds.has(league.leagueId)
     }));
+    this._lastReferenceProjectForLeagues = this.compdataReferenceProject;
+    return this._cachedLeagueOptions;
   }
 
   get compdataReferenceTeamsCount(): number {
@@ -149,27 +173,46 @@ export class CompdataEditorPageComponent {
     return this.compdataLeagueOptions.find((league) => league.leagueId === this.compdataBuilder.sourceLeagueId);
   }
 
+  private _cachedParentOptions: Array<{ value: string; label: string }> = [];
+  private _lastProjectForParentOptions?: CompdataProject;
+
   get compdataParentOptions() {
-    return (this.compdataProject?.objects ?? [])
+    if (!this.compdataProject) {
+      return [];
+    }
+    if (this.compdataProject === this._lastProjectForParentOptions) {
+      return this._cachedParentOptions;
+    }
+    this._cachedParentOptions = this.compdataProject.objects
       .filter((object) => object.kind <= 2)
       .map((object) => ({
         value: String(object.id),
         label: `${object.shortName || object.id} / ${this.resolveCompdataText(object.description)}`
       }));
+    this._lastProjectForParentOptions = this.compdataProject;
+    return this._cachedParentOptions;
   }
+
+  private _cachedStageSettings: Array<{ stage: CompdataCompetitionSummary["stages"][number]; settings: string[]; groups: CompdataCompetitionSummary["groups"] }> = [];
+  private _lastCompetitionForStageSettings?: CompdataCompetitionSummary;
 
   get compdataStageSettings(): Array<{ stage: CompdataCompetitionSummary["stages"][number]; settings: string[]; groups: CompdataCompetitionSummary["groups"] }> {
     const competition = this.selectedCompdataCompetition;
     if (!competition || !this.compdataProject) {
       return [];
     }
-    return competition.stages.map((stage) => ({
+    if (competition === this._lastCompetitionForStageSettings) {
+      return this._cachedStageSettings;
+    }
+    this._cachedStageSettings = competition.stages.map((stage) => ({
       stage,
       settings: this.compdataProject?.settings
         .filter((setting) => setting.objectId === stage.id)
         .map((setting) => `${setting.key}: ${setting.value}`) ?? [],
       groups: competition.groups.filter((group) => group.parentId === stage.id)
     }));
+    this._lastCompetitionForStageSettings = competition;
+    return this._cachedStageSettings;
   }
 
   async openCompdataFolder(): Promise<void> {
@@ -192,35 +235,64 @@ export class CompdataEditorPageComponent {
         hasProject: Boolean(result.project),
         error: result.error
       });
-      debugCompdataRenderer("openCompdataFolder:setLoading:false");
-      this.loadingStateChanged.emit({ loading: false });
 
       if (!result.project) {
         debugCompdataRenderer("openCompdataFolder:noProject");
         return;
       }
 
+      // Delay applying the project to the UI until AFTER the localization reference is loaded
+      // This matches the user's requested flow: load txt -> open xml -> open db -> load db -> show editor
+
+      // Ensure the UI updates to show the prompt before blocking the thread
+      this.loadingStateChanged.emit({ loading: true, title: "LOC Reference", detail: "Please select LOC XML and DB/.loc when prompted" });
+      await new Promise(resolve => setTimeout(resolve, 350));
+
+      const locPromise = this.api.openCompdataLocalizationReference();
+      
+      const locTimer = setTimeout(() => {
+        this.loadingStateChanged.emit({ loading: true, title: "Reading LOC Database", detail: "Please wait... this may take up to 30 seconds" });
+      }, 800);
+
+      const locResult = await locPromise;
+      clearTimeout(locTimer);
+      
+      // Now that everything is loaded, we apply to the UI
       this.compdataProject = result.project;
       this.compdataReferenceProject = undefined;
       this.selectedCompdataCompetitionId = result.project.competitions[0]?.id ?? 0;
+
+      if (locResult.referenceProject) {
+        this.compdataReferenceProject = locResult.referenceProject;
+        this.statusChanged.emit(`${result.project.title} loaded / ${this.compdataReferenceLabel} localization`);
+      } else {
+        const reason = locResult.warnings?.[0] ?? "LOC reference was not loaded";
+        this.statusChanged.emit(`${result.project.title} loaded without LOC reference. ${reason}`);
+      }
+      
       if (result.project.warnings.length > 0) {
         this.toastTriggered.emit({ message: result.project.warnings[0], tone: "warn" });
+      }
+      if (locResult.warnings && locResult.warnings.length > 0) {
+        this.toastTriggered.emit({ message: locResult.warnings[0], tone: "warn" });
       }
       debugCompdataRenderer("openCompdataFolder:projectApplied", {
         title: result.project.title,
         competitions: result.project.competitions.length,
         objects: result.project.objects.length
       });
-      this.statusChanged.emit(`${result.project.title} loaded with ${result.project.competitions.length} competition(s)`);
-      this.queueCompdataLocalizationReferencePrompt(folderPath);
+
+      this.changeDetector.detectChanges();
+
+      
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[compdata/renderer] openCompdataFolder:error", error);
       this.toastTriggered.emit({ message, tone: "error" });
       this.statusChanged.emit("Error");
-      this.loadingStateChanged.emit({ loading: false });
     } finally {
       this.openingCompdataFolderPath = undefined;
+      this.loadingStateChanged.emit({ loading: false });
     }
   }
 
@@ -298,74 +370,7 @@ export class CompdataEditorPageComponent {
     return path.replace(/\\/g, "/").toLowerCase();
   }
 
-  private async promptCompdataLocalizationReference(folderPath: string): Promise<void> {
-    const projectTitle = this.compdataProject?.title ?? "Compdata";
-    const normalizedFolderPath = this.normalizePath(folderPath);
-    const projectPath = this.compdataProject ? this.normalizePath(this.compdataProject.folderPath) : "";
-    const openingPath = this.openingCompdataFolderPath ? this.normalizePath(this.openingCompdataFolderPath) : "";
-    
-    if (projectPath !== normalizedFolderPath && openingPath !== normalizedFolderPath) {
-      debugCompdataRenderer("promptCompdataLocalizationReference:skipped", { folderPath, projectPath, openingPath });
-      return;
-    }
 
-    debugCompdataRenderer("promptCompdataLocalizationReference:start", { folderPath });
-    this.statusChanged.emit(`${projectTitle} loaded. Select LOC XML, then LOC DB/.loc.`);
-    const result = await this.api.openCompdataLocalizationReference();
-    debugCompdataRenderer("promptCompdataLocalizationReference:result", {
-      canceled: result.canceled,
-      hasReferenceProject: Boolean(result.referenceProject),
-      warnings: result.warnings
-    });
-    
-    const currentProjectPath = this.compdataProject ? this.normalizePath(this.compdataProject.folderPath) : "";
-    if (currentProjectPath !== normalizedFolderPath) {
-      debugCompdataRenderer("promptCompdataLocalizationReference:projectChanged", { folderPath, currentProjectPath });
-      return;
-    }
-    if (result.canceled) {
-      this.statusChanged.emit(`${projectTitle} loaded without LOC reference`);
-      return;
-    }
-    if (result.referenceProject) {
-      this.compdataReferenceProject = result.referenceProject;
-      this.statusChanged.emit(`${projectTitle} loaded / ${this.compdataReferenceLabel} localization`);
-    } else {
-      const reason = result.warnings[0] ?? "LOC reference was not loaded";
-      this.statusChanged.emit(`${projectTitle} loaded without LOC reference. ${reason}`);
-    }
-    if (result.warnings.length > 0) {
-      this.toastTriggered.emit({ message: result.warnings[0], tone: "warn" });
-    }
-  }
-
-  private queueCompdataLocalizationReferencePrompt(folderPath: string): void {
-    window.setTimeout(() => {
-      void this.runQueuedCompdataLocalizationReferencePrompt(folderPath);
-    }, 0);
-  }
-
-  private async runQueuedCompdataLocalizationReferencePrompt(folderPath: string): Promise<void> {
-    const normalizedFolderPath = this.normalizePath(folderPath);
-    const projectPath = this.compdataProject ? this.normalizePath(this.compdataProject.folderPath) : "";
-    
-    if (projectPath !== normalizedFolderPath) {
-      debugCompdataRenderer("runQueuedCompdataLocalizationReferencePrompt:skipped", { folderPath, projectPath });
-      return;
-    }
-    debugCompdataRenderer("runQueuedCompdataLocalizationReferencePrompt:start", { folderPath });
-    try {
-      await this.promptCompdataLocalizationReference(folderPath);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("[compdata/renderer] runQueuedCompdataLocalizationReferencePrompt:error", error);
-      const currentProjectPath = this.compdataProject ? this.normalizePath(this.compdataProject.folderPath) : "";
-      if (currentProjectPath === normalizedFolderPath) {
-        this.toastTriggered.emit({ message, tone: "error" });
-        this.statusChanged.emit(`${this.compdataProject?.title} loaded without LOC reference`);
-      }
-    }
-  }
 
   private selectFirstCompdataReferenceLeague(force = false): void {
     const options = this.compdataLeagueOptions;

@@ -49,6 +49,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   @ViewChild("dataGrid") private dataGrid?: ElementRef<HTMLTableElement>;
   @ViewChild("horizontalScroll") private horizontalScroll?: ElementRef<HTMLElement>;
   @ViewChild("horizontalScrollInner") private horizontalScrollInner?: ElementRef<HTMLElement>;
+  @ViewChild(CompdataEditorPageComponent) compdataEditor?: CompdataEditorPageComponent;
 
   private readonly api: DbMasterApi = window.dbmaster;
   private readonly minimumLoadingDurationMs = 400;
@@ -557,6 +558,11 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   openCompdataWorkspace(): void {
     this.viewMode = "compdata";
     this.setStatus("Compdata workspace ready");
+    setTimeout(() => {
+      if (this.compdataEditor && !this.compdataEditor.compdataProject) {
+        void this.compdataEditor.openCompdataFolder();
+      }
+    }, 0);
   }
 
   openTableWorkspace(): void {
