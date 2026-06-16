@@ -504,7 +504,7 @@
         <span class="module-kicker">Optional setup</span>
         <h2 id="visual-dependencies-title">Visual dependencies</h2>
       </div>
-      <button type="button" [disabled]="visualDependencyInstalling" (click)="closeVisualDependencyModal()">Skip</button>
+      <button type="button" [disabled]="visualDependencyInstalling || visualDependencyStatus?.allCurrent" (click)="closeVisualDependencyModal()">Skip</button>
     </div>
 
     <p>{{ visualDependencyMessage }}</p>
@@ -544,10 +544,10 @@
     <p class="dependency-error" *ngIf="visualDependencyError">{{ visualDependencyError }}</p>
 
     <div class="dependency-actions">
-      <button type="button" [disabled]="visualDependencyInstalling" (click)="closeVisualDependencyModal()">Not
+      <button type="button" [disabled]="visualDependencyInstalling || visualDependencyStatus?.allCurrent" (click)="closeVisualDependencyModal()">Not
         now</button>
       <button type="button" class="primary-action" [disabled]="visualDependencyInstalling"
-        (click)="installVisualDependencies()">
+        (click)="visualDependencyStatus?.allCurrent ? closeVisualDependencyModal() : installVisualDependencies()">
         {{ visualDependencyPrimaryActionLabel }}
       </button>
     </div>

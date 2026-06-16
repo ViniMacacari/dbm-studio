@@ -200,6 +200,9 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   }
 
   get visualDependencyPrimaryActionLabel(): string {
+    if (this.visualDependencyStatus?.allCurrent) {
+      return "Done";
+    }
     if (this.visualDependencyInstalling) {
       return "Downloading...";
     }
