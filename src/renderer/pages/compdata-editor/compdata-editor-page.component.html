@@ -19,399 +19,450 @@
   </header>
 
   <ng-container *ngIf="compdataProject; else noProject">
-    <nav class="editor-tabs" aria-label="Compdata editor tabs">
-      <button type="button" [class.active]="activeTab === 'hierarchy'" (click)="setTab('hierarchy')">Competições (Hierarchy)</button>
-      <ng-container *ngIf="selectedCompdataCompetitionId">
-        <button type="button" [class.active]="activeTab === 'summary'" (click)="setTab('summary')">Resumo / Regras</button>
-        <button type="button" [class.active]="activeTab === 'participants'" (click)="setTab('participants')">Participantes</button>
-        <button type="button" [class.active]="activeTab === 'stages'" (click)="setTab('stages')">Fases & Grupos</button>
-        <button type="button" [class.active]="activeTab === 'matches'" (click)="setTab('matches')">Partidas & Calendário</button>
-        <button type="button" [class.active]="activeTab === 'advancements'" (click)="setTab('advancements')">Classificações</button>
-      </ng-container>
-      <button type="button" [class.active]="activeTab === 'builder'" (click)="setTab('builder')">Builder (Novo Torneio)</button>
-    </nav>
-
-    <div class="player-editor-body">
-      
-      <!-- HIERARCHY TAB -->
-      <section class="editor-panel" [class.hidden]="activeTab !== 'hierarchy'">
-        <div class="compdata-body-layout">
-          <aside class="compdata-sidebar">
-            <div class="field-block">
-              <span>Filter competitions</span>
-              <input class="filter-input" placeholder="Search..." [(ngModel)]="compdataCompetitionFilter" />
-            </div>
-            <div class="compdata-list">
-              <button
-                *ngFor="let competition of filteredCompdataCompetitions"
-                class="compdata-competition"
-                [class.active]="competition.id === selectedCompdataCompetitionId"
-                (click)="selectedCompdataCompetitionId = competition.id"
-              >
-                <strong>{{ resolveCompdataText(competition.description) }}</strong>
-                <span>{{ competition.shortName }} ({{ competition.id }})</span>
-                <small *ngIf="competition.stages.length">{{ competition.stages.length }} stages, {{ competition.groups.length }} groups</small>
-              </button>
-            </div>
-          </aside>
-          
-          <main class="compdata-main-area" *ngIf="selectedCompdataObject as selected">
-            <div class="module-title-row">
-              <h2>{{ resolveCompdataText(selected.description) }}</h2>
-              <span class="module-kicker">Selecione as outras abas para editar as propriedades do torneio.</span>
-            </div>
-            <div class="editor-grid" style="margin-top: 16px;">
-              <label class="field-block">
-                <span>Nome Curto (Short Name)</span>
-                <input [(ngModel)]="selected.shortName" (ngModelChange)="markDirty()" />
-              </label>
-              <label class="field-block">
-                <span>ID de Tradução (Description)</span>
-                <input [(ngModel)]="selected.description" (ngModelChange)="markDirty()" />
-              </label>
-              <label class="field-block">
-                <span>País / Região (Parent ID)</span>
-                <input type="number" [(ngModel)]="selected.parentId" (ngModelChange)="markDirty()" />
-              </label>
-            </div>
-          </main>
-        </div>
-      </section>
-
-      <!-- SUMMARY TAB -->
-      <section class="editor-panel builder-panel" [class.hidden]="activeTab !== 'summary'">
-        <div class="module-title-row">
-          <h2>Resumo / Regras Gerais</h2>
-          <span class="module-total">Configurações globais do torneio (Settings)</span>
-        </div>
-        
-        <div class="editor-grid" *ngIf="selectedCompdataObject">
-          <label class="field-block">
-            <span>Asset ID do Banco de Dados</span>
-            <input [ngModel]="getSetting('asset_id')" (ngModelChange)="updateSetting('asset_id', $event)" placeholder="ex: 13" />
-            <small>ID da liga correspondente no DB</small>
-          </label>
-          <label class="field-block">
-            <span>Quantidade de Substituições</span>
-            <input type="number" [ngModel]="getSetting('num_subs')" (ngModelChange)="updateSetting('num_subs', $event)" />
-          </label>
-          <label class="field-block">
-            <span>Quantidade de Jogadores no Banco</span>
-            <input type="number" [ngModel]="getSetting('num_bench')" (ngModelChange)="updateSetting('num_bench', $event)" />
-          </label>
-          <label class="field-block">
-            <span>Amarelos para Suspensão</span>
-            <input type="number" [ngModel]="getSetting('yellow_cards_until_suspension')" (ngModelChange)="updateSetting('yellow_cards_until_suspension', $event)" />
-          </label>
-          <label class="field-block">
-            <span>Possui VAR?</span>
-            <select [ngModel]="getSetting('VAR_enabled', '0')" (ngModelChange)="updateSetting('VAR_enabled', $event)">
-              <option value="1">Sim</option>
-              <option value="0">Não</option>
-            </select>
-          </label>
-          <label class="field-block">
-            <span>Possui Goal-Line Tech?</span>
-            <select [ngModel]="getSetting('goal_line_tech_enabled', '0')" (ngModelChange)="updateSetting('goal_line_tech_enabled', $event)">
-              <option value="1">Sim</option>
-              <option value="0">Não</option>
-            </select>
-          </label>
-        </div>
-        
-        <div class="module-title-row" style="margin-top: 32px">
-          <h3>Propriedades Técnicas Ocultas (Avançado)</h3>
-        </div>
-        <div class="editable-table" *ngIf="competitionSettings.length > 0">
-          <div class="editable-row header-row" style="grid-template-columns: 1fr 1fr auto;">
-            <span>Setting Key</span>
-            <span>Value</span>
-            <span style="width: 76px"></span>
-          </div>
-          <div class="editable-row" *ngFor="let setting of competitionSettings" style="grid-template-columns: 1fr 1fr auto;">
-            <input [(ngModel)]="setting.key" (ngModelChange)="markDirty()" />
-            <input [(ngModel)]="setting.value" (ngModelChange)="markDirty()" />
-            <button type="button" class="danger-button" style="width: 76px" (click)="removeSetting(setting)">Remover</button>
+    <div class="compdata-body-layout" style="display: grid; grid-template-columns: 320px 1fr; height: calc(100vh - 100px);">
+      <!-- LEFT SIDEBAR -->
+      <aside class="compdata-sidebar" style="border-right: 1px solid var(--line); overflow-y: auto; display: flex; flex-direction: column;">
+        <div style="padding: 16px;">
+          <button type="button" class="apply-button" style="width: 100%; margin-bottom: 12px;" (click)="selectedCompdataCompetitionId = 0; setTab('builder')">
+            + Novo Torneio (Builder)
+          </button>
+          <div class="field-block">
+            <span>Filter competitions</span>
+            <input class="filter-input" placeholder="Search..." [(ngModel)]="compdataCompetitionFilter" />
           </div>
         </div>
-        <button type="button" class="secondary-apply-button" style="margin-top: 12px" (click)="addSetting()">Nova Regra Customizada</button>
-      </section>
-
-      <!-- PARTICIPANTS TAB -->
-      <section class="editor-panel" [class.hidden]="activeTab !== 'participants'">
-        <div class="module-title-row">
-          <h2>Times Participantes</h2>
-          <span class="module-total">Quantidade atual de times: {{ competitionInitTeams.length }}</span>
-        </div>
-        
-        <div class="league-team-toolbar" *ngIf="selectedCompdataCompetitionId">
-          <app-search-list
-            [options]="compdataTeamOptions"
-            [(value)]="teamToAdd"
-            placeholder="Pesquisar time para adicionar..."
-          ></app-search-list>
-          <button type="button" class="create-player-button" (click)="addInitTeam()">
-            <span class="plus-icon" aria-hidden="true"></span>
-            <span>Adicionar Vaga</span>
+        <div class="compdata-list" style="flex: 1; overflow-y: auto; padding: 0 16px 16px;">
+          <button
+            *ngFor="let competition of filteredCompdataCompetitions"
+            class="compdata-competition"
+            [class.active]="competition.id === selectedCompdataCompetitionId"
+            (click)="selectedCompdataCompetitionId = competition.id; setTab('summary')"
+          >
+            <strong>{{ resolveCompdataText(competition.description) }}</strong>
+            <span>{{ competition.shortName }} ({{ competition.id }})</span>
+            <small *ngIf="competition.stages.length">{{ competition.stages.length }} stages, {{ competition.groups.length }} groups</small>
           </button>
         </div>
+      </aside>
 
-        <div class="league-team-list" *ngIf="competitionInitTeams.length > 0; else noLeagueTeams">
-          <div class="league-team-row" *ngFor="let team of competitionInitTeams" style="grid-template-columns: minmax(180px, 1fr) 100px auto;">
-            <div class="league-team-main">
-              <strong>{{ resolveTeamName(team.teamId) }}</strong>
-              <span>ID {{ team.teamId }}</span>
-            </div>
-            <label class="inline-field">
-              <span>Posição</span>
-              <input type="number" [(ngModel)]="team.position" (ngModelChange)="markDirty()" />
-            </label>
-            <button type="button" class="danger-button" (click)="removeInitTeam(team)">Remover</button>
-          </div>
-        </div>
+      <!-- RIGHT MAIN AREA -->
+      <main class="compdata-main-area" style="display: flex; flex-direction: column; min-height: 0;">
+        <ng-container *ngIf="selectedCompdataCompetitionId; else showBuilderOrEmpty">
 
-        <ng-template #noLeagueTeams>
-          <div class="empty-state module-empty">
-            <strong>Nenhum time inscrito na fase inicial.</strong>
-          </div>
-        </ng-template>
-      </section>
-      
-      <!-- STAGES & GROUPS TAB -->
-      <section class="editor-panel" [class.hidden]="activeTab !== 'stages'">
-        <div class="module-title-row">
-          <h2>Fases & Grupos</h2>
-          <span class="module-total">Estrutura interna do torneio</span>
-        </div>
-        <div class="compdata-detail">
-          <div class="compdata-section" *ngFor="let data of compdataStageSettings">
-            <div class="compdata-stage">
-              <div>
-                <strong>Fase ID: {{ data.stage.id }}</strong>
-                <span>{{ data.stage.shortName }}</span>
-                <span>{{ resolveCompdataText(data.stage.description) }}</span>
+          <nav class="editor-tabs" aria-label="Compdata editor tabs">
+            <button type="button" [class.active]="activeTab === 'summary'" (click)="setTab('summary')">Resumo / Regras</button>
+            <button type="button" [class.active]="activeTab === 'participants'" (click)="setTab('participants')">Participantes</button>
+            <button type="button" [class.active]="activeTab === 'stages'" (click)="setTab('stages')">Fases & Grupos</button>
+            <button type="button" [class.active]="activeTab === 'matches'" (click)="setTab('matches')">Partidas & Calendário</button>
+            <button type="button" [class.active]="activeTab === 'advancements'" (click)="setTab('advancements')">Classificações</button>
+          </nav>
+
+          <div class="player-editor-body" style="overflow-y: auto; flex: 1;">
+
+            <!-- ===== SUMMARY TAB ===== -->
+            <section class="editor-panel builder-panel" [class.hidden]="activeTab !== 'summary'">
+              <ng-container *ngIf="selectedCompdataObject as selected">
+                <div class="module-title-row">
+                  <h2>{{ resolveCompdataText(selected.description) }}</h2>
+                  <span class="module-total">ID: {{ selected.id }} · {{ selected.shortName }}</span>
+                </div>
+
+                <div class="editor-grid">
+                  <label class="field-block">
+                    <span>Nome Curto</span>
+                    <input [(ngModel)]="selected.shortName" (ngModelChange)="markDirty()" />
+                  </label>
+                  <label class="field-block">
+                    <span>Chave de Tradução</span>
+                    <input [(ngModel)]="selected.description" (ngModelChange)="markDirty()" />
+                  </label>
+                  <label class="field-block">
+                    <span>País / Região (Parent)</span>
+                    <app-search-list
+                      [options]="compdataParentOptions"
+                      [(value)]="selected.parentId"
+                      (valueChange)="markDirty()"
+                      placeholder="Pesquisar parent..."
+                    ></app-search-list>
+                  </label>
+                  <label class="field-block">
+                    <span>Liga do DB (asset_id)</span>
+                    <app-search-list
+                      [options]="compdataLeagueOptions"
+                      [value]="getSetting('asset_id')"
+                      (valueChange)="updateSetting('asset_id', $event)"
+                      placeholder="Pesquisar liga..."
+                    ></app-search-list>
+                  </label>
+                  <label class="field-block">
+                    <span>Substituições</span>
+                    <input type="number" [ngModel]="getSetting('num_subs')" (ngModelChange)="updateSetting('num_subs', $event)" />
+                  </label>
+                  <label class="field-block">
+                    <span>Jogadores no Banco</span>
+                    <input type="number" [ngModel]="getSetting('num_bench')" (ngModelChange)="updateSetting('num_bench', $event)" />
+                  </label>
+                  <label class="field-block">
+                    <span>Amarelos p/ Suspensão</span>
+                    <input type="number" [ngModel]="getSetting('yellow_cards_until_suspension')" (ngModelChange)="updateSetting('yellow_cards_until_suspension', $event)" />
+                  </label>
+                </div>
+
+                <div style="display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap;">
+                  <app-input-checkbox
+                    label="VAR ativado"
+                    description="Video Assistant Referee"
+                    [checked]="getSetting('VAR_enabled', '0') === '1'"
+                    (checkedChange)="updateSetting('VAR_enabled', $event ? '1' : '0')"
+                  ></app-input-checkbox>
+                  <app-input-checkbox
+                    label="Goal-Line Technology"
+                    description="Tecnologia na linha do gol"
+                    [checked]="getSetting('goal_line_tech_enabled', '0') === '1'"
+                    (checkedChange)="updateSetting('goal_line_tech_enabled', $event ? '1' : '0')"
+                  ></app-input-checkbox>
+                </div>
+
+                <div class="module-title-row" style="margin-top: 32px">
+                  <h3>Todas as Settings (Avançado)</h3>
+                  <span class="module-total">{{ competitionSettings.length }} settings</span>
+                </div>
+                <div class="editable-table" *ngIf="competitionSettings.length > 0">
+                  <div class="editable-row header-row" style="grid-template-columns: 80px 1fr 1fr auto;">
+                    <span>Obj ID</span>
+                    <span>Key</span>
+                    <span>Value</span>
+                    <span style="width: 76px"></span>
+                  </div>
+                  <div class="editable-row" *ngFor="let setting of competitionSettings" style="grid-template-columns: 80px 1fr 1fr auto;">
+                    <span style="padding: 8px; opacity: 0.5;">{{ setting.objectId }}</span>
+                    <input [(ngModel)]="setting.key" (ngModelChange)="markDirty()" />
+                    <input [(ngModel)]="setting.value" (ngModelChange)="markDirty()" />
+                    <button type="button" class="danger-button" style="width: 76px" (click)="removeSetting(setting)">Remover</button>
+                  </div>
+                </div>
+                <button type="button" class="secondary-apply-button" style="margin-top: 12px" (click)="addSetting()">Nova Setting</button>
+              </ng-container>
+            </section>
+
+            <!-- ===== PARTICIPANTS TAB ===== -->
+            <section class="editor-panel" [class.hidden]="activeTab !== 'participants'">
+              <div class="module-title-row">
+                <h2>Times Participantes</h2>
+                <span class="module-total">{{ competitionInitTeams.length }} times</span>
               </div>
-            </div>
-            <div class="editable-row" *ngFor="let group of data.groups">
-              <input type="number" [(ngModel)]="group.id" (ngModelChange)="markDirty()" readonly />
-              <input [(ngModel)]="group.shortName" (ngModelChange)="markDirty()" placeholder="Grupo Nome" />
-              <input [(ngModel)]="group.description" (ngModelChange)="markDirty()" placeholder="Description ID" />
-            </div>
+
+              <div class="league-team-toolbar">
+                <app-search-list
+                  [options]="compdataTeamOptions"
+                  [(value)]="teamToAdd"
+                  placeholder="Pesquisar time para adicionar..."
+                ></app-search-list>
+                <button type="button" class="create-player-button" (click)="addInitTeam()">
+                  <span class="plus-icon" aria-hidden="true"></span>
+                  <span>Adicionar Time</span>
+                </button>
+              </div>
+
+              <div class="league-team-list" *ngIf="competitionInitTeams.length > 0; else noLeagueTeams">
+                <div class="league-team-row" *ngFor="let team of competitionInitTeams" style="grid-template-columns: minmax(180px, 1fr) 100px auto;">
+                  <div class="league-team-main">
+                    <strong>{{ resolveTeamName(team.teamId) }}</strong>
+                    <span>ID {{ team.teamId }}</span>
+                  </div>
+                  <label class="inline-field">
+                    <span>Pos.</span>
+                    <input type="number" [(ngModel)]="team.position" (ngModelChange)="markDirty()" />
+                  </label>
+                  <button type="button" class="danger-button" (click)="removeInitTeam(team)">Remover</button>
+                </div>
+              </div>
+
+              <ng-template #noLeagueTeams>
+                <div class="empty-state module-empty">
+                  <strong>Nenhum time inscrito.</strong>
+                </div>
+              </ng-template>
+            </section>
+
+            <!-- ===== STAGES & GROUPS TAB ===== -->
+            <section class="editor-panel" [class.hidden]="activeTab !== 'stages'">
+              <div class="module-title-row">
+                <h2>Fases & Grupos</h2>
+                <span class="module-total">{{ selectedCompdataCompetition?.stages?.length ?? 0 }} fases, {{ selectedCompdataCompetition?.groups?.length ?? 0 }} grupos</span>
+              </div>
+
+              <div class="compdata-detail" *ngIf="compdataStageSettings.length > 0; else noStages">
+                <div class="compdata-section" *ngFor="let data of compdataStageSettings" style="margin-bottom: 24px; border: 1px solid var(--line); border-radius: 8px; padding: 16px;">
+                  <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                    <strong style="font-size: 1.05rem;">{{ data.stage.shortName }}</strong>
+                    <span style="opacity: 0.6; font-size: 0.85rem;">{{ resolveCompdataText(data.stage.description) }}</span>
+                    <span style="opacity: 0.4; font-size: 0.8rem;">ID: {{ data.stage.id }}</span>
+                  </div>
+
+                  <div *ngIf="data.groups.length > 0" style="margin-left: 8px;">
+                    <div class="editable-table">
+                      <div class="editable-row header-row" style="grid-template-columns: 60px 120px 1fr;">
+                        <span>ID</span>
+                        <span>Nome</span>
+                        <span>Descrição</span>
+                      </div>
+                      <div class="editable-row" *ngFor="let group of data.groups" style="grid-template-columns: 60px 120px 1fr;">
+                        <span style="padding: 8px; opacity: 0.5;">{{ group.id }}</span>
+                        <input [(ngModel)]="group.shortName" (ngModelChange)="markDirty()" />
+                        <input [(ngModel)]="group.description" (ngModelChange)="markDirty()" placeholder="Description ID" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div *ngIf="data.settings.length > 0" style="margin-top: 8px; margin-left: 8px;">
+                    <small style="opacity: 0.5;">Settings: {{ data.settings.join(' · ') }}</small>
+                  </div>
+                </div>
+              </div>
+
+              <ng-template #noStages>
+                <div class="empty-state module-empty">
+                  <strong>Nenhuma fase cadastrada.</strong>
+                </div>
+              </ng-template>
+            </section>
+
+            <!-- ===== MATCHES & SCHEDULE TAB ===== -->
+            <section class="editor-panel" [class.hidden]="activeTab !== 'matches'">
+              <div class="module-title-row">
+                <h2>Partidas & Calendário</h2>
+                <span class="module-total">{{ competitionSchedules.length }} entradas</span>
+              </div>
+
+              <div class="league-team-toolbar">
+                <button type="button" class="create-player-button" (click)="addScheduleEntry()">
+                  <span class="plus-icon" aria-hidden="true"></span>
+                  <span>Nova Rodada/Data</span>
+                </button>
+              </div>
+
+              <div class="editable-table" *ngIf="competitionSchedules.length > 0; else noSchedules">
+                <div class="editable-row header-row" style="grid-template-columns: 80px 1fr 80px 80px 80px 80px auto;">
+                  <span>Dia</span>
+                  <span>Grupo/Fase</span>
+                  <span>Rodada</span>
+                  <span>Min</span>
+                  <span>Max</span>
+                  <span>Horário</span>
+                  <span style="width: 76px"></span>
+                </div>
+                <div class="editable-row" *ngFor="let schedule of competitionSchedules" style="grid-template-columns: 80px 1fr 80px 80px 80px 80px auto;">
+                  <input type="number" [(ngModel)]="schedule.day" (ngModelChange)="markDirty()" />
+                  <span style="padding: 8px; opacity: 0.6; font-size: 0.85rem;">{{ resolveObjectName(schedule.objectId) }}</span>
+                  <input type="number" [(ngModel)]="schedule.round" (ngModelChange)="markDirty()" />
+                  <input type="number" [(ngModel)]="schedule.minGames" (ngModelChange)="markDirty()" />
+                  <input type="number" [(ngModel)]="schedule.maxGames" (ngModelChange)="markDirty()" />
+                  <input [(ngModel)]="schedule.time" (ngModelChange)="markDirty()" placeholder="2000" />
+                  <button type="button" class="danger-button" style="width: 76px" (click)="removeScheduleEntry(schedule)">Remover</button>
+                </div>
+              </div>
+
+              <ng-template #noSchedules>
+                <div class="empty-state module-empty">
+                  <strong>Nenhuma data cadastrada para esta competição.</strong>
+                </div>
+              </ng-template>
+
+              <div class="module-title-row" style="margin-top: 32px">
+                <h3>Condições Climáticas</h3>
+                <span class="module-total">Probabilidades por mês</span>
+              </div>
+              <div class="editable-table" *ngIf="compdataProject">
+                <div class="editable-row header-row" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;">
+                  <span>Comp ID</span>
+                  <span>Month</span>
+                  <span>Day %</span>
+                  <span>Night %</span>
+                  <span>Clear %</span>
+                  <span>Rain %</span>
+                </div>
+                <div class="editable-row" *ngFor="let row of compdataProject.weatherRows" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;">
+                  <input [(ngModel)]="row[0]" (ngModelChange)="markDirty()" />
+                  <input [(ngModel)]="row[1]" (ngModelChange)="markDirty()" />
+                  <input [(ngModel)]="row[2]" (ngModelChange)="markDirty()" />
+                  <input [(ngModel)]="row[3]" (ngModelChange)="markDirty()" />
+                  <input [(ngModel)]="row[4]" (ngModelChange)="markDirty()" />
+                  <input [(ngModel)]="row[5]" (ngModelChange)="markDirty()" />
+                </div>
+              </div>
+            </section>
+
+            <!-- ===== ADVANCEMENTS TAB ===== -->
+            <section class="editor-panel" [class.hidden]="activeTab !== 'advancements'">
+              <div class="module-title-row">
+                <h2>Classificações & Avanço</h2>
+                <span class="module-total">{{ competitionAdvancements.length }} regras de avanço</span>
+              </div>
+
+              <div class="league-team-toolbar">
+                <button type="button" class="create-player-button" (click)="addAdvancement()">
+                  <span class="plus-icon" aria-hidden="true"></span>
+                  <span>Nova Regra de Avanço</span>
+                </button>
+              </div>
+
+              <div class="editable-table" *ngIf="competitionAdvancements.length > 0; else noAdvancements">
+                <div class="editable-row header-row" style="grid-template-columns: 1fr 80px 1fr 80px auto;">
+                  <span>Grupo Origem</span>
+                  <span>Pos.</span>
+                  <span>Destino</span>
+                  <span>Pos. Dest.</span>
+                  <span style="width: 76px"></span>
+                </div>
+                <div class="editable-row" *ngFor="let adv of competitionAdvancements" style="grid-template-columns: 1fr 80px 1fr 80px auto;">
+                  <span style="padding: 8px; opacity: 0.6; font-size: 0.85rem;">{{ resolveObjectName(adv.fromGroupId) }}</span>
+                  <input type="number" [(ngModel)]="adv.fromPosition" (ngModelChange)="markDirty()" />
+                  <div>
+                    <app-search-list
+                      [options]="compdataParentOptions"
+                      [(value)]="adv.toGroupId"
+                      (valueChange)="markDirty()"
+                      placeholder="Destino..."
+                    ></app-search-list>
+                  </div>
+                  <input type="number" [(ngModel)]="adv.toPosition" (ngModelChange)="markDirty()" />
+                  <button type="button" class="danger-button" style="width: 76px" (click)="removeAdvancement(adv)">Remover</button>
+                </div>
+              </div>
+
+              <ng-template #noAdvancements>
+                <div class="empty-state module-empty">
+                  <strong>Nenhuma regra de avanço.</strong>
+                </div>
+              </ng-template>
+
+              <div class="module-title-row" style="margin-top: 32px">
+                <h3>Standings (Vagas de Posição)</h3>
+                <span class="module-total">{{ competitionStandings.length }} slots</span>
+              </div>
+
+              <div class="league-team-toolbar">
+                <button type="button" class="create-player-button" (click)="addStanding()">
+                  <span class="plus-icon" aria-hidden="true"></span>
+                  <span>Novo Slot</span>
+                </button>
+              </div>
+
+              <div class="editable-table" *ngIf="competitionStandings.length > 0; else noStandings">
+                <div class="editable-row header-row" style="grid-template-columns: 1fr 100px auto;">
+                  <span>Grupo</span>
+                  <span>Posição</span>
+                  <span style="width: 76px"></span>
+                </div>
+                <div class="editable-row" *ngFor="let standing of competitionStandings" style="grid-template-columns: 1fr 100px auto;">
+                  <span style="padding: 8px; opacity: 0.6; font-size: 0.85rem;">{{ resolveObjectName(standing.groupId) }}</span>
+                  <input type="number" [(ngModel)]="standing.position" (ngModelChange)="markDirty()" />
+                  <button type="button" class="danger-button" style="width: 76px" (click)="removeStanding(standing)">Remover</button>
+                </div>
+              </div>
+
+              <ng-template #noStandings>
+                <div class="empty-state module-empty">
+                  <strong>Nenhum slot criado.</strong>
+                </div>
+              </ng-template>
+            </section>
+
           </div>
-        </div>
-      </section>
+        </ng-container>
 
-      <!-- MATCHES & SCHEDULE TAB -->
-      <section class="editor-panel" [class.hidden]="activeTab !== 'matches'">
-        <div class="module-title-row">
-          <h2>Partidas & Calendário</h2>
-          <span class="module-total">Configuração das datas das rodadas</span>
-        </div>
+        <!-- BUILDER OR EMPTY -->
+        <ng-template #showBuilderOrEmpty>
+          <div class="player-editor-body" style="overflow-y: auto; flex: 1;">
+            <section class="editor-panel builder-panel" *ngIf="activeTab === 'builder'; else noSelection">
+              <div class="module-title-row">
+                <h2>New Tournament Builder</h2>
+                <span class="module-total">Generate standard tournament structures</span>
+              </div>
+              <div class="editor-grid">
+                <label class="field-block">
+                  <span>Source league from DB</span>
+                  <app-search-list
+                    [options]="compdataLeagueOptions"
+                    [(value)]="compdataBuilder.sourceLeagueId"
+                    (valueChange)="syncCompdataBuilderFromLeague()"
+                    placeholder="Pesquise uma liga..."
+                  ></app-search-list>
+                </label>
+                <label class="field-block">
+                  <span>Competition name</span>
+                  <input [(ngModel)]="compdataBuilder.name" placeholder="Tournament name" />
+                </label>
+                <label class="field-block">
+                  <span>Asset ID</span>
+                  <input [(ngModel)]="compdataBuilder.assetId" />
+                </label>
+                <label class="field-block">
+                  <span>Parent</span>
+                  <app-search-list
+                    [options]="compdataParentOptions"
+                    [(value)]="compdataBuilder.parentId"
+                    placeholder="Pesquise um parent..."
+                  ></app-search-list>
+                </label>
+                <label class="field-block">
+                  <span>Format</span>
+                  <app-search-list
+                    [options]="[{value:'league',label:'League'},{value:'group-knockout',label:'Groups + Knockout'},{value:'cup',label:'Knockout Cup'}]"
+                    [(value)]="compdataBuilder.format"
+                  ></app-search-list>
+                </label>
+                <label class="field-block">
+                  <span>Type</span>
+                  <app-search-list
+                    [options]="[{value:'LEAGUE',label:'League'},{value:'CUP',label:'Cup'},{value:'INTERCUP',label:'International Cup'},{value:'PLAYOFF',label:'Playoff'}]"
+                    [(value)]="compdataBuilder.competitionType"
+                  ></app-search-list>
+                </label>
+                <label class="field-block">
+                  <span>Groups</span>
+                  <input type="number" min="1" [(ngModel)]="compdataBuilder.groups" />
+                </label>
+                <label class="field-block">
+                  <span>Teams/group</span>
+                  <input type="number" min="2" [(ngModel)]="compdataBuilder.teamsPerGroup" />
+                </label>
+                <label class="field-block">
+                  <span>Qualifiers/group</span>
+                  <input type="number" min="1" [(ngModel)]="compdataBuilder.qualifiersPerGroup" />
+                </label>
+                <label class="field-block">
+                  <span>Rounds</span>
+                  <input type="number" min="1" [(ngModel)]="compdataBuilder.rounds" />
+                </label>
+                <label class="field-block">
+                  <span>Start Date</span>
+                  <div style="display:flex;gap:4px">
+                    <input type="number" min="1" max="31" [(ngModel)]="compdataBuilder.startDay" placeholder="Day" />
+                    <input type="number" min="1" max="12" [(ngModel)]="compdataBuilder.seasonStartMonth" placeholder="Month" />
+                  </div>
+                </label>
+                <label class="field-block">
+                  <span>Day Step</span>
+                  <input type="number" min="1" [(ngModel)]="compdataBuilder.dayStep" />
+                </label>
+              </div>
 
-        <div class="league-team-toolbar" *ngIf="selectedCompdataObject">
-          <button type="button" class="create-player-button" (click)="addScheduleEntry()">
-            <span class="plus-icon" aria-hidden="true"></span>
-            <span>Nova Rodada/Data</span>
-          </button>
-        </div>
+              <div style="margin-top:20px;">
+                <button type="button" class="apply-button" [disabled]="!canBuild" (click)="buildTournament()">Generate Tournament Objects</button>
+              </div>
+            </section>
 
-        <div class="editable-table" *ngIf="competitionSchedules.length > 0; else noSchedules">
-          <div class="editable-row header-row" style="grid-template-columns: 80px 80px 100px 100px 1fr auto;">
-            <span>Dia</span>
-            <span>Rodada</span>
-            <span>Mín Jogos</span>
-            <span>Máx Jogos</span>
-            <span>Horário (Time)</span>
-            <span style="width: 76px"></span>
-          </div>
-          <div class="editable-row" *ngFor="let schedule of competitionSchedules" style="grid-template-columns: 80px 80px 100px 100px 1fr auto;">
-            <input type="number" [(ngModel)]="schedule.day" (ngModelChange)="markDirty()" />
-            <input type="number" [(ngModel)]="schedule.round" (ngModelChange)="markDirty()" />
-            <input type="number" [(ngModel)]="schedule.minGames" (ngModelChange)="markDirty()" />
-            <input type="number" [(ngModel)]="schedule.maxGames" (ngModelChange)="markDirty()" />
-            <input [(ngModel)]="schedule.time" (ngModelChange)="markDirty()" placeholder="e.g. 20:00" />
-            <button type="button" class="danger-button" style="width: 76px" (click)="removeScheduleEntry(schedule)">Remover</button>
-          </div>
-        </div>
-
-        <ng-template #noSchedules>
-          <div class="empty-state module-empty">
-            <strong>Nenhuma data cadastrada.</strong>
+            <ng-template #noSelection>
+              <div class="empty-state module-empty" style="margin-top: 40px;">
+                <strong>Selecione um torneio na lista ao lado ou crie um novo pelo Builder.</strong>
+              </div>
+            </ng-template>
           </div>
         </ng-template>
-        
-        <div class="module-title-row" style="margin-top: 32px">
-          <h3>Condições Climáticas (Weather Probabilities)</h3>
-        </div>
-        <div class="editable-table" *ngIf="compdataProject">
-          <div class="editable-row header-row" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;">
-            <span>Comp ID</span>
-            <span>Month</span>
-            <span>Day</span>
-            <span>Night</span>
-            <span>Clear/Overcast</span>
-            <span>Rain/Snow</span>
-          </div>
-          <div class="editable-row" *ngFor="let row of compdataProject.weatherRows" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;">
-            <input [(ngModel)]="row[0]" (ngModelChange)="markDirty()" />
-            <input [(ngModel)]="row[1]" (ngModelChange)="markDirty()" />
-            <input [(ngModel)]="row[2]" (ngModelChange)="markDirty()" />
-            <input [(ngModel)]="row[3]" (ngModelChange)="markDirty()" />
-            <input [(ngModel)]="row[4]" (ngModelChange)="markDirty()" />
-            <input [(ngModel)]="row[5]" (ngModelChange)="markDirty()" />
-          </div>
-          <button type="button" class="secondary-apply-button" style="margin-top: 10px; width: fit-content;" (click)="compdataProject.weatherRows.push(['0', '1', '100', '100', '100', '0']); markDirty()">
-            Nova Climatologia
-          </button>
-        </div>
-      </section>
-      
-      <!-- ADVANCEMENTS TAB -->
-      <section class="editor-panel" [class.hidden]="activeTab !== 'advancements'">
-        <div class="module-title-row">
-          <h2>Classificações</h2>
-          <span class="module-total">Destino dos times baseado na posição final</span>
-        </div>
 
-        <div class="league-team-toolbar" *ngIf="selectedCompdataObject">
-          <button type="button" class="create-player-button" (click)="addAdvancement()">
-            <span class="plus-icon" aria-hidden="true"></span>
-            <span>Adicionar Classificação (Advancement)</span>
-          </button>
-        </div>
-
-        <div class="editable-table" *ngIf="competitionAdvancements.length > 0; else noAdvancements">
-          <div class="editable-row header-row" style="grid-template-columns: 100px 1fr 1fr 1fr auto;">
-            <span>Grupo Origem</span>
-            <span>Posição</span>
-            <span>Destino (Grupo ID)</span>
-            <span>Posição Dest.</span>
-            <span style="width: 76px"></span>
-          </div>
-          <div class="editable-row" *ngFor="let advancement of competitionAdvancements" style="grid-template-columns: 100px 1fr 1fr 1fr auto;">
-            <input type="number" [(ngModel)]="advancement.fromGroupId" (ngModelChange)="markDirty()" readonly />
-            <input type="number" [(ngModel)]="advancement.fromPosition" (ngModelChange)="markDirty()" />
-            <select [(ngModel)]="advancement.toGroupId" (ngModelChange)="markDirty()">
-              <option *ngFor="let parent of compdataParentOptions" [value]="parent.value">{{ parent.label }}</option>
-            </select>
-            <input type="number" [(ngModel)]="advancement.toPosition" (ngModelChange)="markDirty()" />
-            <button type="button" class="danger-button" style="width: 76px" (click)="removeAdvancement(advancement)">Remover</button>
-          </div>
-        </div>
-
-        <ng-template #noAdvancements>
-          <div class="empty-state module-empty">
-            <strong>Nenhuma regra de avanço configurada.</strong>
-          </div>
-        </ng-template>
-        
-        <div class="module-title-row" style="margin-top: 32px">
-          <h3>Vagas de Classificação (Standings Slots)</h3>
-        </div>
-        <div class="editable-table" *ngIf="competitionStandings.length > 0; else noStandings">
-          <div class="editable-row header-row" style="grid-template-columns: 1fr 1fr auto;">
-            <span>Group ID</span>
-            <span>Position Slot</span>
-            <span style="width: 76px"></span>
-          </div>
-          <div class="editable-row" *ngFor="let standing of competitionStandings" style="grid-template-columns: 1fr 1fr auto;">
-            <input type="number" [(ngModel)]="standing.groupId" (ngModelChange)="markDirty()" readonly />
-            <input type="number" [(ngModel)]="standing.position" (ngModelChange)="markDirty()" />
-            <button type="button" class="danger-button" style="width: 76px" (click)="removeStanding(standing)">Remover</button>
-          </div>
-        </div>
-        <button type="button" class="secondary-apply-button" style="margin-top: 10px; width: fit-content;" (click)="addStanding()">Novo Slot</button>
-        
-        <ng-template #noStandings>
-          <div class="empty-state module-empty" style="margin-top: 10px;">
-            <strong>Nenhum slot criado para este grupo.</strong>
-          </div>
-        </ng-template>
-      </section>
-
-      <!-- BUILDER TAB -->
-      <section class="editor-panel builder-panel" [class.hidden]="activeTab !== 'builder'">
-        <div class="module-title-row">
-          <h2>New Tournament Builder</h2>
-          <span class="module-total">Generate standard tournament structures</span>
-        </div>
-        <div class="editor-grid">
-          <label class="field-block">
-            <span>Source league from DB</span>
-            <select [(ngModel)]="compdataBuilder.sourceLeagueId" (ngModelChange)="syncCompdataBuilderFromLeague()">
-              <option value="">Choose a DB league</option>
-              <option *ngFor="let league of compdataLeagueOptions" [value]="league.leagueId">
-                {{ league.displayName }} / {{ league.countryName }}{{ league.alreadyInCompdata ? ' / already in compdata' : '' }}
-              </option>
-            </select>
-          </label>
-          <label class="field-block">
-            <span>Competition name</span>
-            <input [(ngModel)]="compdataBuilder.name" placeholder="Tournament name" />
-          </label>
-          <label class="field-block">
-            <span>Asset ID</span>
-            <input [(ngModel)]="compdataBuilder.assetId" />
-          </label>
-          <label class="field-block">
-            <span>Parent</span>
-            <select [(ngModel)]="compdataBuilder.parentId">
-              <option *ngFor="let parent of compdataParentOptions" [value]="parent.value">{{ parent.label }}</option>
-            </select>
-          </label>
-          <label class="field-block">
-            <span>Format</span>
-            <select [(ngModel)]="compdataBuilder.format">
-              <option value="league">League</option>
-              <option value="group-knockout">Groups + Knockout</option>
-              <option value="cup">Knockout Cup</option>
-            </select>
-          </label>
-          <label class="field-block">
-            <span>Type</span>
-            <select [(ngModel)]="compdataBuilder.competitionType">
-              <option value="LEAGUE">League</option>
-              <option value="CUP">Cup</option>
-              <option value="INTERCUP">International Cup</option>
-              <option value="PLAYOFF">Playoff</option>
-            </select>
-          </label>
-          
-          <label class="field-block">
-            <span>Groups</span>
-            <input type="number" min="1" [(ngModel)]="compdataBuilder.groups" />
-          </label>
-          <label class="field-block">
-            <span>Teams/group</span>
-            <input type="number" min="2" [(ngModel)]="compdataBuilder.teamsPerGroup" />
-          </label>
-          <label class="field-block">
-            <span>Qualifiers/group</span>
-            <input type="number" min="1" [(ngModel)]="compdataBuilder.qualifiersPerGroup" />
-          </label>
-          <label class="field-block">
-            <span>Rounds</span>
-            <input type="number" min="1" [(ngModel)]="compdataBuilder.rounds" />
-          </label>
-          
-          <label class="field-block">
-            <span>Start Date</span>
-            <div style="display:flex;gap:4px">
-              <input type="number" min="1" max="31" [(ngModel)]="compdataBuilder.startDay" placeholder="Day" />
-              <input type="number" min="1" max="12" [(ngModel)]="compdataBuilder.seasonStartMonth" placeholder="Month" />
-            </div>
-          </label>
-          <label class="field-block">
-            <span>Day Step</span>
-            <input type="number" min="1" [(ngModel)]="compdataBuilder.dayStep" />
-          </label>
-        </div>
-        
-        <div style="margin-top:20px;">
-          <button type="button" class="apply-button" [disabled]="!canBuild" (click)="buildTournament()">Generate Tournament Objects</button>
-        </div>
-      </section>
-
+      </main>
     </div>
   </ng-container>
 

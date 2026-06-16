@@ -18,6 +18,7 @@ import type {
 import type { DbMasterApi } from "../../services/dbmaster-api";
 import { LeagueEditorService } from "../../services/league-editor.service";
 import { TeamEditorService } from "../../services/team-editor.service";
+import { LocalizationService } from "../../services/localization.service";
 
 import { InputCheckboxComponent } from "../../components/input-checkbox/input-checkbox.component";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
@@ -73,7 +74,7 @@ export class CompdataEditorPageComponent {
     this.compdataDirty = true;
   }
   
-  activeTab: "hierarchy" | "summary" | "participants" | "stages" | "matches" | "advancements" | "builder" = "builder";
+  activeTab: "summary" | "participants" | "stages" | "matches" | "advancements" | "builder" = "summary";
 
   compdataBuilder = {
     sourceLeagueId: "",
@@ -101,7 +102,8 @@ export class CompdataEditorPageComponent {
   constructor(
     private readonly changeDetector: ChangeDetectorRef,
     private readonly leagueEditor: LeagueEditorService,
-    private readonly teamEditor: TeamEditorService
+    private readonly teamEditor: TeamEditorService,
+    private readonly localization: LocalizationService
   ) {}
 
   get selectedCompdataCompetition(): CompdataCompetitionSummary | undefined {
@@ -247,19 +249,36 @@ export class CompdataEditorPageComponent {
     } else {
       const teamIdIndex = table.fields.findIndex((f) => f.name === "teamid");
       const teamNameIndex = table.fields.findIndex((f) => f.name === "teamname");
-      this._cachedTeamOptions = table.rows.map((row) => ({
-        value: row[teamIdIndex] ?? "",
-        label: `${row[teamNameIndex] ?? "Unknown"} (${row[teamIdIndex] ?? ""})`
-      }));
+      this._cachedTeamOptions = table.rows.map((row) => {
+        const teamId = row[teamIdIndex] ?? "";
+        const rawName = teamNameIndex >= 0 ? row[teamNameIndex]?.trim() : "";
+        const fallback = rawName || `Team ${teamId}`;
+        const locName = this.localization.resolveString(this.compdataReferenceProject!, `TeamName_${teamId}`, fallback);
+        return {
+          value: teamId,
+          label: `${locName} (${teamId})`
+        };
+      });
     }
     this._lastReferenceProjectForTeams = this.compdataReferenceProject;
     return this._cachedTeamOptions;
   }
 
+  /** All object IDs that belong to the selected competition (competition root + stages + groups) */
+  get selectedCompetitionObjectIds(): Set<number> {
+    const comp = this.selectedCompdataCompetition;
+    if (!comp) return new Set();
+    const ids = new Set<number>();
+    ids.add(comp.id);
+    for (const stage of comp.stages) ids.add(stage.id);
+    for (const group of comp.groups) ids.add(group.id);
+    return ids;
+  }
+
   get competitionSettings() {
-    const id = this.selectedCompdataObject?.id;
-    if (id === undefined) return [];
-    return this.compdataProject?.settings.filter(s => s.objectId === id) ?? [];
+    const ids = this.selectedCompetitionObjectIds;
+    if (ids.size === 0) return [];
+    return this.compdataProject?.settings.filter(s => ids.has(s.objectId)) ?? [];
   }
 
   addSetting(): void {
@@ -301,9 +320,9 @@ export class CompdataEditorPageComponent {
   }
 
   get competitionStandings() {
-    const id = this.selectedCompdataObject?.id;
-    if (id === undefined) return [];
-    return this.compdataProject?.standings.filter(s => s.groupId === id).sort((a, b) => a.position - b.position) ?? [];
+    const ids = this.selectedCompetitionObjectIds;
+    if (ids.size === 0) return [];
+    return this.compdataProject?.standings.filter(s => ids.has(s.groupId)).sort((a, b) => a.position - b.position) ?? [];
   }
 
   addStanding(): void {
@@ -326,9 +345,9 @@ export class CompdataEditorPageComponent {
   }
 
   get competitionAdvancements() {
-    const id = this.selectedCompdataObject?.id;
-    if (id === undefined) return [];
-    return this.compdataProject?.advancements.filter(a => a.fromGroupId === id).sort((a, b) => a.fromPosition - b.fromPosition) ?? [];
+    const ids = this.selectedCompetitionObjectIds;
+    if (ids.size === 0) return [];
+    return this.compdataProject?.advancements.filter(a => ids.has(a.fromGroupId)).sort((a, b) => a.fromPosition - b.fromPosition) ?? [];
   }
 
   addAdvancement(): void {
@@ -352,9 +371,9 @@ export class CompdataEditorPageComponent {
   }
 
   get competitionSchedules() {
-    const id = this.selectedCompdataObject?.id;
-    if (id === undefined) return [];
-    return this.compdataProject?.schedules.filter(s => s.objectId === id).sort((a, b) => a.day - b.day) ?? [];
+    const ids = this.selectedCompetitionObjectIds;
+    if (ids.size === 0) return [];
+    return this.compdataProject?.schedules.filter(s => ids.has(s.objectId)).sort((a, b) => a.day - b.day || a.round - b.round) ?? [];
   }
 
   addScheduleEntry(): void {
@@ -437,9 +456,22 @@ export class CompdataEditorPageComponent {
   }
 
   resolveTeamName(teamId: string): string {
-    if (!teamId) return "No team";
+    if (!teamId) return "Vaga em aberto";
     const opt = this.compdataTeamOptions.find(o => o.value === teamId);
-    return opt ? opt.label : teamId;
+    if (opt) return opt.label;
+    // Fallback: try localization directly
+    if (this.compdataReferenceProject) {
+      const resolved = this.localization.resolveString(this.compdataReferenceProject, `TeamName_${teamId}`, "");
+      if (resolved) return `${resolved} (${teamId})`;
+    }
+    return `Team ${teamId}`;
+  }
+
+  resolveObjectName(objectId: number): string {
+    const obj = this.compdataProject?.objects.find(o => o.id === objectId);
+    if (!obj) return `ID ${objectId}`;
+    const desc = this.resolveCompdataText(obj.description);
+    return desc !== obj.description ? `${obj.shortName} — ${desc}` : obj.shortName;
   }
 
   async openCompdataFolder(): Promise<void> {
