@@ -1,5 +1,5 @@
 import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
-import type { DataTable, DbProject, FieldDescriptor, TableDescriptor } from "../shared/types";
+import type { DataTable, DbProject, FieldDescriptor, LocalizationProject, TableDescriptor } from "../shared/types";
 
 const databaseHeader = Buffer.from([0x44, 0x42, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00]);
 const noCompressedStringBlockLength = 0xffffffff;
@@ -412,7 +412,9 @@ function expandDatabaseForChangedRows(
   return output;
 }
 
-export function saveDatabaseProject(project: DbProject): SaveDatabaseResult {
+type WritableDatabaseProject = DbProject | LocalizationProject;
+
+function saveSingleDatabaseProject(project: WritableDatabaseProject): SaveDatabaseResult {
   if (project.sourceKind !== "database" || !project.dbPath) {
     throw new Error("Open a DB/XML pair before saving a .db file.");
   }
@@ -491,5 +493,23 @@ export function saveDatabaseProject(project: DbProject): SaveDatabaseResult {
     backupPath,
     warnings,
     tablesWritten
+  };
+}
+
+export function saveDatabaseProject(project: DbProject): SaveDatabaseResult {
+  const mainResult = saveSingleDatabaseProject(project);
+  if (!project.localization) {
+    return mainResult;
+  }
+
+  const localizationResult = saveSingleDatabaseProject(project.localization);
+  return {
+    filePath: mainResult.filePath,
+    backupPath: mainResult.backupPath,
+    warnings: [
+      ...mainResult.warnings,
+      ...localizationResult.warnings.map((warning) => `Localization: ${warning}`)
+    ],
+    tablesWritten: mainResult.tablesWritten + localizationResult.tablesWritten
   };
 }

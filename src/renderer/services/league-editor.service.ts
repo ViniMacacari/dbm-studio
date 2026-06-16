@@ -1,5 +1,7 @@
 import { Injectable } from "@angular/core";
 import type { DataTable, DbProject, FieldDescriptor } from "../../shared/types";
+import { LocalizationService } from "./localization.service";
+import type { LocalizationFieldDraft } from "./localization.service";
 import { NationService } from "./nation.service";
 import type { SearchListOption } from "../components/search-list/search-list.component";
 
@@ -41,6 +43,7 @@ export interface LeagueEditorDraft {
   teamLinks: LeagueTeamLinkDraft[];
   teamOptions: SearchListOption[];
   teamToAdd: string;
+  localizationFields: LocalizationFieldDraft[];
 }
 
 export interface LeagueSearchResult {
@@ -105,7 +108,10 @@ export class LeagueEditorService {
     }
   ];
 
-  constructor(private readonly nations: NationService) {}
+  constructor(
+    private readonly nations: NationService,
+    private readonly localization: LocalizationService
+  ) {}
 
   findLeaguesTable(project?: DbProject): DataTable | undefined {
     return this.findTable(project, "leagues");
@@ -197,7 +203,8 @@ export class LeagueEditorService {
         .filter((section) => section.fields.length > 0),
       teamLinks: this.linkedTeams(project, leagueId),
       teamOptions: this.teamOptions(project),
-      teamToAdd: ""
+      teamToAdd: "",
+      localizationFields: this.localization.leagueFields(project, leagueId, displayName)
     };
   }
 
@@ -254,6 +261,17 @@ export class LeagueEditorService {
     if (links) {
       this.applyTeamLinks(links, draft);
       changedTables.add(links.name);
+    }
+
+    this.localization.refreshGeneratedFields(
+      draft.localizationFields,
+      this.localization.leagueFields(project, draft.leagueId, this.displayName(leagues, draft.rowIndex, draft.leagueId))
+    );
+    const localizationResult = this.localization.applyFields(project, draft.localizationFields);
+    if (localizationResult) {
+      for (const tableName of localizationResult.changedTables) {
+        changedTables.add(tableName);
+      }
     }
 
     return {

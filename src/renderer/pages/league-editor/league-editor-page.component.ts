@@ -6,6 +6,7 @@ import { SearchListComponent } from "../../components/search-list/search-list.co
 import type { SearchListOption } from "../../components/search-list/search-list.component";
 import { LeagueEditorService } from "../../services/league-editor.service";
 import type { LeagueEditorDraft, LeagueEditorFieldDraft, LeagueTeamLinkDraft } from "../../services/league-editor.service";
+import type { LocalizationFieldDraft } from "../../services/localization.service";
 import { NationService } from "../../services/nation.service";
 
 @Component({
@@ -92,6 +93,10 @@ export class LeagueEditorPageComponent implements OnChanges {
 
   trackByTeamLink(_index: number, link: LeagueTeamLinkDraft): string {
     return link.teamId;
+  }
+
+  trackByLocalizationField(_index: number, field: LocalizationFieldDraft): string {
+    return field.key;
   }
 
   private commitDraft(action: "stay" | "back" | "save"): void {

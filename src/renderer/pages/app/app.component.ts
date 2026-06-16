@@ -119,7 +119,8 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       return "No project loaded";
     }
     const mode = this.project.binaryReadMode && this.project.binaryReadMode !== "none" ? ` / ${this.project.binaryReadMode}` : "";
-    return `${this.project.title} / ${this.project.sourceKind}${mode}`;
+    const localization = this.project.localization ? " / loc" : "";
+    return `${this.project.title} / ${this.project.sourceKind}${mode}${localization}`;
   }
 
   get hasProject(): boolean {
@@ -322,6 +323,15 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     }, "Opening database", "Reading XML and DB tables");
   }
 
+  async openDatabaseWithLocalization(): Promise<void> {
+    await this.guarded(async () => {
+      const result = await this.api.openDatabaseWithLocalization();
+      if (result.project) {
+        this.loadProject(result.project);
+      }
+    }, "Opening database and language files", "Reading main DB/XML and loc DB/XML");
+  }
+
   async openXml(): Promise<void> {
     await this.guarded(async () => {
       const result = await this.api.openXml();
@@ -352,6 +362,9 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
           return;
         }
         for (const table of this.project.tables) {
+          table.changed = false;
+        }
+        for (const table of this.project.localization?.tables ?? []) {
           table.changed = false;
         }
         const warnings = result.warnings.length > 0 ? ` ${result.warnings.length} warning(s).` : "";

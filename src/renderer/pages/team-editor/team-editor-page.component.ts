@@ -5,6 +5,7 @@ import type { DbProject } from "../../../shared/types";
 import { InputColorComponent } from "../../components/input-color/input-color.component";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
 import type { DbMasterApi } from "../../services/dbmaster-api";
+import type { LocalizationFieldDraft } from "../../services/localization.service";
 import { TeamEditorService } from "../../services/team-editor.service";
 import type {
   TeamColorGroupDraft,
@@ -210,6 +211,10 @@ export class TeamEditorPageComponent implements OnChanges {
 
   trackByKitColor(_index: number, color: TeamKitColorDraft): string {
     return color.id;
+  }
+
+  trackByLocalizationField(_index: number, field: LocalizationFieldDraft): string {
+    return field.key;
   }
 
   private runDraftAction(action: () => string): void {

@@ -50,6 +50,18 @@ export interface DbProject {
   descriptors: TableDescriptor[];
   warnings: string[];
   binaryReadMode?: "none" | "descriptor" | "best-effort";
+  localization?: LocalizationProject;
+}
+
+export interface LocalizationProject {
+  title: string;
+  sourceKind: "database";
+  xmlPath: string;
+  dbPath: string;
+  tables: DataTable[];
+  descriptors: TableDescriptor[];
+  warnings: string[];
+  binaryReadMode?: "none" | "descriptor" | "best-effort";
 }
 
 export interface OpenResult {

@@ -125,6 +125,16 @@
   gap: 10px;
 }
 
+.localization-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.localization-field small {
+  overflow-wrap: anywhere;
+}
+
 .name-grid {
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   margin-bottom: 14px;

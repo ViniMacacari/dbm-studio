@@ -4,6 +4,7 @@ import type { DataTable, DbProject, VisualDependencyProgress } from "../shared/t
 contextBridge.exposeInMainWorld("dbmaster", {
   openXml: () => ipcRenderer.invoke("project:openXml"),
   openDatabase: () => ipcRenderer.invoke("project:openDatabase"),
+  openDatabaseWithLocalization: () => ipcRenderer.invoke("project:openDatabaseWithLocalization"),
   openTextFolder: () => ipcRenderer.invoke("project:openTextFolder"),
   saveDatabase: (project: DbProject) => ipcRenderer.invoke("project:saveDatabase", project),
   exportTable: (table: DataTable) => ipcRenderer.invoke("table:export", table),

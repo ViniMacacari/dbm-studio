@@ -1,6 +1,8 @@
 import { Injectable } from "@angular/core";
 import type { DataTable, DbProject, FieldDescriptor } from "../../shared/types";
 import type { SearchListOption } from "../components/search-list/search-list.component";
+import { LocalizationService } from "./localization.service";
+import type { LocalizationFieldDraft } from "./localization.service";
 import { NationService } from "./nation.service";
 import { TransferService } from "./transfer.service";
 import type { TeamPlayerLinkDraft } from "./transfer.service";
@@ -126,6 +128,7 @@ export interface TeamEditorDraft {
   stadiumToAssign: string;
   kitLinks: TeamKitDraft[];
   kitTypeToAdd: string;
+  localizationFields: LocalizationFieldDraft[];
 }
 
 export interface TeamSearchResult {
@@ -164,7 +167,8 @@ interface SectionDefinition {
 export class TeamEditorService {
   constructor(
     private readonly nations: NationService,
-    private readonly transfers: TransferService
+    private readonly transfers: TransferService,
+    private readonly localization: LocalizationService
   ) {}
 
   private readonly defaultKitTypes = [
@@ -420,7 +424,8 @@ export class TeamEditorService {
       stadiumOptions,
       stadiumToAssign: "",
       kitLinks,
-      kitTypeToAdd: this.nextAvailableKitType(kitLinks)
+      kitTypeToAdd: this.nextAvailableKitType(kitLinks),
+      localizationFields: this.localization.teamFields(project, teamId, displayName)
     };
   }
 
@@ -605,6 +610,17 @@ export class TeamEditorService {
     const kitResult = this.applyKits(project, draft);
     if (kitResult) {
       changedTables.add(kitResult.name);
+    }
+
+    this.localization.refreshGeneratedFields(
+      draft.localizationFields,
+      this.localization.teamFields(project, draft.teamId, this.displayName(teams, draft.rowIndex, draft.teamId))
+    );
+    const localizationResult = this.localization.applyFields(project, draft.localizationFields);
+    if (localizationResult) {
+      for (const tableName of localizationResult.changedTables) {
+        changedTables.add(tableName);
+      }
     }
 
     return {

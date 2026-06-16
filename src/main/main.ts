@@ -12,7 +12,7 @@ import {
   openXmlProject,
   saveDatabaseProject
 } from "../core/projectIO";
-import type { DataTable, DbProject } from "../shared/types";
+import type { DataTable, DbProject, LocalizationProject } from "../shared/types";
 
 let mainWindow: BrowserWindow | undefined;
 let visualDependencyManager: VisualDependencyManager | undefined;
@@ -227,6 +227,22 @@ function openDatabaseInWorker(xmlPath: string, dbPath: string): Promise<DbProjec
   });
 }
 
+function toLocalizationProject(project: DbProject): LocalizationProject {
+  if (project.sourceKind !== "database" || !project.xmlPath || !project.dbPath) {
+    throw new Error("Localization files must be opened as a DB/XML pair.");
+  }
+  return {
+    title: project.title,
+    sourceKind: "database",
+    xmlPath: project.xmlPath,
+    dbPath: project.dbPath,
+    tables: project.tables,
+    descriptors: project.descriptors,
+    warnings: project.warnings,
+    binaryReadMode: project.binaryReadMode
+  };
+}
+
 ipcMain.handle("project:openXml", async () => {
   return keepWindowDisplayState(async () => {
     const xmlPath = await pickFile("Open XML Descriptor File", [{ name: "XML files", extensions: ["xml"] }]);
@@ -248,6 +264,36 @@ ipcMain.handle("project:openDatabase", async () => {
       return { canceled: true };
     }
     return { project: await openDatabaseInWorker(xmlPath, dbPath) };
+  });
+});
+
+ipcMain.handle("project:openDatabaseWithLocalization", async () => {
+  return keepWindowDisplayState(async () => {
+    const xmlPath = await pickFile("Open Main XML Descriptor File", [{ name: "XML files", extensions: ["xml"] }]);
+    if (!xmlPath) {
+      return { canceled: true };
+    }
+    const dbPath = await pickFile("Open Main Database File", [{ name: "DB files", extensions: ["db"] }]);
+    if (!dbPath) {
+      return { canceled: true };
+    }
+    const locXmlPath = await pickFile("Open Loc XML Descriptor File", [{ name: "XML files", extensions: ["xml"] }]);
+    if (!locXmlPath) {
+      return { canceled: true };
+    }
+    const locDbPath = await pickFile("Open Loc Database File", [{ name: "DB files", extensions: ["db"] }]);
+    if (!locDbPath) {
+      return { canceled: true };
+    }
+
+    const project = await openDatabaseInWorker(xmlPath, dbPath);
+    const localization = await openDatabaseInWorker(locXmlPath, locDbPath);
+    project.localization = toLocalizationProject(localization);
+    project.warnings = [
+      ...project.warnings,
+      ...localization.warnings.map((warning) => `Localization: ${warning}`)
+    ];
+    return { project };
   });
 });
 

@@ -35,6 +35,14 @@
     <button type="button" [class.active]="activeTab === 'rivals'" (click)="setTab('rivals')">Rivals</button>
     <button type="button" [class.active]="activeTab === 'stadiums'" (click)="setTab('stadiums')">Stadiums</button>
     <button type="button" [class.active]="activeTab === 'kits'" (click)="setTab('kits')">Kits</button>
+    <button
+      *ngIf="team.localizationFields.length > 0"
+      type="button"
+      [class.active]="activeTab === 'localization'"
+      (click)="setTab('localization')"
+    >
+      Localization
+    </button>
   </nav>
 
   <div class="player-editor-body">
@@ -302,6 +310,16 @@
           <strong>No kits linked.</strong>
         </div>
       </ng-template>
+    </section>
+
+    <section class="editor-panel localization-panel" [class.hidden]="activeTab !== 'localization'">
+      <div class="localization-grid">
+        <label class="field-block localization-field" *ngFor="let field of team.localizationFields; trackBy: trackByLocalizationField">
+          <span>{{ field.label }}</span>
+          <input type="text" [(ngModel)]="field.value" />
+          <small>{{ field.key }}{{ field.found ? '' : ' / generated' }}</small>
+        </label>
+      </div>
     </section>
   </div>
 
