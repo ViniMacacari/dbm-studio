@@ -28,6 +28,15 @@ export class LocalizationService {
     return this.languageTables(project).some((layout) => layout.table.rows.length > 0);
   }
 
+  resolveString(project: DbProject | undefined, key: string, fallback = key): string {
+    const normalizedKey = key.trim();
+    if (!normalizedKey) {
+      return fallback;
+    }
+    const existing = this.findString(this.languageTables(project), normalizedKey);
+    return existing?.value.trim() || fallback;
+  }
+
   teamFields(project: DbProject | undefined, teamId: string, displayName: string): LocalizationFieldDraft[] {
     return this.entityFields(project, [
       { key: `TeamName_${teamId}`, label: "Team name", fallbackValue: displayName },
