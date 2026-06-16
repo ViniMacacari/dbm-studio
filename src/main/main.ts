@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, screen } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, screen, Menu } from "electron";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -702,6 +702,7 @@ ipcMain.handle("visualDependencies:getTeamCrest", (_event, teamId: string) => {
 });
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
   createWindow();
 
   app.on("activate", () => {
