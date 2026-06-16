@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { CompdataProject, DataTable, DbProject, VisualDependencyProgress } from "../shared/types";
+import type { CompdataOpenProgress, CompdataProject, DataTable, DbProject, VisualDependencyProgress } from "../shared/types";
 
 contextBridge.exposeInMainWorld("dbmaster", {
   openXml: () => ipcRenderer.invoke("project:openXml"),
@@ -8,6 +8,11 @@ contextBridge.exposeInMainWorld("dbmaster", {
   openTextFolder: () => ipcRenderer.invoke("project:openTextFolder"),
   openCompdataFolder: () => ipcRenderer.invoke("compdata:openFolder"),
   openCompdataFolderReference: (folderPath: string) => ipcRenderer.invoke("compdata:openFolderReference", folderPath),
+  onCompdataOpenProgress: (listener: (progress: CompdataOpenProgress) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, progress: CompdataOpenProgress) => listener(progress);
+    ipcRenderer.on("compdata:progress", subscription);
+    return () => ipcRenderer.removeListener("compdata:progress", subscription);
+  },
   saveCompdata: (project: CompdataProject) => ipcRenderer.invoke("compdata:save", project),
   saveDatabase: (project: DbProject) => ipcRenderer.invoke("project:saveDatabase", project),
   exportTable: (table: DataTable) => ipcRenderer.invoke("table:export", table),

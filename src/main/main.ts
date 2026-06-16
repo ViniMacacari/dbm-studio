@@ -13,7 +13,7 @@ import {
   openXmlProject,
   saveDatabaseProject
 } from "../core/projectIO";
-import type { CompdataProject, DataTable, DbProject, LocalizationProject } from "../shared/types";
+import type { CompdataOpenProgress, CompdataProject, DataTable, DbProject, LocalizationProject } from "../shared/types";
 
 let mainWindow: BrowserWindow | undefined;
 let visualDependencyManager: VisualDependencyManager | undefined;
@@ -354,8 +354,8 @@ function trimCompdataReferenceProject(project: DbProject): DbProject {
   };
 }
 
-function openCompdataWorkspace(folderPath: string): { project: CompdataProject } {
-  return { project: openCompdataProject(folderPath) };
+function openCompdataWorkspace(folderPath: string, onProgress?: (progress: CompdataOpenProgress) => void): { project: CompdataProject } {
+  return { project: openCompdataProject(folderPath, onProgress) };
 }
 
 async function openCompdataReferenceProject(folderPath: string): Promise<{ referenceProject?: DbProject; warnings: string[] }> {
@@ -465,13 +465,22 @@ ipcMain.handle("project:openTextFolder", async () => {
   });
 });
 
-ipcMain.handle("compdata:openFolder", async () => {
+ipcMain.handle("compdata:openFolder", async (event) => {
   return keepWindowDisplayState(async () => {
+    event.sender.send("compdata:progress", {
+      phase: "selecting",
+      currentStep: 0,
+      totalSteps: 1,
+      percent: 0,
+      message: "Waiting for folder selection"
+    } satisfies CompdataOpenProgress);
     const folderPath = await pickFolder("Open Compdata Folder");
     if (!folderPath) {
       return { canceled: true };
     }
-    return openCompdataWorkspace(folderPath);
+    return openCompdataWorkspace(folderPath, (progress) => {
+      event.sender.send("compdata:progress", progress);
+    });
   });
 });
 

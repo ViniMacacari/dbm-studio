@@ -1,10 +1,11 @@
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type {
   CompdataAdvancement,
   CompdataCompetitionSummary,
   CompdataInitTeam,
   CompdataObject,
+  CompdataOpenProgress,
   CompdataProject,
   CompdataScheduleEntry,
   CompdataSetting,
@@ -12,13 +13,51 @@ import type {
   CompdataTask
 } from "../shared/types";
 
-function readOptionalText(folderPath: string, fileName: string, warnings: string[]): string {
-  const match = readdirSync(folderPath).find((candidate) => candidate.toLowerCase() === fileName.toLowerCase());
+type CompdataOpenProgressCallback = (progress: CompdataOpenProgress) => void;
+
+const mainCompdataFiles = [
+  "compobj.txt",
+  "compids.txt",
+  "settings.txt",
+  "tasks.txt",
+  "schedule.txt",
+  "standings.txt",
+  "advancement.txt",
+  "initteams.txt",
+  "weather.txt",
+  "activeteams.txt",
+  "objectives.txt"
+];
+
+function emitProgress(
+  onProgress: CompdataOpenProgressCallback | undefined,
+  phase: CompdataOpenProgress["phase"],
+  currentStep: number,
+  totalSteps: number,
+  message: string,
+  fileName?: string
+): void {
+  onProgress?.({
+    phase,
+    fileName,
+    currentStep,
+    totalSteps,
+    percent: totalSteps > 0 ? Math.max(0, Math.min(100, Math.round((currentStep / totalSteps) * 100))) : 0,
+    message
+  });
+}
+
+function readOptionalText(folderPath: string, filesByLowerName: Map<string, string>, fileName: string, warnings: string[]): string {
+  const match = filesByLowerName.get(fileName.toLowerCase());
   if (!match) {
     warnings.push(`${fileName} was not found.`);
     return "";
   }
   return readFileSync(join(folderPath, match), "utf8");
+}
+
+function hasFile(filesByLowerName: Map<string, string>, fileName: string): boolean {
+  return filesByLowerName.has(fileName.toLowerCase());
 }
 
 function rows(text: string): string[][] {
@@ -182,24 +221,58 @@ function competitionSummaries(
     .filter((summary): summary is CompdataCompetitionSummary => Boolean(summary));
 }
 
-export function openCompdataProject(folderPath: string): CompdataProject {
+export function openCompdataProject(folderPath: string, onProgress?: CompdataOpenProgressCallback): CompdataProject {
   const warnings: string[] = [];
-  const compobj = readOptionalText(folderPath, "compobj.txt", warnings);
-  const compids = readOptionalText(folderPath, "compids.txt", warnings);
-  const settingsText = readOptionalText(folderPath, "settings.txt", warnings);
-  const tasksText = readOptionalText(folderPath, "tasks.txt", warnings);
-  const scheduleText = readOptionalText(folderPath, "schedule.txt", warnings);
-  const standingsText = readOptionalText(folderPath, "standings.txt", warnings);
-  const advancementText = readOptionalText(folderPath, "advancement.txt", warnings);
-  const initTeamsText = readOptionalText(folderPath, "initteams.txt", warnings);
-  const objects = parseObjects(compobj, warnings);
-  const compIds = parseCompIds(compids);
-  const settings = parseSettings(settingsText);
-  const tasks = parseTasks(tasksText, warnings);
-  const schedules = parseSchedules(scheduleText);
-  const standings = parseStandings(standingsText);
-  const advancements = parseAdvancements(advancementText);
-  const initTeams = parseInitTeams(initTeamsText);
+  const filesByLowerName = new Map(readdirSync(folderPath).map((fileName) => [fileName.toLowerCase(), fileName]));
+  const totalSteps = mainCompdataFiles.length + 10;
+  let step = 0;
+  const readFile = (fileName: string): string => {
+    emitProgress(onProgress, "reading", step, totalSteps, `Reading ${fileName}`, fileName);
+    const text = readOptionalText(folderPath, filesByLowerName, fileName, warnings);
+    step += 1;
+    emitProgress(onProgress, "reading", step, totalSteps, `${fileName} loaded`, fileName);
+    return text;
+  };
+  const parseStep = <T>(message: string, parse: () => T): T => {
+    emitProgress(onProgress, "parsing", step, totalSteps, message);
+    const value = parse();
+    step += 1;
+    emitProgress(onProgress, "parsing", step, totalSteps, message);
+    return value;
+  };
+
+  const compobj = readFile("compobj.txt");
+  const compids = readFile("compids.txt");
+  const settingsText = readFile("settings.txt");
+  const tasksText = readFile("tasks.txt");
+  const scheduleText = readFile("schedule.txt");
+  const standingsText = readFile("standings.txt");
+  const advancementText = readFile("advancement.txt");
+  const initTeamsText = readFile("initteams.txt");
+  const weatherText = readFile("weather.txt");
+  const hasActiveTeams = hasFile(filesByLowerName, "activeteams.txt");
+  const activeTeamsText = hasActiveTeams ? readFile("activeteams.txt") : "";
+  if (!hasActiveTeams) {
+    step += 1;
+  }
+  const hasObjectives = hasFile(filesByLowerName, "objectives.txt");
+  const objectiveText = hasObjectives ? readFile("objectives.txt") : "";
+  if (!hasObjectives) {
+    step += 1;
+  }
+  const objects = parseStep("Parsing compobj.txt", () => parseObjects(compobj, warnings));
+  const compIds = parseStep("Parsing compids.txt", () => parseCompIds(compids));
+  const settings = parseStep("Parsing settings.txt", () => parseSettings(settingsText));
+  const tasks = parseStep("Parsing tasks.txt", () => parseTasks(tasksText, warnings));
+  const schedules = parseStep("Parsing schedule.txt", () => parseSchedules(scheduleText));
+  const standings = parseStep("Parsing standings.txt", () => parseStandings(standingsText));
+  const advancements = parseStep("Parsing advancement.txt", () => parseAdvancements(advancementText));
+  const initTeams = parseStep("Parsing initteams.txt", () => parseInitTeams(initTeamsText));
+  const weatherRows = parseStep("Parsing weather.txt", () => rows(weatherText));
+  emitProgress(onProgress, "building", step, totalSteps, "Building competition summaries");
+  const competitions = competitionSummaries(objects, compIds, settings, tasks, schedules, standings, advancements, initTeams, warnings);
+  step += 1;
+  emitProgress(onProgress, "loaded", totalSteps, totalSteps, "Compdata loaded");
 
   return {
     title: basename(folderPath),
@@ -212,13 +285,11 @@ export function openCompdataProject(folderPath: string): CompdataProject {
     standings,
     advancements,
     initTeams,
-    weatherRows: rows(readOptionalText(folderPath, "weather.txt", warnings)),
-    activeTeamsRows: existsSync(join(folderPath, "activeteams.txt")) || existsSync(join(folderPath, "activeteams.TXT"))
-      ? rows(readOptionalText(folderPath, "activeteams.txt", warnings))
-      : [],
-    objectiveRows: existsSync(join(folderPath, "objectives.txt")) ? rows(readOptionalText(folderPath, "objectives.txt", warnings)) : [],
+    weatherRows,
+    activeTeamsRows: activeTeamsText ? rows(activeTeamsText) : [],
+    objectiveRows: objectiveText ? rows(objectiveText) : [],
     warnings,
-    competitions: competitionSummaries(objects, compIds, settings, tasks, schedules, standings, advancements, initTeams, warnings)
+    competitions
   };
 }
 
