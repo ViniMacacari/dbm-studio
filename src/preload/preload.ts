@@ -1,11 +1,13 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DataTable, DbProject, VisualDependencyProgress } from "../shared/types";
+import type { CompdataProject, DataTable, DbProject, VisualDependencyProgress } from "../shared/types";
 
 contextBridge.exposeInMainWorld("dbmaster", {
   openXml: () => ipcRenderer.invoke("project:openXml"),
   openDatabase: () => ipcRenderer.invoke("project:openDatabase"),
   openDatabaseWithLocalization: () => ipcRenderer.invoke("project:openDatabaseWithLocalization"),
   openTextFolder: () => ipcRenderer.invoke("project:openTextFolder"),
+  openCompdataFolder: () => ipcRenderer.invoke("compdata:openFolder"),
+  saveCompdata: (project: CompdataProject) => ipcRenderer.invoke("compdata:save", project),
   saveDatabase: (project: DbProject) => ipcRenderer.invoke("project:saveDatabase", project),
   exportTable: (table: DataTable) => ipcRenderer.invoke("table:export", table),
   exportAll: (project: DbProject) => ipcRenderer.invoke("table:exportAll", project),

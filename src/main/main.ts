@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { computeLanguageHash, toSignedInt32 } from "../core/fifaHash";
+import { openCompdataProject, saveCompdataProject } from "../core/compdataIO";
 import { extractBig, readBigEntries } from "../core/bigArchive";
 import { VisualDependencyManager } from "./visualDependencyManager";
 import {
@@ -12,7 +13,7 @@ import {
   openXmlProject,
   saveDatabaseProject
 } from "../core/projectIO";
-import type { DataTable, DbProject, LocalizationProject } from "../shared/types";
+import type { CompdataProject, DataTable, DbProject, LocalizationProject } from "../shared/types";
 
 let mainWindow: BrowserWindow | undefined;
 let visualDependencyManager: VisualDependencyManager | undefined;
@@ -306,6 +307,20 @@ ipcMain.handle("project:openTextFolder", async () => {
     }
     return { project: openTextFolderProject(folderPath) };
   });
+});
+
+ipcMain.handle("compdata:openFolder", async () => {
+  return keepWindowDisplayState(async () => {
+    const folderPath = await pickFolder("Open Compdata Folder");
+    if (!folderPath) {
+      return { canceled: true };
+    }
+    return { project: openCompdataProject(folderPath) };
+  });
+});
+
+ipcMain.handle("compdata:save", async (_event, project: CompdataProject) => {
+  return keepWindowDisplayState(() => saveCompdataProject(project));
 });
 
 ipcMain.handle("project:saveDatabase", async (_event, project: DbProject) => {

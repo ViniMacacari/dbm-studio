@@ -40,6 +40,90 @@ export interface DataTable {
   warning?: string;
 }
 
+export interface CompdataObject {
+  id: number;
+  kind: number;
+  shortName: string;
+  description: string;
+  parentId: number;
+}
+
+export interface CompdataSetting {
+  objectId: number;
+  key: string;
+  value: string;
+}
+
+export interface CompdataTask {
+  competitionId: number;
+  timing: string;
+  action: string;
+  targetId: number;
+  param1: string;
+  param2: string;
+  param3: string;
+}
+
+export interface CompdataScheduleEntry {
+  objectId: number;
+  day: number;
+  round: number;
+  minGames: number;
+  maxGames: number;
+  time: string;
+}
+
+export interface CompdataStandingSlot {
+  groupId: number;
+  position: number;
+}
+
+export interface CompdataAdvancement {
+  fromGroupId: number;
+  fromPosition: number;
+  toGroupId: number;
+  toPosition: number;
+}
+
+export interface CompdataInitTeam {
+  competitionId: number;
+  position: number;
+  teamId: string;
+}
+
+export interface CompdataCompetitionSummary {
+  id: number;
+  shortName: string;
+  description: string;
+  parentId: number;
+  stages: CompdataObject[];
+  groups: CompdataObject[];
+  settingsCount: number;
+  tasksCount: number;
+  scheduleCount: number;
+  standingsCount: number;
+  advancementCount: number;
+  initTeamsCount: number;
+}
+
+export interface CompdataProject {
+  title: string;
+  folderPath: string;
+  objects: CompdataObject[];
+  compIds: number[];
+  settings: CompdataSetting[];
+  tasks: CompdataTask[];
+  schedules: CompdataScheduleEntry[];
+  standings: CompdataStandingSlot[];
+  advancements: CompdataAdvancement[];
+  initTeams: CompdataInitTeam[];
+  weatherRows: string[][];
+  activeTeamsRows: string[][];
+  objectiveRows: string[][];
+  warnings: string[];
+  competitions: CompdataCompetitionSummary[];
+}
+
 export interface DbProject {
   title: string;
   sourceKind: "database" | "xml" | "text-folder" | "snapshot";
