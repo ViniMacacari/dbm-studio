@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import electronPath from "electron";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const npmCommand = "npm";
 
 function projectPath(relativePath) {
   return fileURLToPath(new URL(`../${relativePath}`, import.meta.url));
@@ -45,7 +45,8 @@ function runNpmScript(script) {
   const result = spawnSync(npmCommand, ["run", script], {
     cwd: projectRoot,
     stdio: "inherit",
-    env: process.env
+    env: process.env,
+    shell: process.platform === "win32"
   });
 
   if (result.error) {
