@@ -72,12 +72,15 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   activeModule: ModuleMode = "players";
   playerEditorReturnMode: "table" | "modules" = "table";
   playerEditorRowIndex = 0;
+  playerEditorIsNew = false;
   playerSearchTerm = "";
   playerSearchResults: PlayerSearchResult[] = [];
   teamEditorRowIndex = 0;
+  teamEditorIsNew = false;
   teamSearchTerm = "";
   teamSearchResults: TeamSearchResult[] = [];
   leagueEditorRowIndex = 0;
+  leagueEditorIsNew = false;
   leagueSearchTerm = "";
   leagueCountryFilter = "";
   leagueSearchResults: LeagueSearchResult[] = [];
@@ -693,6 +696,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
 
   openPlayerFromModule(player: PlayerSearchResult): void {
     this.playerEditorRowIndex = player.rowIndex;
+    this.playerEditorIsNew = false;
     this.playerEditorReturnMode = "modules";
     this.viewMode = "playerEditor";
   }
@@ -703,6 +707,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       this.playerSearchTerm = result.playerId;
       this.refreshPlayerSearch();
       this.playerEditorRowIndex = result.rowIndex;
+      this.playerEditorIsNew = true;
       this.playerEditorReturnMode = "modules";
       this.viewMode = "playerEditor";
       this.setStatus(result.message);
@@ -715,6 +720,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       this.teamSearchTerm = result.teamId;
       this.refreshTeamSearch();
       this.teamEditorRowIndex = result.rowIndex;
+      this.teamEditorIsNew = true;
       this.viewMode = "teamEditor";
       this.setStatus(result.message);
     }, "Creating team", "Preparing teams table");
@@ -727,6 +733,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       this.leagueCountryFilter = "";
       this.refreshLeagueSearch();
       this.leagueEditorRowIndex = result.rowIndex;
+      this.leagueEditorIsNew = true;
       this.viewMode = "leagueEditor";
       this.setStatus(result.message);
     }, "Creating league", "Preparing leagues table");
@@ -734,11 +741,13 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
 
   openTeamFromModule(team: TeamSearchResult): void {
     this.teamEditorRowIndex = team.rowIndex;
+    this.teamEditorIsNew = false;
     this.viewMode = "teamEditor";
   }
 
   openLeagueFromModule(league: LeagueSearchResult): void {
     this.leagueEditorRowIndex = league.rowIndex;
+    this.leagueEditorIsNew = false;
     this.viewMode = "leagueEditor";
   }
 
@@ -813,6 +822,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       return;
     }
     this.playerEditorRowIndex = this.selectedRowIndexes()[0];
+    this.playerEditorIsNew = false;
     this.playerEditorReturnMode = "table";
     this.viewMode = "playerEditor";
   }

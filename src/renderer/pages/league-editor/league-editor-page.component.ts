@@ -19,6 +19,7 @@ import { NationService } from "../../services/nation.service";
 export class LeagueEditorPageComponent implements OnChanges {
   @Input({ required: true }) project!: DbProject;
   @Input({ required: true }) rowIndex = 0;
+  @Input() isNew = false;
   @Input() canSaveDatabase = false;
   @Output() closeEditor = new EventEmitter<void>();
   @Output() applied = new EventEmitter<string>();
@@ -124,7 +125,7 @@ export class LeagueEditorPageComponent implements OnChanges {
   }
 
   private loadDraft(resetTab = true): void {
-    this.draft = this.project ? this.leagueEditor.createDraft(this.project, this.rowIndex) : undefined;
+    this.draft = this.project ? this.leagueEditor.createDraft(this.project, this.rowIndex, this.isNew) : undefined;
     this.nationOptions = this.nations.nationOptions(this.project);
     if (resetTab) {
       this.activeTab = "identity";

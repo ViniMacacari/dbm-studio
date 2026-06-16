@@ -19,6 +19,7 @@ import type { PlayerEditorDraft, PlayerEditorFieldDraft } from "../../services/p
 export class PlayerEditorPageComponent implements OnChanges {
   @Input({ required: true }) project!: DbProject;
   @Input({ required: true }) rowIndex = 0;
+  @Input() isNew = false;
   @Input() canSaveDatabase = false;
   @Output() closeEditor = new EventEmitter<void>();
   @Output() applied = new EventEmitter<string>();
@@ -40,7 +41,7 @@ export class PlayerEditorPageComponent implements OnChanges {
   ) {}
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes["project"] || changes["rowIndex"]) {
+    if (changes["project"] || changes["rowIndex"] || changes["isNew"]) {
       this.loadDraft();
     }
   }
@@ -97,7 +98,7 @@ export class PlayerEditorPageComponent implements OnChanges {
   }
 
   private loadDraft(resetTab = true): void {
-    this.draft = this.project ? this.playerEditor.createDraft(this.project, this.rowIndex) : undefined;
+    this.draft = this.project ? this.playerEditor.createDraft(this.project, this.rowIndex, this.isNew) : undefined;
     this.nationOptions = this.nations.nationOptions(this.project);
     if (this.draft) {
       void this.loadMiniface(this.draft.playerId);

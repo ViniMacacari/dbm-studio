@@ -385,7 +385,7 @@ export class TeamEditorService {
     };
   }
 
-  createDraft(project: DbProject, rowIndex: number): TeamEditorDraft | undefined {
+  createDraft(project: DbProject, rowIndex: number, isNew = false): TeamEditorDraft | undefined {
     const teams = this.findTeamsTable(project);
     if (!teams || !teams.rows[rowIndex]) {
       return undefined;
@@ -407,7 +407,7 @@ export class TeamEditorService {
       midfield: this.read(teams, rowIndex, "midfieldrating"),
       defense: this.read(teams, rowIndex, "defenserating"),
       sections: this.sections
-        .map((section) => this.makeSectionDraft(teams, rowIndex, section))
+        .map((section) => this.makeSectionDraft(teams, rowIndex, section, isNew))
         .filter((section) => section.fields.length > 0),
       playerLinks,
       playerOptions: this.transfers.playerOptions(project),
@@ -577,6 +577,18 @@ export class TeamEditorService {
         }
         this.write(teams, draft.rowIndex, field.column, value);
       }
+    }
+
+    const newTeamId = this.read(teams, draft.rowIndex, "teamid");
+    if (newTeamId && newTeamId !== draft.teamId) {
+      const teamIdColumn = this.columnIndex(teams, "teamid");
+      if (teams.rows.some((row, i) => i !== draft.rowIndex && row[teamIdColumn] === newTeamId)) {
+        throw new Error(`Team ID ${newTeamId} is already in use.`);
+      }
+      for (const field of draft.localizationFields) {
+        field.key = field.key.replace(draft.teamId, newTeamId);
+      }
+      draft.teamId = newTeamId;
     }
 
     const changedTables = new Set<string>();
@@ -894,8 +906,8 @@ export class TeamEditorService {
     return teamKits;
   }
 
-  private makeSectionDraft(table: DataTable, rowIndex: number, section: SectionDefinition): TeamEditorSectionDraft {
-    const fields = this.makeFields(table, rowIndex, section.fields);
+  private makeSectionDraft(table: DataTable, rowIndex: number, section: SectionDefinition, isNew: boolean): TeamEditorSectionDraft {
+    const fields = this.makeFields(table, rowIndex, section.fields, isNew);
     return {
       id: section.id,
       title: section.title,
@@ -1402,18 +1414,19 @@ export class TeamEditorService {
     return columns.every((column) => this.columnIndex(table, column) >= 0);
   }
 
-  private makeFields(table: DataTable, rowIndex: number, definitions: FieldDefinition[]): TeamEditorFieldDraft[] {
+  private makeFields(table: DataTable, rowIndex: number, definitions: FieldDefinition[], isNew: boolean): TeamEditorFieldDraft[] {
     return definitions
       .filter((definition) => this.columnIndex(table, definition.column) >= 0)
       .map((definition) => {
         const field = this.fieldForColumn(table, definition.column);
         const range = this.numericRangeForField(field);
+        const allowEditId = isNew && definition.column.toLowerCase() === "teamid";
         return {
           column: definition.column,
           label: definition.label,
           value: this.read(table, rowIndex, definition.column),
           inputType: definition.inputType ?? this.inputTypeForField(field),
-          readonly: definition.readonly,
+          readonly: definition.readonly && !allowEditId,
           min: definition.min ?? range.min,
           max: definition.max ?? range.max
         };

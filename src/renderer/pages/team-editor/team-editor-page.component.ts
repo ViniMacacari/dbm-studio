@@ -30,6 +30,7 @@ import type { TeamPlayerLinkDraft } from "../../services/transfer.service";
 export class TeamEditorPageComponent implements OnChanges {
   @Input({ required: true }) project!: DbProject;
   @Input({ required: true }) rowIndex = 0;
+  @Input() isNew = false;
   @Input() canSaveDatabase = false;
   @Output() closeEditor = new EventEmitter<void>();
   @Output() applied = new EventEmitter<string>();
@@ -228,7 +229,7 @@ export class TeamEditorPageComponent implements OnChanges {
   }
 
   private loadDraft(resetTab = true): void {
-    this.draft = this.project ? this.teamEditor.createDraft(this.project, this.rowIndex) : undefined;
+    this.draft = this.project ? this.teamEditor.createDraft(this.project, this.rowIndex, this.isNew) : undefined;
     if (this.draft) {
       void this.loadCrest(this.draft.teamId);
     } else {

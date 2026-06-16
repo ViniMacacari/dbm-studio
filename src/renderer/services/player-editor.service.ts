@@ -361,7 +361,7 @@ export class PlayerEditorService {
     return table?.name.toLowerCase() === "players";
   }
 
-  createDraft(project: DbProject, rowIndex: number): PlayerEditorDraft | undefined {
+  createDraft(project: DbProject, rowIndex: number, isNew = false): PlayerEditorDraft | undefined {
     const players = this.findPlayersTable(project);
     if (!players || !players.rows[rowIndex]) {
       return undefined;
@@ -390,12 +390,12 @@ export class PlayerEditorService {
       age: fifaDateCodeToAge(birthdate),
       namesAvailable: Boolean(this.findNamesTable(project)),
       names,
-      identityFields: this.makeFields(players, rowIndex, this.identityFields, project),
+      identityFields: this.makeFields(players, rowIndex, this.identityFields, isNew, project),
       sections: this.sections
         .map((section) => ({
           id: section.id,
           title: section.title,
-          fields: this.makeFields(players, rowIndex, section.fields)
+          fields: this.makeFields(players, rowIndex, section.fields, isNew)
         }))
         .filter((section) => section.fields.length > 0)
     };
@@ -531,6 +531,23 @@ export class PlayerEditorService {
 
       this.writeIfPresent(players, draft.rowIndex, "iscustomized", "1");
       this.writeIfPresent(players, draft.rowIndex, "usercaneditname", "1");
+    }
+
+    const newPlayerId = this.read(players, draft.rowIndex, "playerid");
+    if (newPlayerId && newPlayerId !== draft.playerId) {
+      const playerIdColumn = this.columnIndex(players, "playerid");
+      if (players.rows.some((r, i) => i !== draft.rowIndex && r[playerIdColumn] === newPlayerId)) {
+        throw new Error(`Player ID ${newPlayerId} is already in use.`);
+      }
+
+      if (namesTable) {
+        const nameRowIndex = this.findRowByPlayerId(namesTable, draft.playerId);
+        if (nameRowIndex >= 0) {
+          this.write(namesTable, nameRowIndex, "playerid", newPlayerId);
+          namesTable.changed = true;
+        }
+      }
+      draft.playerId = newPlayerId;
     }
 
     return {
@@ -768,6 +785,7 @@ export class PlayerEditorService {
     table: DataTable,
     rowIndex: number,
     definitions: FieldDefinition[],
+    isNew: boolean,
     project?: DbProject
   ): PlayerEditorFieldDraft[] {
     return definitions
@@ -784,7 +802,7 @@ export class PlayerEditorService {
           label: definition.label,
           value: dateValue ?? rawValue,
           inputType: dateValue ? "date" as const : definition.inputType ?? "number" as const,
-          readonly: definition.readonly,
+          readonly: definition.readonly && !(isNew && definition.column.toLowerCase() === "playerid"),
           min: definition.min ?? numericRange.min,
           max: definition.max ?? numericRange.max,
           relation: this.resolveFieldRelation(project, definition.column, rawValue),

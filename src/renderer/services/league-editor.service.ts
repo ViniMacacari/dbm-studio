@@ -178,7 +178,7 @@ export class LeagueEditorService {
     };
   }
 
-  createDraft(project: DbProject, rowIndex: number): LeagueEditorDraft | undefined {
+  createDraft(project: DbProject, rowIndex: number, isNew = false): LeagueEditorDraft | undefined {
     const leagues = this.findLeaguesTable(project);
     if (!leagues || !leagues.rows[rowIndex]) {
       return undefined;
@@ -198,7 +198,7 @@ export class LeagueEditorService {
         .map((section) => ({
           id: section.id,
           title: section.title,
-          fields: this.makeFields(project, leagues, rowIndex, section.fields)
+          fields: this.makeFields(project, leagues, rowIndex, section.fields, isNew)
         }))
         .filter((section) => section.fields.length > 0),
       teamLinks: this.linkedTeams(project, leagueId),
@@ -254,6 +254,20 @@ export class LeagueEditorService {
         this.write(leagues, draft.rowIndex, field.column, this.normalizeFieldForWrite(field));
       }
     }
+
+    const newLeagueId = this.read(leagues, draft.rowIndex, "leagueid");
+    if (newLeagueId && newLeagueId !== draft.leagueId) {
+      const leagueIdColumn = this.columnIndex(leagues, "leagueid");
+      if (leagues.rows.some((r, i) => i !== draft.rowIndex && r[leagueIdColumn] === newLeagueId)) {
+        throw new Error(`League ID ${newLeagueId} is already in use.`);
+      }
+
+      for (const field of draft.localizationFields) {
+        field.key = field.key.replace(draft.leagueId, newLeagueId);
+      }
+      draft.leagueId = newLeagueId;
+    }
+
     leagues.changed = true;
     changedTables.add(leagues.name);
 
@@ -465,7 +479,8 @@ export class LeagueEditorService {
     project: DbProject,
     table: DataTable,
     rowIndex: number,
-    definitions: FieldDefinition[]
+    definitions: FieldDefinition[],
+    isNew: boolean
   ): LeagueEditorFieldDraft[] {
     return definitions
       .filter((definition) => this.columnIndex(table, definition.column) >= 0)
@@ -473,12 +488,13 @@ export class LeagueEditorService {
         const field = this.fieldForColumn(table, definition.column);
         const range = this.numericRangeForField(field);
         const value = this.read(table, rowIndex, definition.column);
+        const allowEditId = isNew && definition.column.toLowerCase() === "leagueid";
         return {
           column: definition.column,
           label: definition.label,
           value,
           inputType: definition.inputType ?? this.inputTypeForField(field),
-          readonly: definition.readonly,
+          readonly: definition.readonly && !allowEditId,
           min: definition.min ?? range.min,
           max: definition.max ?? range.max,
           relation: definition.inputType === "nation" ? this.nations.resolveNation(project, value) : undefined

@@ -116,8 +116,12 @@ export class LocalizationService {
   }
 
   private findString(layouts: LanguageTableLayout[], key: string): { layout: LanguageTableLayout; rowIndex: number; value: string } | undefined {
+    const lowerKey = key.toLowerCase();
     for (const layout of layouts) {
-      const rowIndex = layout.table.rows.findIndex((row) => row[layout.stringIdColumn] === key);
+      const rowIndex = layout.table.rows.findIndex((row) => {
+        const val = row[layout.stringIdColumn];
+        return typeof val === "string" && val.toLowerCase() === lowerKey;
+      });
       if (rowIndex >= 0) {
         return {
           layout,
