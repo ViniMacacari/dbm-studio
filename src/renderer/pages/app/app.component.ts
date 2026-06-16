@@ -67,6 +67,15 @@ interface CompdataBuilderDraft {
   time: string;
 }
 
+function debugCompdataRenderer(stage: string, detail?: unknown): void {
+  const timestamp = new Date().toISOString();
+  if (detail === undefined) {
+    console.log(`[compdata/renderer ${timestamp}] ${stage}`);
+    return;
+  }
+  console.log(`[compdata/renderer ${timestamp}] ${stage}`, detail);
+}
+
 @Component({
   selector: "app-root",
   standalone: true,
@@ -83,6 +92,8 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   private readonly api: DbMasterApi = window.dbmaster;
   private readonly minimumLoadingDurationMs = 400;
   private removeVisualDependencyProgressListener?: () => void;
+  private openingCompdataFolderPath?: string;
+  private queuedCompdataLocalizationFolderPath?: string;
   readonly appName = "DBM Studio";
   readonly appVersion = packageInfo.version;
 
@@ -287,10 +298,9 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
 
   get compdataReferenceLabel(): string {
     if (!this.compdataReferenceProject) {
-      return "No DB reference loaded";
+      return "No LOC reference loaded";
     }
-    const loc = this.compdataReferenceProject.localization ? " + LOC" : "";
-    return `${this.compdataReferenceProject.title}${loc}`;
+    return this.compdataReferenceProject.localization?.title ?? this.compdataReferenceProject.title;
   }
 
   get compdataLeagueOptions(): CompdataReferenceLeague[] {
@@ -502,24 +512,69 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   }
 
   async openCompdataFolder(): Promise<void> {
-    await this.guarded(async () => {
-      const result = await this.openCompdataFolderWithProgress();
-      if (result.project) {
-        this.compdataProject = result.project;
-        this.compdataReferenceProject = undefined;
-        this.selectedCompdataCompetitionId = result.project.competitions[0]?.id ?? 0;
-        if (result.project.warnings.length > 0) {
-          this.showToast(result.project.warnings[0], "warn");
+    debugCompdataRenderer("openCompdataFolder:start");
+    const selection = await this.api.pickCompdataFolder();
+    debugCompdataRenderer("openCompdataFolder:selection", selection);
+    const folderPath = selection.folderPath;
+    if (!folderPath) {
+      debugCompdataRenderer("openCompdataFolder:canceled");
+      return;
+    }
+    let loadingStartedAt = 0;
+    try {
+      this.openingCompdataFolderPath = folderPath;
+      this.queuedCompdataLocalizationFolderPath = undefined;
+      debugCompdataRenderer("openCompdataFolder:setLoading:true", { folderPath });
+      await this.setLoading(true, "Opening compdata", "Reading tournament text files");
+      loadingStartedAt = performance.now();
+      const result = await this.openCompdataFolderWithProgress(folderPath);
+      debugCompdataRenderer("openCompdataFolder:result", {
+        canceled: result.canceled,
+        hasProject: Boolean(result.project),
+        error: result.error
+      });
+      if (this.loadingActive) {
+        const elapsed = performance.now() - loadingStartedAt;
+        const remaining = Math.max(0, this.minimumLoadingDurationMs - elapsed);
+        if (remaining > 0) {
+          await new Promise<void>((resolve) => window.setTimeout(resolve, remaining));
         }
-        this.setStatus(`${result.project.title} loaded with ${result.project.competitions.length} competition(s)`);
-        void this.loadCompdataFolderReference(result.project.folderPath);
+        debugCompdataRenderer("openCompdataFolder:setLoading:false");
+        await this.setLoading(false);
       }
-    }, "Opening compdata", "Reading tournament text files");
+
+      if (!result.project) {
+        debugCompdataRenderer("openCompdataFolder:noProject");
+        return;
+      }
+
+      this.compdataProject = result.project;
+      this.compdataReferenceProject = undefined;
+      this.selectedCompdataCompetitionId = result.project.competitions[0]?.id ?? 0;
+      if (result.project.warnings.length > 0) {
+        this.showToast(result.project.warnings[0], "warn");
+      }
+      debugCompdataRenderer("openCompdataFolder:projectApplied", {
+        title: result.project.title,
+        competitions: result.project.competitions.length,
+        objects: result.project.objects.length
+      });
+      this.setStatus(`${result.project.title} loaded with ${result.project.competitions.length} competition(s)`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[compdata/renderer] openCompdataFolder:error", error);
+      this.showToast(message, "error");
+      this.setStatus("Error");
+      await this.setLoading(false);
+    } finally {
+      this.openingCompdataFolderPath = undefined;
+    }
   }
 
-  private async openCompdataFolderWithProgress(): Promise<{ canceled?: boolean; project?: CompdataProject; error?: string }> {
+  private async openCompdataFolderWithProgress(folderPath: string): Promise<{ canceled?: boolean; project?: CompdataProject; error?: string }> {
+    debugCompdataRenderer("openCompdataFolderWithProgress:start", { folderPath });
     let readingTimeout: number | undefined;
-    let readingStarted = false;
+    let lastProgressMessage = this.loadingDetail;
     let removeProgressListener: (() => void) | undefined;
     const clearReadingTimeout = (): void => {
       if (readingTimeout !== undefined) {
@@ -531,28 +586,53 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       const armTimeout = (): void => {
         clearReadingTimeout();
         readingTimeout = window.setTimeout(() => {
-          reject(new Error("Compdata import timed out after folder selection. The last progress message is shown in the loading box."));
+          debugCompdataRenderer("openCompdataFolderWithProgress:timeout", { lastProgressMessage });
+          reject(new Error(`Compdata import timed out after folder selection. Last step: ${lastProgressMessage}.`));
         }, 20000);
       };
+      armTimeout();
       removeProgressListener = this.api.onCompdataOpenProgress((progress) => {
+        debugCompdataRenderer("openCompdataFolderWithProgress:progress", progress);
         this.applyCompdataOpenProgress(progress);
-        if (progress.phase !== "selecting" && !readingStarted) {
-          readingStarted = true;
-          armTimeout();
-        } else if (readingStarted && progress.phase !== "loaded" && progress.phase !== "error") {
-          armTimeout();
+        lastProgressMessage = progress.fileName
+          ? `${progress.message} (${progress.fileName})`
+          : progress.message;
+        if (progress.phase === "loaded") {
+          this.handleCompdataFolderLoaded(folderPath);
         }
-        if (progress.phase === "loaded" || progress.phase === "error") {
-          clearReadingTimeout();
-          removeProgressListener?.();
-          removeProgressListener = undefined;
-        }
+        armTimeout();
       });
     });
 
     try {
-      return await Promise.race([this.api.openCompdataFolder(), timeoutPromise]);
+      debugCompdataRenderer("openCompdataFolderWithProgress:invoke");
+      const requestPromise = this.api.openCompdataFolder(folderPath).finally(() => {
+        debugCompdataRenderer("openCompdataFolderWithProgress:invokeFinally");
+        clearReadingTimeout();
+      });
+      const result = await Promise.race([requestPromise, timeoutPromise]);
+      debugCompdataRenderer("openCompdataFolderWithProgress:raceResolved", {
+        canceled: result.canceled,
+        hasProjectJson: Boolean(result.projectJson),
+        error: result.error,
+        projectJsonBytes: result.projectJson?.length ?? 0
+      });
+      if (!result.projectJson) {
+        return { canceled: result.canceled, error: result.error };
+      }
+      debugCompdataRenderer("openCompdataFolderWithProgress:jsonParse:start");
+      const project = JSON.parse(result.projectJson) as CompdataProject;
+      debugCompdataRenderer("openCompdataFolderWithProgress:jsonParse:done", {
+        title: project.title,
+        competitions: project.competitions.length
+      });
+      return {
+        canceled: result.canceled,
+        error: result.error,
+        project
+      };
     } finally {
+      debugCompdataRenderer("openCompdataFolderWithProgress:finally");
       clearReadingTimeout();
       removeProgressListener?.();
     }
@@ -578,6 +658,84 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     }, "Opening DB reference", withLocalization ? "Reading DB/XML and LOC for names" : "Reading DB/XML for names");
   }
 
+  private async promptCompdataLocalizationReference(folderPath: string): Promise<void> {
+    const projectTitle = this.compdataProject?.title ?? "Compdata";
+    if (this.compdataProject?.folderPath !== folderPath && this.openingCompdataFolderPath !== folderPath) {
+      debugCompdataRenderer("promptCompdataLocalizationReference:skipped", { folderPath });
+      return;
+    }
+
+    debugCompdataRenderer("promptCompdataLocalizationReference:start", { folderPath });
+    this.setStatus(`${projectTitle} loaded. Select LOC XML, then LOC DB/.loc.`);
+    const result = await this.api.openCompdataLocalizationReference();
+    debugCompdataRenderer("promptCompdataLocalizationReference:result", {
+      canceled: result.canceled,
+      hasReferenceProject: Boolean(result.referenceProject),
+      warnings: result.warnings
+    });
+    if (!this.compdataProject || this.compdataProject.folderPath !== folderPath) {
+      debugCompdataRenderer("promptCompdataLocalizationReference:projectChanged", { folderPath });
+      return;
+    }
+    if (result.canceled) {
+      this.setStatus(`${projectTitle} loaded without LOC reference`);
+      return;
+    }
+    if (result.referenceProject) {
+      this.compdataReferenceProject = result.referenceProject;
+      this.setStatus(`${projectTitle} loaded / ${this.compdataReferenceLabel} localization`);
+    } else {
+      const reason = result.warnings[0] ?? "LOC reference was not loaded";
+      this.setStatus(`${projectTitle} loaded without LOC reference. ${reason}`);
+    }
+    if (result.warnings.length > 0) {
+      this.showToast(result.warnings[0], "warn");
+    }
+  }
+
+  private queueCompdataLocalizationReferencePrompt(folderPath: string): void {
+    window.setTimeout(() => {
+      void this.runQueuedCompdataLocalizationReferencePrompt(folderPath);
+    }, 0);
+  }
+
+  private async runQueuedCompdataLocalizationReferencePrompt(folderPath: string): Promise<void> {
+    if (!this.compdataProject || this.compdataProject.folderPath !== folderPath) {
+      debugCompdataRenderer("runQueuedCompdataLocalizationReferencePrompt:skipped", { folderPath });
+      return;
+    }
+    debugCompdataRenderer("runQueuedCompdataLocalizationReferencePrompt:start", { folderPath });
+    try {
+      await this.promptCompdataLocalizationReference(folderPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[compdata/renderer] runQueuedCompdataLocalizationReferencePrompt:error", error);
+      if (this.compdataProject?.folderPath === folderPath) {
+        this.showToast(message, "error");
+        this.setStatus(`${this.compdataProject.title} loaded without LOC reference`);
+      }
+    }
+  }
+
+  private handleCompdataFolderLoaded(folderPath: string): void {
+    if (this.loadingActive) {
+      debugCompdataRenderer("handleCompdataFolderLoaded:closeLoading", { folderPath });
+      this.loadingActive = false;
+      this.loadingPercent = undefined;
+      this.loadingProgressLabel = "";
+      this.changeDetector.detectChanges();
+      console.log('deve sair')
+    }
+    if (this.queuedCompdataLocalizationFolderPath === folderPath) {
+      console.log('não saiu')
+      return;
+    }
+    this.queuedCompdataLocalizationFolderPath = folderPath;
+    debugCompdataRenderer("handleCompdataFolderLoaded:queueLocalizationPrompt", { folderPath });
+    this.loadingActive = false;
+    // this.queueCompdataLocalizationReferencePrompt(folderPath);
+  }
+
   private selectFirstCompdataReferenceLeague(force = false): void {
     const options = this.compdataLeagueOptions;
     const firstLeague = options.find((league) => !league.alreadyInCompdata) ?? options[0];
@@ -593,7 +751,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     if (!currentProject || currentProject.folderPath !== folderPath) {
       return;
     }
-    this.setStatus(`${currentProject.title} loaded. Checking same-folder DB/LOC reference...`);
+    this.setStatus(`${currentProject.title} loaded. Checking same-folder LOC reference...`);
     try {
       const result = await this.api.openCompdataFolderReference(folderPath);
       if (this.compdataProject?.folderPath !== folderPath) {
@@ -601,10 +759,10 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       }
       if (result.referenceProject) {
         this.compdataReferenceProject = result.referenceProject;
-        this.selectFirstCompdataReferenceLeague(true);
-        this.setStatus(`${this.compdataProject.title} loaded / ${this.compdataReferenceLabel} reference`);
+        this.setStatus(`${this.compdataProject.title} loaded / ${this.compdataReferenceLabel} localization`);
       } else {
-        this.setStatus(`${this.compdataProject.title} loaded without same-folder DB/LOC reference`);
+        const reason = result.warnings[0] ?? "No same-folder LOC/XML reference was found";
+        this.setStatus(`${this.compdataProject.title} loaded without same-folder LOC reference. ${reason}`);
       }
       if (result.warnings.length > 0) {
         this.showToast(result.warnings[0], "warn");
@@ -615,7 +773,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       }
       const message = error instanceof Error ? error.message : String(error);
       this.showToast(message, "warn");
-      this.setStatus(`${this.compdataProject.title} loaded. DB/LOC reference was not loaded.`);
+      this.setStatus(`${this.compdataProject.title} loaded. LOC reference was not loaded.`);
     }
   }
 
@@ -1857,6 +2015,12 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   }
 
   private async setLoading(loading: boolean, title = "Loading", detail = "Please wait"): Promise<void> {
+    debugCompdataRenderer("setLoading:before", {
+      nextLoading: loading,
+      title,
+      detail,
+      currentLoading: this.loadingActive
+    });
     this.loadingTitle = title;
     this.loadingDetail = detail;
     this.loadingActive = loading;
@@ -1865,6 +2029,11 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       this.loadingProgressLabel = "";
     }
     this.changeDetector.detectChanges();
+    debugCompdataRenderer("setLoading:after", {
+      loadingActive: this.loadingActive,
+      title: this.loadingTitle,
+      detail: this.loadingDetail
+    });
     if (loading) {
       await this.waitForLoadingPaint();
     }
@@ -1872,8 +2041,25 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
 
   private async waitForLoadingPaint(): Promise<void> {
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await this.waitForAnimationFrameOrTimeout();
+    await this.waitForAnimationFrameOrTimeout();
+  }
+
+  private async waitForAnimationFrameOrTimeout(timeoutMs = 120): Promise<void> {
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        window.clearTimeout(timeoutId);
+        resolve();
+      };
+      const timeoutId = window.setTimeout(finish, timeoutMs);
+      // Native dialogs can temporarily throttle RAF in Electron; fall back to a short timeout.
+      requestAnimationFrame(() => finish());
+    });
   }
 
   private setStatus(message: string): void {

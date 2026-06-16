@@ -6,8 +6,10 @@ contextBridge.exposeInMainWorld("dbmaster", {
   openDatabase: () => ipcRenderer.invoke("project:openDatabase"),
   openDatabaseWithLocalization: () => ipcRenderer.invoke("project:openDatabaseWithLocalization"),
   openTextFolder: () => ipcRenderer.invoke("project:openTextFolder"),
-  openCompdataFolder: () => ipcRenderer.invoke("compdata:openFolder"),
+  pickCompdataFolder: () => ipcRenderer.invoke("compdata:pickFolder"),
+  openCompdataFolder: (folderPath?: string) => ipcRenderer.invoke("compdata:openFolder", folderPath),
   openCompdataFolderReference: (folderPath: string) => ipcRenderer.invoke("compdata:openFolderReference", folderPath),
+  openCompdataLocalizationReference: () => ipcRenderer.invoke("compdata:openLocalizationReference"),
   onCompdataOpenProgress: (listener: (progress: CompdataOpenProgress) => void) => {
     const subscription = (_event: Electron.IpcRendererEvent, progress: CompdataOpenProgress) => listener(progress);
     ipcRenderer.on("compdata:progress", subscription);

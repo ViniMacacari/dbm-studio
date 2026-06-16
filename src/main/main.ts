@@ -22,6 +22,15 @@ const windowDisplayRestoreDelays = [0, 75, 250, 750, 1500];
 const workAreaTolerancePx = 64;
 const compdataReferenceTimeoutMs = 30000;
 
+function debugCompdataMain(stage: string, detail?: unknown): void {
+  const timestamp = new Date().toISOString();
+  if (detail === undefined) {
+    console.log(`[compdata/main ${timestamp}] ${stage}`);
+    return;
+  }
+  console.log(`[compdata/main ${timestamp}] ${stage}`, detail);
+}
+
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("disable-gpu");
 app.commandLine.appendSwitch("disable-gpu-compositing");
@@ -73,6 +82,11 @@ interface DatabaseFilePair {
   baseName: string;
   xmlPath: string;
   dbPath: string;
+}
+
+interface FolderPickResult {
+  canceled?: boolean;
+  folderPath?: string;
 }
 
 function captureWindowDisplayState(): WindowDisplayState {
@@ -278,6 +292,15 @@ function toLocalizationProject(project: DbProject): LocalizationProject {
   };
 }
 
+function attachLocalizationProject(project: DbProject, localization: DbProject): DbProject {
+  project.localization = toLocalizationProject(localization);
+  project.warnings = [
+    ...project.warnings,
+    ...localization.warnings.map((warning) => `Localization: ${warning}`)
+  ];
+  return project;
+}
+
 function databasePairBaseName(fileName: string): string {
   return basename(fileName, extname(fileName)).replace(/-meta$/i, "");
 }
@@ -314,6 +337,33 @@ function findDatabaseFilePairs(folderPath: string): DatabaseFilePair[] {
   }
 
   return pairs;
+}
+
+function referencePairDiagnostics(folderPath: string, pairs: DatabaseFilePair[]): string[] {
+  if (pairs.length > 0) {
+    return [];
+  }
+
+  const entries = readdirSync(folderPath, { withFileTypes: true }).filter((entry) => entry.isFile());
+  const xmlCandidates = entries
+    .filter((entry) => extname(entry.name).toLowerCase() === ".xml")
+    .map((entry) => databasePairBaseName(entry.name))
+    .filter((baseName) => isLocalizationBaseName(baseName));
+  const payloadCandidates = entries
+    .filter((entry) => [".db", ".loc"].includes(extname(entry.name).toLowerCase()))
+    .map((entry) => basename(entry.name, extname(entry.name)))
+    .filter((baseName) => isLocalizationBaseName(baseName));
+
+  if (xmlCandidates.length > 0 && payloadCandidates.length === 0) {
+    return [`Found localization XML file(s) but no matching .db/.loc file: ${xmlCandidates.join(", ")}`];
+  }
+  if (payloadCandidates.length > 0 && xmlCandidates.length === 0) {
+    return [`Found localization .db/.loc file(s) but no matching XML descriptor: ${payloadCandidates.join(", ")}`];
+  }
+  if (xmlCandidates.length > 0 || payloadCandidates.length > 0) {
+    return ["No valid localization XML + .db/.loc pair could be built from the selected folder."];
+  }
+  return [];
 }
 
 function findMainDatabasePair(pairs: DatabaseFilePair[]): DatabaseFilePair | undefined {
@@ -354,51 +404,47 @@ function trimCompdataReferenceProject(project: DbProject): DbProject {
   };
 }
 
-function openCompdataWorkspace(folderPath: string, onProgress?: (progress: CompdataOpenProgress) => void): { project: CompdataProject } {
-  return { project: openCompdataProject(folderPath, onProgress) };
+function openCompdataWorkspace(folderPath: string, onProgress?: (progress: CompdataOpenProgress) => void): { projectJson: string } {
+  debugCompdataMain("openCompdataWorkspace:start", { folderPath });
+  const project = openCompdataProject(folderPath, onProgress);
+  debugCompdataMain("openCompdataWorkspace:parsed", {
+    title: project.title,
+    competitions: project.competitions.length,
+    objects: project.objects.length,
+    warnings: project.warnings.length
+  });
+  const projectJson = JSON.stringify(project);
+  debugCompdataMain("openCompdataWorkspace:stringified", {
+    bytes: Buffer.byteLength(projectJson)
+  });
+  return { projectJson };
 }
 
 async function openCompdataReferenceProject(folderPath: string): Promise<{ referenceProject?: DbProject; warnings: string[] }> {
   const warnings: string[] = [];
   const pairs = findDatabaseFilePairs(folderPath);
-  const mainPair = findMainDatabasePair(pairs);
+  warnings.push(...referencePairDiagnostics(folderPath, pairs));
 
-  if (!mainPair) {
-    const locPair = findLocalizationDatabasePair(pairs);
-    if (locPair) {
-      try {
-        const localization = await openDatabaseInWorker(locPair.xmlPath, locPair.dbPath, compdataReferenceTimeoutMs);
-        return { referenceProject: makeLocalizationOnlyReference(localization), warnings };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        warnings.push(`LOC reference ${locPair.baseName}: ${message}`);
-      }
-    }
+  const locPair = findLocalizationDatabasePair(pairs);
+  if (!locPair) {
     return { warnings };
   }
 
   try {
-    const referenceProject = trimCompdataReferenceProject(await openDatabaseInWorker(mainPair.xmlPath, mainPair.dbPath, compdataReferenceTimeoutMs));
-    const locPair = findLocalizationDatabasePair(pairs, mainPair);
-    if (locPair) {
-      try {
-        const localization = await openDatabaseInWorker(locPair.xmlPath, locPair.dbPath, compdataReferenceTimeoutMs);
-        referenceProject.localization = toLocalizationProject(localization);
-        referenceProject.warnings = [
-          ...referenceProject.warnings,
-          ...localization.warnings.map((warning) => `Localization: ${warning}`)
-        ];
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        warnings.push(`LOC reference ${locPair.baseName}: ${message}`);
-      }
-    }
-    return { referenceProject, warnings };
+    const localization = await openDatabaseInWorker(locPair.xmlPath, locPair.dbPath, compdataReferenceTimeoutMs);
+    return { referenceProject: makeLocalizationOnlyReference(localization), warnings };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    warnings.push(`DB reference ${mainPair.baseName}: ${message}`);
+    warnings.push(`LOC reference ${locPair.baseName}: ${message}`);
     return { warnings };
   }
+}
+
+async function pickCompdataFolder(): Promise<FolderPickResult> {
+  return keepWindowDisplayState(async () => {
+    const folderPath = await pickFolder("Open Compdata Folder");
+    return folderPath ? { folderPath } : { canceled: true };
+  });
 }
 
 ipcMain.handle("project:openXml", async () => {
@@ -446,12 +492,7 @@ ipcMain.handle("project:openDatabaseWithLocalization", async () => {
 
     const project = await openDatabaseInWorker(xmlPath, dbPath);
     const localization = await openDatabaseInWorker(locXmlPath, locDbPath);
-    project.localization = toLocalizationProject(localization);
-    project.warnings = [
-      ...project.warnings,
-      ...localization.warnings.map((warning) => `Localization: ${warning}`)
-    ];
-    return { project };
+    return { project: attachLocalizationProject(project, localization) };
   });
 });
 
@@ -465,27 +506,78 @@ ipcMain.handle("project:openTextFolder", async () => {
   });
 });
 
-ipcMain.handle("compdata:openFolder", async (event) => {
+ipcMain.handle("compdata:pickFolder", async () => {
+  debugCompdataMain("ipc:pickFolder:start");
+  const result = await pickCompdataFolder();
+  debugCompdataMain("ipc:pickFolder:done", result);
+  return result;
+});
+
+ipcMain.handle("compdata:openFolder", async (event, folderPath?: string) => {
+  debugCompdataMain("ipc:openFolder:start", { folderPath });
   return keepWindowDisplayState(async () => {
-    event.sender.send("compdata:progress", {
-      phase: "selecting",
-      currentStep: 0,
-      totalSteps: 1,
-      percent: 0,
-      message: "Waiting for folder selection"
-    } satisfies CompdataOpenProgress);
-    const folderPath = await pickFolder("Open Compdata Folder");
-    if (!folderPath) {
+    const selectedFolderPath = folderPath ?? (await pickCompdataFolder()).folderPath;
+    debugCompdataMain("ipc:openFolder:selectedFolder", { selectedFolderPath });
+    if (!selectedFolderPath) {
+      debugCompdataMain("ipc:openFolder:canceled");
       return { canceled: true };
     }
-    return openCompdataWorkspace(folderPath, (progress) => {
-      event.sender.send("compdata:progress", progress);
-    });
+    try {
+      const result = openCompdataWorkspace(selectedFolderPath, (progress) => {
+        debugCompdataMain("ipc:openFolder:progress", progress);
+        event.sender.send("compdata:progress", progress);
+      });
+      debugCompdataMain("ipc:openFolder:returning", {
+        folderPath: selectedFolderPath,
+        projectJsonBytes: result.projectJson.length
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      debugCompdataMain("ipc:openFolder:error", { message });
+      event.sender.send("compdata:progress", {
+        phase: "error",
+        currentStep: 0,
+        totalSteps: 1,
+        percent: 0,
+        message
+      } satisfies CompdataOpenProgress);
+      throw error;
+    }
   });
 });
 
 ipcMain.handle("compdata:openFolderReference", async (_event, folderPath: string) => {
   return openCompdataReferenceProject(folderPath);
+});
+
+ipcMain.handle("compdata:openLocalizationReference", async () => {
+  debugCompdataMain("ipc:openLocalizationReference:start");
+  return keepWindowDisplayState(async () => {
+    const locXmlPath = await pickFile("Open Loc XML Descriptor File", [{ name: "XML files", extensions: ["xml"] }]);
+    debugCompdataMain("ipc:openLocalizationReference:xmlSelected", { locXmlPath });
+    if (!locXmlPath) {
+      debugCompdataMain("ipc:openLocalizationReference:canceledAtXml");
+      return { canceled: true, warnings: [] };
+    }
+    const locDbPath = await pickFile("Open LOC Database File", [{ name: "LOC/DB files", extensions: ["db", "loc"] }]);
+    debugCompdataMain("ipc:openLocalizationReference:dbSelected", { locDbPath });
+    if (!locDbPath) {
+      debugCompdataMain("ipc:openLocalizationReference:canceledAtDb");
+      return { canceled: true, warnings: [] };
+    }
+
+    const localization = await openDatabaseInWorker(locXmlPath, locDbPath, compdataReferenceTimeoutMs);
+    debugCompdataMain("ipc:openLocalizationReference:loaded", {
+      title: localization.title,
+      tables: localization.tables.length,
+      warnings: localization.warnings.length
+    });
+    return {
+      referenceProject: makeLocalizationOnlyReference(localization),
+      warnings: []
+    };
+  });
 });
 
 ipcMain.handle("compdata:save", async (_event, project: CompdataProject) => {

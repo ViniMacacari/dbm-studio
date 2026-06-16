@@ -29,7 +29,7 @@
           <span class="option-index">03</span>
           <span class="option-copy">
             <strong>Compdata Editor</strong>
-            <small>TXT + DB/LOC</small>
+            <small>TXT + LOC</small>
           </span>
         </button>
       </div>
@@ -69,7 +69,7 @@
 
         <section class="compdata-panel">
           <span class="module-kicker">Read-only reference</span>
-          <h2>DB / LOC names</h2>
+          <h2>LOC names</h2>
           <p>{{ compdataReferenceLabel }}</p>
           <div class="compdata-metrics">
             <span>{{ compdataLeagueOptions.length }} leagues</span>
@@ -304,7 +304,7 @@
         <section class="compdata-empty">
         <span class="module-kicker">Compdata</span>
         <h2>Open the tournament text files</h2>
-        <p>Open the folder containing compobj, compids, settings, tasks, schedule, standings, advancement, initteams and weather. If the same folder also has fifa_ng_db-meta.xml + fifa_ng_db.db and a LOC pair such as por_br-meta.xml + por_br.db or .loc, names load automatically.</p>
+        <p>Open the folder containing compobj, compids, settings, tasks, schedule, standings, advancement, initteams and weather. If the same folder also has a localization pair such as por_br-meta.xml + por_br.db or .loc, text names load automatically. fifa_ng_db is optional.</p>
         <button type="button" class="primary-action" (click)="openCompdataFolder()">Open Compdata Folder</button>
         </section>
       </main>
@@ -881,7 +881,7 @@
   {{ toastMessage }}
 </div>
 
-<div class="loading-overlay" [class.hidden]="!loadingActive">
+<div class="loading-overlay" *ngIf="loadingActive">
   <div class="loading-box">
     <div class="spinner"></div>
     <strong>{{ loadingTitle }}</strong>

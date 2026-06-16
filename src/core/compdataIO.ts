@@ -29,6 +29,8 @@ const mainCompdataFiles = [
   "objectives.txt"
 ];
 
+const requiredCompdataFiles = mainCompdataFiles.filter((fileName) => !["activeteams.txt", "objectives.txt"].includes(fileName));
+
 function emitProgress(
   onProgress: CompdataOpenProgressCallback | undefined,
   phase: CompdataOpenProgress["phase"],
@@ -224,6 +226,10 @@ function competitionSummaries(
 export function openCompdataProject(folderPath: string, onProgress?: CompdataOpenProgressCallback): CompdataProject {
   const warnings: string[] = [];
   const filesByLowerName = new Map(readdirSync(folderPath).map((fileName) => [fileName.toLowerCase(), fileName]));
+  const missingRequiredFiles = requiredCompdataFiles.filter((fileName) => !hasFile(filesByLowerName, fileName));
+  if (missingRequiredFiles.length > 0) {
+    throw new Error(`Compdata folder is missing required file(s): ${missingRequiredFiles.join(", ")}`);
+  }
   const totalSteps = mainCompdataFiles.length + 10;
   let step = 0;
   const readFile = (fileName: string): string => {

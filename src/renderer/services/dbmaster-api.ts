@@ -15,8 +15,10 @@ export interface DbMasterApi {
   openDatabase(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;
   openDatabaseWithLocalization(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;
   openTextFolder(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;
-  openCompdataFolder(): Promise<{ canceled?: boolean; project?: CompdataProject; error?: string }>;
+  pickCompdataFolder(): Promise<{ canceled?: boolean; folderPath?: string; error?: string }>;
+  openCompdataFolder(folderPath?: string): Promise<{ canceled?: boolean; projectJson?: string; error?: string }>;
   openCompdataFolderReference(folderPath: string): Promise<{ referenceProject?: DbProject; warnings: string[]; error?: string }>;
+  openCompdataLocalizationReference(): Promise<{ canceled?: boolean; referenceProject?: DbProject; warnings: string[]; error?: string }>;
   onCompdataOpenProgress(listener: (progress: CompdataOpenProgress) => void): () => void;
   saveCompdata(project: CompdataProject): Promise<{ folderPath: string; filesWritten: number; warnings: string[] }>;
   saveDatabase(project: DbProject): Promise<{ filePath: string; backupPath?: string; warnings: string[]; tablesWritten: number; localizationSkipped?: boolean }>;
