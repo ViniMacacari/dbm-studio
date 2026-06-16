@@ -36,7 +36,8 @@ export function openDatabaseProject(xmlPath: string, dbPath: string): DbProject 
     tables: read.tables,
     descriptors: parsed.descriptors,
     warnings: [...parsed.warnings, ...read.warnings],
-    binaryReadMode: read.mode
+    binaryReadMode: read.mode,
+    databaseWritable: read.mode !== "none"
   };
 }
 

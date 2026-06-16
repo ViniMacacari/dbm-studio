@@ -581,11 +581,29 @@ ipcMain.handle("compdata:openLocalizationReference", async () => {
 });
 
 ipcMain.handle("compdata:save", async (_event, project: CompdataProject) => {
-  return keepWindowDisplayState(() => saveCompdataProject(project));
+  return keepWindowDisplayState(() => {
+    const result = saveCompdataProject(project);
+    if (result.warnings && result.warnings.length > 0) {
+      console.warn("[compdata:save] Warnings while saving compdata:");
+      for (const w of result.warnings) {
+        console.warn(` - ${w}`);
+      }
+    }
+    return result;
+  });
 });
 
 ipcMain.handle("project:saveDatabase", async (_event, project: DbProject) => {
-  return keepWindowDisplayState(() => saveDatabaseProject(project));
+  return keepWindowDisplayState(() => {
+    const result = saveDatabaseProject(project);
+    if (result.warnings && result.warnings.length > 0) {
+      console.warn("[project:saveDatabase] Warnings while saving database:");
+      for (const w of result.warnings) {
+        console.warn(` - ${w}`);
+      }
+    }
+    return result;
+  });
 });
 
 ipcMain.handle("table:export", async (_event, table: DataTable) => {
