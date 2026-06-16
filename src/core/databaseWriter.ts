@@ -16,6 +16,8 @@ interface TableWriteLayout {
   tableEnd: number;
   recordsCountOffset: number;
   validRecordsCountOffset: number;
+  compressedStringLengthOffset: number;
+  compressedStringLength: number;
   recordsCount: number;
   recordSize: number;
   fields: WritableField[];
@@ -164,6 +166,7 @@ function parseWritableLayouts(dbBuffer: Buffer, descriptors: TableDescriptor[]):
     const recordSize = dbBuffer.readUInt32LE(tableCursor);
     tableCursor += 4;
     tableCursor += 4;
+    const compressedStringLengthOffset = tableCursor;
     const compressedStringLength = normalizeCompressedStringLength(dbBuffer.readUInt32LE(tableCursor));
     tableCursor += 4;
     const recordsCountOffset = tableCursor;
@@ -215,6 +218,8 @@ function parseWritableLayouts(dbBuffer: Buffer, descriptors: TableDescriptor[]):
       tableEnd,
       recordsCountOffset,
       validRecordsCountOffset,
+      compressedStringLengthOffset,
+      compressedStringLength,
       recordsCount,
       recordSize,
       fields,
@@ -341,10 +346,90 @@ function fieldFitsRecord(field: WritableField, recordSize: number): boolean {
   }
 }
 
+function isCompressedStringField(field: WritableField): boolean {
+  return field.dbFieldType === 13 || field.dbFieldType === 14;
+}
+
+function encodeCompressedString(value: string, longString: boolean, context: string): Buffer {
+  const bytes = Buffer.from(value.replace(/\\n/g, "\n"), "utf8");
+  if (longString) {
+    if (bytes.length > 0xffff) {
+      throw new Error(`${context}: compressed string is longer than 65535 bytes.`);
+    }
+    const output = Buffer.alloc(2 + bytes.length);
+    output.writeUInt16BE(bytes.length, 0);
+    bytes.copy(output, 2);
+    return output;
+  }
+
+  if (bytes.length > 0xff) {
+    throw new Error(`${context}: compressed string is longer than 255 bytes.`);
+  }
+  const output = Buffer.alloc(1 + bytes.length);
+  output.writeUInt8(bytes.length, 0);
+  bytes.copy(output, 1);
+  return output;
+}
+
+function writeCompressedStringOffset(record: Buffer, field: WritableField, offset: number, context: string): void {
+  if (offset < 0 || offset > 0xffffffff) {
+    throw new Error(`${context}: compressed string offset is outside the 32-bit range.`);
+  }
+  writeUnsignedBitsLE(record, field.bitOffset, 32, BigInt(offset), context);
+}
+
+function buildCompressedTableBuffer(dbBuffer: Buffer, layout: TableWriteLayout, table: DataTable): Buffer {
+  if (table.rows.length > 0xffff) {
+    throw new Error(`${layout.name}: DB table row count exceeds the 16-bit record counter.`);
+  }
+
+  const header = Buffer.from(dbBuffer.subarray(layout.tableStart, layout.recordsOffset));
+  header.writeUInt32LE(0, layout.compressedStringLengthOffset - layout.tableStart);
+  header.writeUInt16LE(table.rows.length, layout.recordsCountOffset - layout.tableStart);
+  header.writeUInt16LE(table.rows.length, layout.validRecordsCountOffset - layout.tableStart);
+
+  const records: Buffer[] = [];
+  const compressedParts: Buffer[] = [];
+  let compressedLength = 0;
+
+  for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex += 1) {
+    const record = Buffer.alloc(layout.recordSize);
+    const row = table.rows[rowIndex];
+    for (let columnIndex = 0; columnIndex < layout.fields.length; columnIndex += 1) {
+      const field = layout.fields[columnIndex];
+      const context = `${layout.name} row ${rowIndex + 1}, ${field.name}`;
+      const value = row[columnIndex] ?? "";
+      if (isCompressedStringField(field)) {
+        const offset = compressedLength;
+        const encoded = encodeCompressedString(value, field.dbFieldType === 14, context);
+        compressedParts.push(encoded);
+        compressedLength += encoded.length;
+        writeCompressedStringOffset(record, field, offset, context);
+      } else {
+        writeDbField(record, field, value, context);
+      }
+    }
+    records.push(record);
+  }
+
+  if (compressedLength > 0xffffffff) {
+    throw new Error(`${layout.name}: compressed string block is outside the 32-bit range.`);
+  }
+  header.writeUInt32LE(compressedLength > 0 ? compressedLength : noCompressedStringBlockLength, layout.compressedStringLengthOffset - layout.tableStart);
+
+  return Buffer.concat([header, ...records, ...compressedParts]);
+}
+
 function sumShiftBefore(expansions: Array<{ insertOffset: number; extraBytes: number }>, offset: number): number {
   return expansions
     .filter((expansion) => expansion.insertOffset < offset)
     .reduce((total, expansion) => total + expansion.extraBytes, 0);
+}
+
+function sumReplacementShiftBefore(replacements: Array<{ tableStart: number; delta: number }>, tableStart: number): number {
+  return replacements
+    .filter((replacement) => replacement.tableStart < tableStart)
+    .reduce((total, replacement) => total + replacement.delta, 0);
 }
 
 function expandDatabaseForChangedRows(
@@ -364,7 +449,7 @@ function expandDatabaseForChangedRows(
       throw new Error(`${layout.name}: DB table row count exceeds the 16-bit record counter.`);
     }
     if (layout.hasCompressedStrings) {
-      throw new Error(`${layout.name}: inserting rows into compressed-string tables is not supported yet.`);
+      continue;
     }
     const missingRows = table.rows.length - layout.capacity;
     expansions.push({
@@ -412,6 +497,66 @@ function expandDatabaseForChangedRows(
   return output;
 }
 
+function rebuildCompressedChangedTables(
+  dbBuffer: Buffer,
+  parsed: WritableLayoutParse,
+  tablesByName: Map<string, DataTable>,
+  warnings: string[]
+): { output: Buffer; tableNames: Set<string> } {
+  const compressedLayouts = parsed.layouts
+    .filter((layout) => layout.hasCompressedStrings && tablesByName.has(layout.name))
+    .sort((left, right) => left.tableStart - right.tableStart);
+
+  if (compressedLayouts.length === 0) {
+    return { output: dbBuffer, tableNames: new Set<string>() };
+  }
+
+  let output = Buffer.from(dbBuffer);
+  const replacements: Array<{ tableStart: number; delta: number }> = [];
+  const tableNames = new Set<string>();
+
+  for (const layout of compressedLayouts) {
+    const table = tablesByName.get(layout.name);
+    if (!table) {
+      continue;
+    }
+
+    const shift = sumReplacementShiftBefore(replacements, layout.tableStart);
+    const shiftedLayout: TableWriteLayout = {
+      ...layout,
+      tableStart: layout.tableStart + shift,
+      tableEnd: layout.tableEnd + shift,
+      recordsCountOffset: layout.recordsCountOffset + shift,
+      validRecordsCountOffset: layout.validRecordsCountOffset + shift,
+      compressedStringLengthOffset: layout.compressedStringLengthOffset + shift,
+      recordsOffset: layout.recordsOffset + shift
+    };
+    const replacement = buildCompressedTableBuffer(output, shiftedLayout, table);
+    const oldLength = shiftedLayout.tableEnd - shiftedLayout.tableStart;
+    const delta = replacement.length - oldLength;
+    output = Buffer.concat([
+      output.subarray(0, shiftedLayout.tableStart),
+      replacement,
+      output.subarray(shiftedLayout.tableEnd)
+    ]);
+    replacements.push({ tableStart: layout.tableStart, delta });
+    tableNames.add(layout.name);
+    warnings.push(`${layout.name}: rebuilt compressed string block (${delta >= 0 ? "+" : ""}${delta} bytes).`);
+  }
+
+  const totalDelta = replacements.reduce((total, replacement) => total + replacement.delta, 0);
+  output.writeUInt32LE(parsed.dbSize + totalDelta, parsed.databaseStart + databaseHeader.length);
+
+  for (const tableRef of parsed.tableRefs) {
+    const shift = sumReplacementShiftBefore(replacements, tableRef.tableStart);
+    if (shift !== 0) {
+      output.writeUInt32LE(tableRef.offset + shift, tableRef.offsetPosition);
+    }
+  }
+
+  return { output, tableNames };
+}
+
 type WritableDatabaseProject = DbProject | LocalizationProject;
 
 function saveSingleDatabaseProject(project: WritableDatabaseProject): SaveDatabaseResult {
@@ -442,9 +587,18 @@ function saveSingleDatabaseProject(project: WritableDatabaseProject): SaveDataba
     warnings.push(...parsed.warnings);
   }
 
+  const compressedRewrite = rebuildCompressedChangedTables(output, parsed, tablesByName, warnings);
+  const rewrittenCompressedTableNames = compressedRewrite.tableNames;
+  if (rewrittenCompressedTableNames.size > 0) {
+    output = compressedRewrite.output;
+    tablesWritten += rewrittenCompressedTableNames.size;
+    parsed = parseWritableLayouts(output, project.descriptors);
+    warnings.push(...parsed.warnings);
+  }
+
   for (const layout of parsed.layouts) {
     const table = tablesByName.get(layout.name);
-    if (!table) {
+    if (!table || rewrittenCompressedTableNames.has(layout.name)) {
       continue;
     }
     if (table.rows.length > layout.capacity) {
