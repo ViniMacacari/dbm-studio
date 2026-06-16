@@ -25,7 +25,8 @@
             <small>DB + XML + LOC</small>
           </span>
         </button>
-        <button type="button" class="home-option compdata-option" (click)="openCompdataWorkspace()">
+        <!-- <button type="button" class="home-option compdata-option" (click)="openCompdataWorkspace()"> -->
+        <button type="button" class="home-option compdata-option disabled">
           <span class="option-index">03</span>
           <span class="option-copy">
             <strong>Compdata Editor</strong>
@@ -36,13 +37,9 @@
     </div>
   </section>
 
-  <app-compdata-editor-page
-    *ngSwitchCase="'compdata'"
-    (showHome)="showLauncher()"
-    (statusChanged)="setStatus($event)"
+  <app-compdata-editor-page *ngSwitchCase="'compdata'" (showHome)="showLauncher()" (statusChanged)="setStatus($event)"
     (toastTriggered)="showToast($event.message, $event.tone)"
-    (loadingStateChanged)="setLoading($event.loading, $event.title, $event.detail)"
-  ></app-compdata-editor-page>
+    (loadingStateChanged)="setLoading($event.loading, $event.title, $event.detail)"></app-compdata-editor-page>
 
   <section class="launcher-screen" *ngSwitchCase="'launcher'">
     <header class="screen-header">
@@ -67,24 +64,29 @@
         </button>
         <button type="button" class="choice-card" [disabled]="!canUseModules" (click)="openModulesWorkspace()">
           <span class="choice-title">Modules</span>
-          <span class="choice-meta">{{ playersCount }} players / {{ teamsCount }} teams / {{ leaguesCount }} leagues</span>
+          <span class="choice-meta">{{ playersCount }} players / {{ teamsCount }} teams / {{ leaguesCount }}
+            leagues</span>
         </button>
       </div>
 
       <div class="module-preview-grid">
-        <button type="button" class="module-card active" [disabled]="!canUsePlayerModule" (click)="openModulesWorkspace('players')">
+        <button type="button" class="module-card active" [disabled]="!canUsePlayerModule"
+          (click)="openModulesWorkspace('players')">
           <span>Players</span>
           <strong>{{ playersCount }}</strong>
         </button>
-        <button type="button" class="module-card active" [disabled]="!canUseTeamModule" (click)="openModulesWorkspace('teams')">
+        <button type="button" class="module-card active" [disabled]="!canUseTeamModule"
+          (click)="openModulesWorkspace('teams')">
           <span>Teams</span>
           <strong>{{ teamsCount }}</strong>
         </button>
-        <button type="button" class="module-card active" [disabled]="!canUseLeagueModule" (click)="openModulesWorkspace('leagues')">
+        <button type="button" class="module-card active" [disabled]="!canUseLeagueModule"
+          (click)="openModulesWorkspace('leagues')">
           <span>Leagues</span>
           <strong>{{ leaguesCount }}</strong>
         </button>
-        <button type="button" class="module-card active" [disabled]="!canUseTransferModule" (click)="openModulesWorkspace('transfers')">
+        <button type="button" class="module-card active" [disabled]="!canUseTransferModule"
+          (click)="openModulesWorkspace('transfers')">
           <span>Transfers</span>
           <strong>{{ transfersCount }}</strong>
         </button>
@@ -111,13 +113,8 @@
       </div>
       <input class="filter-input" type="search" placeholder="Filter tables" [(ngModel)]="tableFilter" />
       <div class="table-list">
-        <button
-          *ngFor="let item of filteredTables(); trackBy: trackByTable"
-          type="button"
-          class="table-item"
-          [class.active]="item.index === currentTableIndex"
-          (click)="selectTable(item.index)"
-        >
+        <button *ngFor="let item of filteredTables(); trackBy: trackByTable" type="button" class="table-item"
+          [class.active]="item.index === currentTableIndex" (click)="selectTable(item.index)">
           <span class="table-name">{{ item.table.name }}</span>
           <span class="table-count">{{ item.table.rows.length }}</span>
         </button>
@@ -131,7 +128,8 @@
         <span class="divider"></span>
         <button type="button" title="Open DB/XML pair" (click)="openDatabase()">DB</button>
         <span class="divider"></span>
-        <button type="button" [disabled]="!canSaveDatabase" title="Save opened .db file" (click)="saveProject()">Save</button>
+        <button type="button" [disabled]="!canSaveDatabase" title="Save opened .db file"
+          (click)="saveProject()">Save</button>
         <button type="button" [disabled]="!hasTable" (click)="exportTable()">Export</button>
         <button type="button" [disabled]="!hasProject" title="Export all tables" (click)="exportAll()">Export+</button>
         <button type="button" [disabled]="!hasTable" (click)="importTable()">Import</button>
@@ -143,23 +141,22 @@
         <button type="button" [disabled]="!canReplace" (click)="pasteRows(true)">Replace</button>
         <button type="button" [disabled]="!hasSelection" (click)="deleteRows()">Delete</button>
         <button type="button" [disabled]="!hasTable" (click)="countRows()">Count</button>
-        <button *ngIf="isPlayersTable" type="button" [disabled]="!canOpenPlayerEditor" title="Edit selected player" (click)="openPlayerEditor()">Edit Player</button>
+        <button *ngIf="isPlayersTable" type="button" [disabled]="!canOpenPlayerEditor" title="Edit selected player"
+          (click)="openPlayerEditor()">Edit Player</button>
       </div>
 
       <div class="table-workspace">
         <div class="querybar">
           <select [(ngModel)]="selectedColumnIndex" [disabled]="!hasTable">
-            <option *ngFor="let column of currentTable()?.columns ?? []; let i = index; trackBy: trackByColumn" [ngValue]="i">
+            <option *ngFor="let column of currentTable()?.columns ?? []; let i = index; trackBy: trackByColumn"
+              [ngValue]="i">
               {{ column }}
             </option>
           </select>
-          <input type="search" placeholder="Search" [(ngModel)]="searchTerm" [disabled]="!hasTable" (keydown.enter)="findNext()" />
-          <app-input-checkbox
-            [(checked)]="searchExact"
-            [disabled]="!hasTable"
-            label="Exact match"
-            description="Match the full cell value"
-          ></app-input-checkbox>
+          <input type="search" placeholder="Search" [(ngModel)]="searchTerm" [disabled]="!hasTable"
+            (keydown.enter)="findNext()" />
+          <app-input-checkbox [(checked)]="searchExact" [disabled]="!hasTable" label="Exact match"
+            description="Match the full cell value"></app-input-checkbox>
           <button type="button" [disabled]="!hasTable" (click)="findNext()">Find</button>
           <span class="player-selection" *ngIf="selectedPlayerName">{{ selectedPlayerName }}</span>
           <span class="field-info">{{ fieldInfo }}</span>
@@ -180,27 +177,22 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr
-                    *ngFor="let rowIndex of visibleRowIndexes(); trackBy: trackByRowIndex"
-                    [class.row-selected]="selectedRows.has(rowIndex)"
-                    (click)="selectGridRow(rowIndex, $event)"
-                  >
+                  <tr *ngFor="let rowIndex of visibleRowIndexes(); trackBy: trackByRowIndex"
+                    [class.row-selected]="selectedRows.has(rowIndex)" (click)="selectGridRow(rowIndex, $event)">
                     <td class="row-select">
-                      <input type="checkbox" [checked]="selectedRows.has(rowIndex)" (click)="$event.stopPropagation()" (change)="toggleRow(rowIndex, $event)" />
+                      <input type="checkbox" [checked]="selectedRows.has(rowIndex)" (click)="$event.stopPropagation()"
+                        (change)="toggleRow(rowIndex, $event)" />
                     </td>
                     <td *ngFor="let column of table.columns; let columnIndex = index; trackBy: trackByColumn">
-                      <input
-                        class="cell-input"
-                        [value]="table.rows[rowIndex][columnIndex] ?? ''"
-                        (change)="updateCell(rowIndex, columnIndex, $event)"
-                        (focus)="selectColumn(columnIndex)"
-                      />
+                      <input class="cell-input" [value]="table.rows[rowIndex][columnIndex] ?? ''"
+                        (change)="updateCell(rowIndex, columnIndex, $event)" (focus)="selectColumn(columnIndex)" />
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <div #horizontalScroll class="horizontal-scroll hidden" aria-label="Horizontal table scroll" (scroll)="onHorizontalScroll()">
+            <div #horizontalScroll class="horizontal-scroll hidden" aria-label="Horizontal table scroll"
+              (scroll)="onHorizontalScroll()">
               <div #horizontalScrollInner class="horizontal-scroll-inner"></div>
             </div>
           </ng-container>
@@ -245,19 +237,23 @@
 
     <main class="module-layout">
       <aside class="module-rail">
-        <button type="button" [class.active]="activeModule === 'players'" [disabled]="!canUsePlayerModule" (click)="selectModule('players')">
+        <button type="button" [class.active]="activeModule === 'players'" [disabled]="!canUsePlayerModule"
+          (click)="selectModule('players')">
           <span>Players</span>
           <strong>{{ playersCount }}</strong>
         </button>
-        <button type="button" [class.active]="activeModule === 'teams'" [disabled]="!canUseTeamModule" (click)="selectModule('teams')">
+        <button type="button" [class.active]="activeModule === 'teams'" [disabled]="!canUseTeamModule"
+          (click)="selectModule('teams')">
           <span>Teams</span>
           <strong>{{ teamsCount }}</strong>
         </button>
-        <button type="button" [class.active]="activeModule === 'leagues'" [disabled]="!canUseLeagueModule" (click)="selectModule('leagues')">
+        <button type="button" [class.active]="activeModule === 'leagues'" [disabled]="!canUseLeagueModule"
+          (click)="selectModule('leagues')">
           <span>Leagues</span>
           <strong>{{ leaguesCount }}</strong>
         </button>
-        <button type="button" [class.active]="activeModule === 'transfers'" [disabled]="!canUseTransferModule" (click)="selectModule('transfers')">
+        <button type="button" [class.active]="activeModule === 'transfers'" [disabled]="!canUseTransferModule"
+          (click)="selectModule('transfers')">
           <span>Transfers</span>
           <strong>{{ transfersCount }}</strong>
         </button>
@@ -278,29 +274,23 @@
 
         <div class="player-module-toolbar">
           <form class="player-searchbar" (submit)="$event.preventDefault(); searchPlayers()">
-            <input
-              type="search"
-              name="playerSearchTerm"
-              placeholder="Search player by name or ID"
-              [(ngModel)]="playerSearchTerm"
-            />
+            <input type="search" name="playerSearchTerm" placeholder="Search player by name or ID"
+              [(ngModel)]="playerSearchTerm" />
             <button type="submit" aria-label="Search players" title="Search players">
               <span class="search-icon" aria-hidden="true"></span>
             </button>
           </form>
-          <button type="button" class="create-player-button" [disabled]="!canUsePlayerModule" (click)="createPlayerFromModule()">
+          <button type="button" class="create-player-button" [disabled]="!canUsePlayerModule"
+            (click)="createPlayerFromModule()">
             <span class="plus-icon" aria-hidden="true"></span>
             <span>Create Player</span>
           </button>
         </div>
 
         <div class="player-results" *ngIf="playerSearchResults.length > 0; else noPlayerResults">
-          <button
-            type="button"
-            class="player-result"
+          <button type="button" class="player-result"
             *ngFor="let player of playerSearchResults; trackBy: trackByPlayerResult"
-            (click)="openPlayerFromModule(player)"
-          >
+            (click)="openPlayerFromModule(player)">
             <span class="result-main">
               <strong>{{ player.displayName }}</strong>
               <span>ID {{ player.playerId }}</span>
@@ -334,29 +324,22 @@
 
           <div class="player-module-toolbar">
             <form class="player-searchbar" (submit)="$event.preventDefault(); searchTeams()">
-              <input
-                type="search"
-                name="teamSearchTerm"
-                placeholder="Search team by name or ID"
-                [(ngModel)]="teamSearchTerm"
-              />
+              <input type="search" name="teamSearchTerm" placeholder="Search team by name or ID"
+                [(ngModel)]="teamSearchTerm" />
               <button type="submit" aria-label="Search teams" title="Search teams">
                 <span class="search-icon" aria-hidden="true"></span>
               </button>
             </form>
-            <button type="button" class="create-player-button" [disabled]="!canUseTeamModule" (click)="createTeamFromModule()">
+            <button type="button" class="create-player-button" [disabled]="!canUseTeamModule"
+              (click)="createTeamFromModule()">
               <span class="plus-icon" aria-hidden="true"></span>
               <span>Create Team</span>
             </button>
           </div>
 
           <div class="player-results" *ngIf="teamSearchResults.length > 0; else noTeamResults">
-            <button
-              type="button"
-              class="player-result"
-              *ngFor="let team of teamSearchResults; trackBy: trackByTeamResult"
-              (click)="openTeamFromModule(team)"
-            >
+            <button type="button" class="player-result"
+              *ngFor="let team of teamSearchResults; trackBy: trackByTeamResult" (click)="openTeamFromModule(team)">
               <span class="result-main">
                 <strong>{{ team.displayName }}</strong>
                 <span>ID {{ team.teamId }}</span>
@@ -391,37 +374,26 @@
 
           <div class="player-module-toolbar league-filter-toolbar">
             <form class="player-searchbar" (submit)="$event.preventDefault(); searchLeagues()">
-              <input
-                type="search"
-                name="leagueSearchTerm"
-                placeholder="Search league by name or ID"
-                [(ngModel)]="leagueSearchTerm"
-              />
+              <input type="search" name="leagueSearchTerm" placeholder="Search league by name or ID"
+                [(ngModel)]="leagueSearchTerm" />
               <button type="submit" aria-label="Search leagues" title="Search leagues">
                 <span class="search-icon" aria-hidden="true"></span>
               </button>
             </form>
-            <app-search-list
-              class="module-filter-select"
-              [options]="nationOptions"
-              [(value)]="leagueCountryFilter"
-              placeholder="Filter by country"
-              (valueChange)="refreshLeagueSearch()"
-            ></app-search-list>
+            <app-search-list class="module-filter-select" [options]="nationOptions" [(value)]="leagueCountryFilter"
+              placeholder="Filter by country" (valueChange)="refreshLeagueSearch()"></app-search-list>
             <button type="button" [disabled]="!leagueCountryFilter" (click)="clearLeagueCountryFilter()">Clear</button>
-            <button type="button" class="create-player-button" [disabled]="!canUseLeagueModule" (click)="createLeagueFromModule()">
+            <button type="button" class="create-player-button" [disabled]="!canUseLeagueModule"
+              (click)="createLeagueFromModule()">
               <span class="plus-icon" aria-hidden="true"></span>
               <span>Create League</span>
             </button>
           </div>
 
           <div class="player-results" *ngIf="leagueSearchResults.length > 0; else noLeagueResults">
-            <button
-              type="button"
-              class="player-result"
+            <button type="button" class="player-result"
               *ngFor="let league of leagueSearchResults; trackBy: trackByLeagueResult"
-              (click)="openLeagueFromModule(league)"
-            >
+              (click)="openLeagueFromModule(league)">
               <span class="result-main">
                 <strong>{{ league.displayName }}</strong>
                 <span>ID {{ league.leagueId }}</span>
@@ -455,12 +427,8 @@
 
           <div class="player-module-toolbar">
             <form class="player-searchbar" (submit)="$event.preventDefault(); searchTransfers()">
-              <input
-                type="search"
-                name="transferSearchTerm"
-                placeholder="Search player, ID, or current team"
-                [(ngModel)]="transferSearchTerm"
-              />
+              <input type="search" name="transferSearchTerm" placeholder="Search player, ID, or current team"
+                [(ngModel)]="transferSearchTerm" />
               <button type="submit" aria-label="Search transfers" title="Search transfers">
                 <span class="search-icon" aria-hidden="true"></span>
               </button>
@@ -482,19 +450,12 @@
                   <span *ngIf="player.nationalityName">{{ player.nationalityName }}</span>
                 </div>
               </div>
-              <app-search-list
-                class="transfer-destination"
-                [options]="teamOptions"
-                [value]="transferDestination(player)"
-                placeholder="Destination club"
-                (valueChange)="setTransferDestination(player, $event)"
-              ></app-search-list>
-              <button
-                type="button"
-                class="apply-button"
+              <app-search-list class="transfer-destination" [options]="teamOptions"
+                [value]="transferDestination(player)" placeholder="Destination club"
+                (valueChange)="setTransferDestination(player, $event)"></app-search-list>
+              <button type="button" class="apply-button"
                 [disabled]="!transferDestination(player) || transferDestination(player) === player.teamId"
-                (click)="transferPlayer(player)"
-              >
+                (click)="transferPlayer(player)">
                 Transfer
               </button>
             </article>
@@ -515,39 +476,21 @@
   </section>
 
   <section class="editor-screen" *ngSwitchCase="'playerEditor'">
-    <app-player-editor-page
-      *ngIf="project as loadedProject"
-      [project]="loadedProject"
-      [rowIndex]="playerEditorRowIndex"
-      [canSaveDatabase]="canSaveDatabase"
-      (closeEditor)="closePlayerEditor()"
-      (applied)="onPlayerEditorApplied($event)"
-      (appliedAndSave)="onPlayerEditorAppliedAndSave($event)"
-    ></app-player-editor-page>
+    <app-player-editor-page *ngIf="project as loadedProject" [project]="loadedProject" [rowIndex]="playerEditorRowIndex"
+      [canSaveDatabase]="canSaveDatabase" (closeEditor)="closePlayerEditor()" (applied)="onPlayerEditorApplied($event)"
+      (appliedAndSave)="onPlayerEditorAppliedAndSave($event)"></app-player-editor-page>
   </section>
 
   <section class="editor-screen" *ngSwitchCase="'teamEditor'">
-    <app-team-editor-page
-      *ngIf="project as loadedProject"
-      [project]="loadedProject"
-      [rowIndex]="teamEditorRowIndex"
-      [canSaveDatabase]="canSaveDatabase"
-      (closeEditor)="closeTeamEditor()"
-      (applied)="onTeamEditorApplied($event)"
-      (appliedAndSave)="onTeamEditorAppliedAndSave($event)"
-    ></app-team-editor-page>
+    <app-team-editor-page *ngIf="project as loadedProject" [project]="loadedProject" [rowIndex]="teamEditorRowIndex"
+      [canSaveDatabase]="canSaveDatabase" (closeEditor)="closeTeamEditor()" (applied)="onTeamEditorApplied($event)"
+      (appliedAndSave)="onTeamEditorAppliedAndSave($event)"></app-team-editor-page>
   </section>
 
   <section class="editor-screen" *ngSwitchCase="'leagueEditor'">
-    <app-league-editor-page
-      *ngIf="project as loadedProject"
-      [project]="loadedProject"
-      [rowIndex]="leagueEditorRowIndex"
-      [canSaveDatabase]="canSaveDatabase"
-      (closeEditor)="closeLeagueEditor()"
-      (applied)="onLeagueEditorApplied($event)"
-      (appliedAndSave)="onLeagueEditorAppliedAndSave($event)"
-    ></app-league-editor-page>
+    <app-league-editor-page *ngIf="project as loadedProject" [project]="loadedProject" [rowIndex]="leagueEditorRowIndex"
+      [canSaveDatabase]="canSaveDatabase" (closeEditor)="closeLeagueEditor()" (applied)="onLeagueEditorApplied($event)"
+      (appliedAndSave)="onLeagueEditorAppliedAndSave($event)"></app-league-editor-page>
   </section>
 </ng-container>
 
@@ -573,12 +516,12 @@
           <strong>{{ dependency.label }}</strong>
           <span>
             {{ dependency.updateAvailable
-              ? 'Update available'
-              : dependency.current
-                ? dependency.filesCount + ' file(s) installed'
-                : dependency.installed
-                  ? dependency.filesCount + ' file(s) installed, zip missing'
-                  : 'Not installed' }}
+            ? 'Update available'
+            : dependency.current
+            ? dependency.filesCount + ' file(s) installed'
+            : dependency.installed
+            ? dependency.filesCount + ' file(s) installed, zip missing'
+            : 'Not installed' }}
           </span>
         </div>
         <small>{{ dependency.targetPath }}</small>
@@ -598,15 +541,18 @@
     <p class="dependency-error" *ngIf="visualDependencyError">{{ visualDependencyError }}</p>
 
     <div class="dependency-actions">
-      <button type="button" [disabled]="visualDependencyInstalling" (click)="closeVisualDependencyModal()">Not now</button>
-      <button type="button" class="primary-action" [disabled]="visualDependencyInstalling" (click)="installVisualDependencies()">
+      <button type="button" [disabled]="visualDependencyInstalling" (click)="closeVisualDependencyModal()">Not
+        now</button>
+      <button type="button" class="primary-action" [disabled]="visualDependencyInstalling"
+        (click)="installVisualDependencies()">
         {{ visualDependencyPrimaryActionLabel }}
       </button>
     </div>
   </section>
 </div>
 
-<div class="toast" [class.hidden]="!toastVisible" [class.warn]="toastTone === 'warn'" [class.error]="toastTone === 'error'">
+<div class="toast" [class.hidden]="!toastVisible" [class.warn]="toastTone === 'warn'"
+  [class.error]="toastTone === 'error'">
   {{ toastMessage }}
 </div>
 

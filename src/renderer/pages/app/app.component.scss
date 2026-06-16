@@ -1211,3 +1211,8 @@ td.row-select {
     padding: 14px;
   }
 }
+
+.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
