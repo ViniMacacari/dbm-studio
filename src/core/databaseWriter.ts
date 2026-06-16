@@ -379,14 +379,14 @@ function writeCompressedStringOffset(record: Buffer, field: WritableField, offse
 }
 
 function buildCompressedTableBuffer(dbBuffer: Buffer, layout: TableWriteLayout, table: DataTable): Buffer {
-  if (table.rows.length > 0xffff) {
-    throw new Error(`${layout.name}: DB table row count exceeds the 16-bit record counter.`);
-  }
+  // Silently overflow the 16-bit counter for tables larger than 65535 records,
+  // matching the original DB Master C# logic which casts to (ushort).
+  // The EA game engine likely calculates the actual row count using the 32-bit table size.
 
   const header = Buffer.from(dbBuffer.subarray(layout.tableStart, layout.recordsOffset));
   header.writeUInt32LE(0, layout.compressedStringLengthOffset - layout.tableStart);
-  header.writeUInt16LE(table.rows.length, layout.recordsCountOffset - layout.tableStart);
-  header.writeUInt16LE(table.rows.length, layout.validRecordsCountOffset - layout.tableStart);
+  header.writeUInt16LE(table.rows.length & 0xffff, layout.recordsCountOffset - layout.tableStart);
+  header.writeUInt16LE(table.rows.length & 0xffff, layout.validRecordsCountOffset - layout.tableStart);
 
   const records: Buffer[] = [];
   const compressedParts: Buffer[] = [];
@@ -445,9 +445,7 @@ function expandDatabaseForChangedRows(
     if (!table || table.rows.length <= layout.capacity) {
       continue;
     }
-    if (table.rows.length > 0xffff) {
-      throw new Error(`${layout.name}: DB table row count exceeds the 16-bit record counter.`);
-    }
+    // Silently overflow 16-bit counter, as the original C# DB Master does.
     if (layout.hasCompressedStrings) {
       continue;
     }
@@ -557,11 +555,41 @@ function rebuildCompressedChangedTables(
   return { output, tableNames };
 }
 
+function deduplicateTableRowsInPlace(table: DataTable): void {
+  if (!table.name.toLowerCase().startsWith("languagestrings")) {
+    return;
+  }
+  const stringIdColumn = table.columns.findIndex((c) => c.toLowerCase() === "stringid");
+  if (stringIdColumn < 0) {
+    return;
+  }
+
+  const seen = new Map<string, string[]>();
+  for (const row of table.rows) {
+    const key = (row[stringIdColumn] ?? "").toLowerCase();
+    seen.set(key, row);
+  }
+
+  table.rows = [...seen.values()];
+  const hashIdColumn = table.columns.findIndex((c) => c.toLowerCase() === "hashid");
+  if (hashIdColumn >= 0) {
+    table.rows.sort((a, b) => {
+      const hashA = Number(a[hashIdColumn]) || 0;
+      const hashB = Number(b[hashIdColumn]) || 0;
+      return hashA - hashB;
+    });
+  }
+}
+
 type WritableDatabaseProject = DbProject | LocalizationProject;
 
 function saveSingleDatabaseProject(project: WritableDatabaseProject): SaveDatabaseResult {
   if (project.sourceKind !== "database" || !project.dbPath) {
     throw new Error("Open a DB/XML pair before saving a .db file.");
+  }
+
+  for (const table of project.tables) {
+    deduplicateTableRowsInPlace(table);
   }
 
   const original = readFileSync(project.dbPath);

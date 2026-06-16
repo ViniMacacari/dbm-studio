@@ -305,6 +305,35 @@ function buildCompressedStringContext(
   };
 }
 
+function deduplicateLanguageRows(rows: string[][], fields: FieldDescriptor[], tableName: string): string[][] {
+  if (!tableName.toLowerCase().startsWith("languagestrings")) {
+    return rows;
+  }
+  const stringIdColumn = fields.findIndex((f) => f.name.toLowerCase() === "stringid");
+  if (stringIdColumn < 0) {
+    return rows;
+  }
+
+  const seen = new Map<string, string[]>();
+  for (const row of rows) {
+    const key = (row[stringIdColumn] ?? "").toLowerCase();
+    seen.set(key, row);
+  }
+
+  const deduplicated = [...seen.values()];
+
+  const hashIdColumn = fields.findIndex((f) => f.name.toLowerCase() === "hashid");
+  if (hashIdColumn >= 0) {
+    deduplicated.sort((a, b) => {
+      const hashA = Number(a[hashIdColumn]) || 0;
+      const hashB = Number(b[hashIdColumn]) || 0;
+      return hashA - hashB;
+    });
+  }
+
+  return deduplicated;
+}
+
 function readFifaDatabaseByInternalLayout(dbBuffer: Buffer, descriptors: TableDescriptor[]): {
   tables: DataTable[];
   warnings: string[];
@@ -441,11 +470,13 @@ function readFifaDatabaseByInternalLayout(dbBuffer: Buffer, descriptors: TableDe
       rows.push(dbFields.map((field) => readDbField(record, field, compressedContext)));
     }
 
+    const deduplicatedRows = deduplicateLanguageRows(rows, dbFields, descriptor.name);
+
     parsedTables.set(descriptor.name, {
       name: descriptor.name,
       columns: dbFields.map((field) => field.name),
       fields: dbFields,
-      rows
+      rows: deduplicatedRows
     });
   }
 
@@ -494,12 +525,13 @@ export function readDatabaseWithDescriptor(dbBuffer: Buffer, descriptors: TableD
         const row = descriptor.fields.map((field) => readField(reader, field));
         rows.push(row);
       }
+      const deduplicatedRows = deduplicateLanguageRows(rows, descriptor.fields, descriptor.name);
       readableTables += 1;
       tables.push({
         name: descriptor.name,
         columns: columnsFromDescriptor(descriptor),
         fields: descriptor.fields,
-        rows
+        rows: deduplicatedRows
       });
     } catch (error) {
       const table = makeEmptyTable(descriptor);
