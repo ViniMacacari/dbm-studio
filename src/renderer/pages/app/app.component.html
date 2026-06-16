@@ -127,7 +127,12 @@
             </option>
           </select>
           <input type="search" placeholder="Search" [(ngModel)]="searchTerm" [disabled]="!hasTable" (keydown.enter)="findNext()" />
-          <label class="checkline"><input type="checkbox" [(ngModel)]="searchExact" /> Exact</label>
+          <app-input-checkbox
+            [(checked)]="searchExact"
+            [disabled]="!hasTable"
+            label="Exact match"
+            description="Match the full cell value"
+          ></app-input-checkbox>
           <button type="button" [disabled]="!hasTable" (click)="findNext()">Find</button>
           <span class="player-selection" *ngIf="selectedPlayerName">{{ selectedPlayerName }}</span>
           <span class="field-info">{{ fieldInfo }}</span>

@@ -1,0 +1,92 @@
+:host {
+  display: inline-block;
+  min-width: 0;
+}
+
+.input-checkbox {
+  position: relative;
+  min-width: 0;
+  min-height: 30px;
+  display: inline-grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  padding: 5px 9px;
+}
+
+.input-checkbox:hover:not(.disabled) {
+  border-color: #b8c7bf;
+  background: #f8fbf9;
+}
+
+.input-checkbox.disabled {
+  cursor: default;
+  color: var(--muted);
+  background: #eef3ef;
+}
+
+.checkbox-native {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.checkbox-box {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #aebbb5;
+  border-radius: 4px;
+  background: #fbfcfa;
+}
+
+.checkbox-box::after {
+  content: "";
+  width: 8px;
+  height: 5px;
+  border-left: 2px solid white;
+  border-bottom: 2px solid white;
+  opacity: 0;
+  transform: rotate(-45deg) translateY(-1px);
+}
+
+.checkbox-native:checked + .checkbox-box {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.checkbox-native:checked + .checkbox-box::after {
+  opacity: 1;
+}
+
+.checkbox-native:focus-visible + .checkbox-box {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+.checkbox-copy {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.checkbox-label {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.checkbox-copy small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.15;
+  white-space: nowrap;
+}

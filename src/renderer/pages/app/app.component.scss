@@ -635,12 +635,8 @@
   min-width: 220px;
 }
 
-.checkline {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 13px;
+.querybar app-input-checkbox {
+  flex: 0 0 auto;
 }
 
 .field-info {

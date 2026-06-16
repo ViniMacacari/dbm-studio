@@ -2,6 +2,7 @@ import { CommonModule } from "@angular/common";
 import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { DataTable, DbProject, FieldDescriptor, VisualDependenciesStatus, VisualDependencyProgress } from "../../../shared/types";
+import { InputCheckboxComponent } from "../../components/input-checkbox/input-checkbox.component";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
 import type { DbMasterApi } from "../../services/dbmaster-api";
 import { LeagueEditorService } from "../../services/league-editor.service";
@@ -30,7 +31,7 @@ interface TableListItem {
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [CommonModule, FormsModule, PlayerEditorPageComponent, TeamEditorPageComponent, LeagueEditorPageComponent, SearchListComponent],
+  imports: [CommonModule, FormsModule, PlayerEditorPageComponent, TeamEditorPageComponent, LeagueEditorPageComponent, SearchListComponent, InputCheckboxComponent],
   templateUrl: "./app.component.html",
   styleUrl: "./app.component.scss"
 })
