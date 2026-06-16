@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("dbmaster", {
   openDatabaseWithLocalization: () => ipcRenderer.invoke("project:openDatabaseWithLocalization"),
   openTextFolder: () => ipcRenderer.invoke("project:openTextFolder"),
   openCompdataFolder: () => ipcRenderer.invoke("compdata:openFolder"),
+  openCompdataFolderReference: (folderPath: string) => ipcRenderer.invoke("compdata:openFolderReference", folderPath),
   saveCompdata: (project: CompdataProject) => ipcRenderer.invoke("compdata:save", project),
   saveDatabase: (project: DbProject) => ipcRenderer.invoke("project:saveDatabase", project),
   exportTable: (table: DataTable) => ipcRenderer.invoke("table:export", table),

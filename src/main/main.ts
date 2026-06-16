@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, screen } from "electron";
-import { existsSync, mkdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
+import { basename, extname, join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { computeLanguageHash, toSignedInt32 } from "../core/fifaHash";
 import { openCompdataProject, saveCompdataProject } from "../core/compdataIO";
@@ -20,6 +20,7 @@ let visualDependencyManager: VisualDependencyManager | undefined;
 let lastBlurDisplayState: WindowDisplayState | undefined;
 const windowDisplayRestoreDelays = [0, 75, 250, 750, 1500];
 const workAreaTolerancePx = 64;
+const compdataReferenceTimeoutMs = 30000;
 
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("disable-gpu");
@@ -66,6 +67,12 @@ interface WindowDisplayState {
   wasWorkAreaSized: boolean;
   bounds?: Electron.Rectangle;
   workArea?: Electron.Rectangle;
+}
+
+interface DatabaseFilePair {
+  baseName: string;
+  xmlPath: string;
+  dbPath: string;
 }
 
 function captureWindowDisplayState(): WindowDisplayState {
@@ -201,28 +208,54 @@ async function pickSaveFile(title: string, defaultPath: string, filters: Electro
   return result.canceled ? undefined : result.filePath;
 }
 
-function openDatabaseInWorker(xmlPath: string, dbPath: string): Promise<DbProject> {
+function openDatabaseInWorker(xmlPath: string, dbPath: string, timeoutMs?: number): Promise<DbProject> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(join(__dirname, "openDatabaseWorker.js"), {
       workerData: { xmlPath, dbPath }
     });
+    let settled = false;
+    const timeout = timeoutMs
+      ? setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        void worker.terminate();
+        reject(new Error(`Database reference timed out after ${Math.round(timeoutMs / 1000)} seconds.`));
+      }, timeoutMs)
+      : undefined;
+
+    const finish = (callback: () => void): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      callback();
+    };
 
     worker.once("message", (message: { project?: DbProject; error?: string }) => {
-      if (message.error) {
-        reject(new Error(message.error));
-        return;
-      }
-      if (!message.project) {
-        reject(new Error("Database worker finished without returning a project."));
-        return;
-      }
-      resolve(message.project);
+      finish(() => {
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+        if (!message.project) {
+          reject(new Error("Database worker finished without returning a project."));
+          return;
+        }
+        resolve(message.project);
+      });
     });
 
-    worker.once("error", reject);
+    worker.once("error", (error) => {
+      finish(() => reject(error));
+    });
     worker.once("exit", (code) => {
-      if (code !== 0) {
-        reject(new Error(`Database worker exited with code ${code}.`));
+      if (code !== 0 && !settled) {
+        finish(() => reject(new Error(`Database worker exited with code ${code}.`)));
       }
     });
   });
@@ -243,6 +276,129 @@ function toLocalizationProject(project: DbProject): LocalizationProject {
     binaryReadMode: project.binaryReadMode,
     databaseWritable: project.databaseWritable
   };
+}
+
+function databasePairBaseName(fileName: string): string {
+  return basename(fileName, extname(fileName)).replace(/-meta$/i, "");
+}
+
+function findDatabasePayloadName(baseName: string, filesByName: Map<string, string>): string | undefined {
+  const normalizedBase = baseName.toLowerCase();
+  return filesByName.get(`${normalizedBase}.db`)
+    ?? filesByName.get(`${normalizedBase}.loc`)
+    ?? [...filesByName.values()].find((fileName) => {
+      const normalizedName = fileName.toLowerCase();
+      return new RegExp(`^${escapeRegExp(normalizedBase)}\\d+\\.(db|loc)$`, "i").test(normalizedName);
+    });
+}
+
+function findDatabaseFilePairs(folderPath: string): DatabaseFilePair[] {
+  const entries = readdirSync(folderPath, { withFileTypes: true }).filter((entry) => entry.isFile());
+  const filesByName = new Map(entries.map((entry) => [entry.name.toLowerCase(), entry.name]));
+  const pairs: DatabaseFilePair[] = [];
+
+  for (const entry of entries) {
+    if (extname(entry.name).toLowerCase() !== ".xml") {
+      continue;
+    }
+    const baseName = databasePairBaseName(entry.name);
+    const dbName = findDatabasePayloadName(baseName, filesByName);
+    if (!dbName) {
+      continue;
+    }
+    pairs.push({
+      baseName,
+      xmlPath: join(folderPath, entry.name),
+      dbPath: join(folderPath, dbName)
+    });
+  }
+
+  return pairs;
+}
+
+function findMainDatabasePair(pairs: DatabaseFilePair[]): DatabaseFilePair | undefined {
+  return pairs.find((pair) => pair.baseName.toLowerCase() === "fifa_ng_db")
+    ?? pairs.find((pair) => /(^|[_-])db($|[_-])/i.test(pair.baseName) && !isLocalizationBaseName(pair.baseName))
+    ?? (pairs.length === 1 && !isLocalizationBaseName(pairs[0].baseName) ? pairs[0] : undefined);
+}
+
+function findLocalizationDatabasePair(pairs: DatabaseFilePair[], mainPair?: DatabaseFilePair): DatabaseFilePair | undefined {
+  const candidates = mainPair ? pairs.filter((pair) => pair !== mainPair) : pairs;
+  return candidates.find((pair) => isLocalizationBaseName(pair.baseName))
+    ?? candidates[0];
+}
+
+function isLocalizationBaseName(baseName: string): boolean {
+  return /^(loc|locale|language|[a-z]{2}[_-][a-z]{2})/i.test(baseName);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function makeLocalizationOnlyReference(project: DbProject): DbProject {
+  return {
+    ...project,
+    localization: toLocalizationProject(project)
+  };
+}
+
+function trimCompdataReferenceProject(project: DbProject): DbProject {
+  const referenceTables = new Set(["teams", "leagues", "leagueteamlinks", "nations"]);
+  const tables = project.tables.filter((table) => referenceTables.has(table.name.toLowerCase()));
+  const descriptors = project.descriptors.filter((descriptor) => referenceTables.has(descriptor.name.toLowerCase()));
+  return {
+    ...project,
+    tables,
+    descriptors
+  };
+}
+
+function openCompdataWorkspace(folderPath: string): { project: CompdataProject } {
+  return { project: openCompdataProject(folderPath) };
+}
+
+async function openCompdataReferenceProject(folderPath: string): Promise<{ referenceProject?: DbProject; warnings: string[] }> {
+  const warnings: string[] = [];
+  const pairs = findDatabaseFilePairs(folderPath);
+  const mainPair = findMainDatabasePair(pairs);
+
+  if (!mainPair) {
+    const locPair = findLocalizationDatabasePair(pairs);
+    if (locPair) {
+      try {
+        const localization = await openDatabaseInWorker(locPair.xmlPath, locPair.dbPath, compdataReferenceTimeoutMs);
+        return { referenceProject: makeLocalizationOnlyReference(localization), warnings };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        warnings.push(`LOC reference ${locPair.baseName}: ${message}`);
+      }
+    }
+    return { warnings };
+  }
+
+  try {
+    const referenceProject = trimCompdataReferenceProject(await openDatabaseInWorker(mainPair.xmlPath, mainPair.dbPath, compdataReferenceTimeoutMs));
+    const locPair = findLocalizationDatabasePair(pairs, mainPair);
+    if (locPair) {
+      try {
+        const localization = await openDatabaseInWorker(locPair.xmlPath, locPair.dbPath, compdataReferenceTimeoutMs);
+        referenceProject.localization = toLocalizationProject(localization);
+        referenceProject.warnings = [
+          ...referenceProject.warnings,
+          ...localization.warnings.map((warning) => `Localization: ${warning}`)
+        ];
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        warnings.push(`LOC reference ${locPair.baseName}: ${message}`);
+      }
+    }
+    return { referenceProject, warnings };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    warnings.push(`DB reference ${mainPair.baseName}: ${message}`);
+    return { warnings };
+  }
 }
 
 ipcMain.handle("project:openXml", async () => {
@@ -283,7 +439,7 @@ ipcMain.handle("project:openDatabaseWithLocalization", async () => {
     if (!locXmlPath) {
       return { canceled: true };
     }
-    const locDbPath = await pickFile("Open Loc Database File", [{ name: "DB files", extensions: ["db"] }]);
+    const locDbPath = await pickFile("Open LOC Database File", [{ name: "LOC/DB files", extensions: ["db", "loc"] }]);
     if (!locDbPath) {
       return { canceled: true };
     }
@@ -315,8 +471,12 @@ ipcMain.handle("compdata:openFolder", async () => {
     if (!folderPath) {
       return { canceled: true };
     }
-    return { project: openCompdataProject(folderPath) };
+    return openCompdataWorkspace(folderPath);
   });
+});
+
+ipcMain.handle("compdata:openFolderReference", async (_event, folderPath: string) => {
+  return openCompdataReferenceProject(folderPath);
 });
 
 ipcMain.handle("compdata:save", async (_event, project: CompdataProject) => {
