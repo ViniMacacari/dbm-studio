@@ -39,29 +39,45 @@
 
   <div class="player-editor-body">
     <section class="editor-panel" *ngFor="let section of sections; trackBy: trackBySection" [class.hidden]="activeTab !== section.id">
-      <div class="team-color-grid" *ngIf="section.colorGroups.length > 0">
-        <app-input-color
-          *ngFor="let color of section.colorGroups; trackBy: trackByColorGroup"
-          [label]="color.label"
-          [(red)]="color.redField.value"
-          [(green)]="color.greenField.value"
-          [(blue)]="color.blueField.value"
-        ></app-input-color>
-      </div>
-      <div class="editor-grid">
-        <ng-container *ngFor="let field of section.fields; trackBy: trackByField">
-          <label class="field-block" *ngIf="!field.isColorChannel">
+      <ng-container *ngIf="section.id === 'staff'; else standardEditorSection">
+        <div class="set-piece-list">
+          <label class="field-block set-piece-row" *ngFor="let field of section.fields; trackBy: trackByField">
             <span>{{ field.label }}</span>
-            <input
-              [type]="field.inputType"
-              [(ngModel)]="field.value"
-              [readonly]="field.readonly"
-              [min]="field.min"
-              [max]="field.max"
-            />
+            <app-search-list
+              [options]="team.setPiecePlayerOptions"
+              [(value)]="field.value"
+              [disabled]="field.readonly"
+              placeholder="Search team player"
+            ></app-search-list>
           </label>
-        </ng-container>
-      </div>
+        </div>
+      </ng-container>
+
+      <ng-template #standardEditorSection>
+        <div class="team-color-grid" *ngIf="section.colorGroups.length > 0">
+          <app-input-color
+            *ngFor="let color of section.colorGroups; trackBy: trackByColorGroup"
+            [label]="color.label"
+            [(red)]="color.redField.value"
+            [(green)]="color.greenField.value"
+            [(blue)]="color.blueField.value"
+          ></app-input-color>
+        </div>
+        <div class="editor-grid">
+          <ng-container *ngFor="let field of section.fields; trackBy: trackByField">
+            <label class="field-block" *ngIf="!field.isColorChannel">
+              <span>{{ field.label }}</span>
+              <input
+                [type]="field.inputType"
+                [(ngModel)]="field.value"
+                [readonly]="field.readonly"
+                [min]="field.min"
+                [max]="field.max"
+              />
+            </label>
+          </ng-container>
+        </div>
+      </ng-template>
     </section>
 
     <section class="editor-panel" [class.hidden]="activeTab !== 'players'">

@@ -9,7 +9,7 @@ export interface TeamEditorFieldDraft {
   column: string;
   label: string;
   value: string;
-  inputType: "number" | "text";
+  inputType: "number" | "text" | "player";
   readonly?: boolean;
   min?: number;
   max?: number;
@@ -112,6 +112,7 @@ export interface TeamEditorDraft {
   sections: TeamEditorSectionDraft[];
   playerLinks: TeamPlayerLinkDraft[];
   playerOptions: SearchListOption[];
+  setPiecePlayerOptions: SearchListOption[];
   playerToAdd: string;
   nationLinks: TeamNationLinkDraft[];
   nationOptions: SearchListOption[];
@@ -147,7 +148,7 @@ export interface TeamCreationResult {
 interface FieldDefinition {
   column: string;
   label: string;
-  inputType?: "number" | "text";
+  inputType?: "number" | "text" | "player";
   readonly?: boolean;
   min?: number;
   max?: number;
@@ -271,14 +272,14 @@ export class TeamEditorService {
       id: "staff",
       title: "Set Pieces",
       fields: [
-        { column: "captainid", label: "Captain" },
-        { column: "penaltytakerid", label: "Penalty taker" },
-        { column: "freekicktakerid", label: "Free kick taker" },
-        { column: "leftfreekicktakerid", label: "Left free kick" },
-        { column: "rightfreekicktakerid", label: "Right free kick" },
-        { column: "leftcornerkicktakerid", label: "Left corner" },
-        { column: "rightcornerkicktakerid", label: "Right corner" },
-        { column: "longkicktakerid", label: "Long kick taker" }
+        { column: "captainid", label: "Captain", inputType: "player" },
+        { column: "penaltytakerid", label: "Penalty taker", inputType: "player" },
+        { column: "freekicktakerid", label: "Free kick taker", inputType: "player" },
+        { column: "leftfreekicktakerid", label: "Left free kick", inputType: "player" },
+        { column: "rightfreekicktakerid", label: "Right free kick", inputType: "player" },
+        { column: "leftcornerkicktakerid", label: "Left corner", inputType: "player" },
+        { column: "rightcornerkicktakerid", label: "Right corner", inputType: "player" },
+        { column: "longkicktakerid", label: "Long kick taker", inputType: "player" }
       ]
     },
     {
@@ -389,6 +390,7 @@ export class TeamEditorService {
     const teamId = this.read(teams, rowIndex, "teamid");
     const displayName = this.displayName(teams, rowIndex, teamId);
     const teamOptions = this.teamOptions(project);
+    const playerLinks = this.transfers.linkedPlayers(project, teamId);
     const kitLinks = this.withRequiredDefaultKits(project, teamId, this.linkedKits(project, teamId));
     const stadiumOptions = this.stadiumOptions(project);
 
@@ -403,8 +405,9 @@ export class TeamEditorService {
       sections: this.sections
         .map((section) => this.makeSectionDraft(teams, rowIndex, section))
         .filter((section) => section.fields.length > 0),
-      playerLinks: this.transfers.linkedPlayers(project, teamId),
+      playerLinks,
       playerOptions: this.transfers.playerOptions(project),
+      setPiecePlayerOptions: this.setPiecePlayerOptions(playerLinks),
       playerToAdd: "",
       nationLinks: this.linkedNationLinks(project, teamId),
       nationOptions: this.nations.nationOptions(project),
@@ -422,11 +425,14 @@ export class TeamEditorService {
   }
 
   addPlayerToDraft(draft: TeamEditorDraft, playerId: string): string {
-    return this.transfers.addPlayerToTeamDraft(draft, playerId);
+    const message = this.transfers.addPlayerToTeamDraft(draft, playerId);
+    this.refreshSetPiecePlayerOptions(draft);
+    return message;
   }
 
   removePlayerFromDraft(draft: TeamEditorDraft, playerId: string): void {
     draft.playerLinks = draft.playerLinks.filter((link) => link.playerId !== playerId);
+    this.refreshSetPiecePlayerOptions(draft);
   }
 
   addNationToDraft(draft: TeamEditorDraft, nationId: string): string {
@@ -557,9 +563,14 @@ export class TeamEditorService {
       throw new Error("Selected team row no longer exists.");
     }
 
+    const linkedPlayerIds = new Set(draft.playerLinks.map((player) => player.playerId));
     for (const field of draft.sections.flatMap((section) => section.fields)) {
       if (!field.readonly) {
-        this.write(teams, draft.rowIndex, field.column, this.normalizeFieldForWrite(field));
+        const value = this.normalizeFieldForWrite(field);
+        if (field.inputType === "player" && !linkedPlayerIds.has(value)) {
+          throw new Error(`${field.label}: choose a player linked to ${draft.displayName}.`);
+        }
+        this.write(teams, draft.rowIndex, field.column, value);
       }
     }
 
@@ -1393,8 +1404,20 @@ export class TeamEditorService {
       });
   }
 
+  private refreshSetPiecePlayerOptions(draft: TeamEditorDraft): void {
+    draft.setPiecePlayerOptions = this.setPiecePlayerOptions(draft.playerLinks);
+  }
+
+  private setPiecePlayerOptions(playerLinks: TeamPlayerLinkDraft[]): SearchListOption[] {
+    return playerLinks.map((player) => ({
+      value: player.playerId,
+      label: player.displayName,
+      meta: player.jerseyNumber ? `#${player.jerseyNumber} / ID ${player.playerId}` : `ID ${player.playerId}`
+    }));
+  }
+
   private normalizeFieldForWrite(field: TeamEditorFieldDraft): string {
-    if (field.inputType === "number") {
+    if (field.inputType === "number" || field.inputType === "player") {
       return this.validateNumericField(field);
     }
     return field.value;

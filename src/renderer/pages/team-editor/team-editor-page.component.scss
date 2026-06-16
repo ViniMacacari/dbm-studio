@@ -42,6 +42,23 @@
   padding: 10px;
 }
 
+.set-piece-list {
+  width: min(760px, 100%);
+  display: grid;
+  gap: 8px;
+}
+
+.set-piece-row {
+  min-height: 52px;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  align-content: center;
+  align-items: center;
+}
+
+.set-piece-row > span {
+  white-space: normal;
+}
+
 .country-link-row {
   grid-template-columns: minmax(180px, 1fr) minmax(100px, 130px) minmax(260px, 360px) auto;
 }
@@ -142,6 +159,10 @@
   .editor-actions {
     grid-column: 1 / -1;
     grid-row: 2;
+  }
+
+  .set-piece-row {
+    grid-template-columns: 1fr;
   }
 
   .country-link-row,
