@@ -2,6 +2,7 @@ import type {
   DataTable,
   DbProject,
   MinifaceImageResult,
+  TeamCrestImageResult,
   VisualDependenciesInstallResult,
   VisualDependenciesStatus,
   VisualDependencyProgress
@@ -22,6 +23,7 @@ export interface DbMasterApi {
   installVisualDependencies(): Promise<VisualDependenciesInstallResult>;
   onVisualDependenciesProgress(listener: (progress: VisualDependencyProgress) => void): () => void;
   getPlayerMiniface(playerId: string): Promise<MinifaceImageResult>;
+  getTeamCrest(teamId: string): Promise<TeamCrestImageResult>;
 }
 
 declare global {

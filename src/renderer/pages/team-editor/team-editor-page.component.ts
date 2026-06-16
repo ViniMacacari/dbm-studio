@@ -4,6 +4,7 @@ import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../../../shared/types";
 import { InputColorComponent } from "../../components/input-color/input-color.component";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
+import type { DbMasterApi } from "../../services/dbmaster-api";
 import { TeamEditorService } from "../../services/team-editor.service";
 import type {
   TeamColorGroupDraft,
@@ -37,6 +38,10 @@ export class TeamEditorPageComponent implements OnChanges {
   activeTab = "identity";
   lastApplied = "";
   lastAppliedTone: "info" | "error" = "info";
+  crestDataUrl = "";
+  crestSource: "team" | "missing" = "missing";
+  private readonly api: DbMasterApi = window.dbmaster;
+  private crestRequestId = 0;
 
   constructor(private readonly teamEditor: TeamEditorService) {}
 
@@ -219,10 +224,34 @@ export class TeamEditorPageComponent implements OnChanges {
 
   private loadDraft(resetTab = true): void {
     this.draft = this.project ? this.teamEditor.createDraft(this.project, this.rowIndex) : undefined;
+    if (this.draft) {
+      void this.loadCrest(this.draft.teamId);
+    } else {
+      this.crestDataUrl = "";
+      this.crestSource = "missing";
+    }
     if (resetTab) {
       this.activeTab = "identity";
       this.lastApplied = "";
       this.lastAppliedTone = "info";
+    }
+  }
+
+  private async loadCrest(teamId: string): Promise<void> {
+    const requestId = ++this.crestRequestId;
+    try {
+      const result = await this.api.getTeamCrest(teamId);
+      if (requestId !== this.crestRequestId) {
+        return;
+      }
+      this.crestDataUrl = result.dataUrl;
+      this.crestSource = result.source;
+    } catch {
+      if (requestId !== this.crestRequestId) {
+        return;
+      }
+      this.crestDataUrl = "";
+      this.crestSource = "missing";
     }
   }
 }

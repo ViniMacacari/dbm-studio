@@ -1,5 +1,29 @@
 @use "../shared/editor-page";
 
+.player-editor-header {
+  grid-template-columns: auto 74px minmax(0, 1fr) auto;
+}
+
+.team-crest {
+  width: 74px;
+  height: 74px;
+  flex: 0 0 74px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #eef3ef;
+  padding: 6px;
+}
+
+.team-crest img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
 .team-color-grid,
 .kit-color-grid {
   display: grid;
@@ -106,6 +130,20 @@
 }
 
 @media (max-width: 900px) {
+  .player-editor-header {
+    grid-template-columns: auto 74px minmax(0, 1fr);
+  }
+
+  .player-title {
+    grid-column: 3 / -1;
+    grid-row: 1;
+  }
+
+  .editor-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
   .country-link-row,
   .rival-link-row,
   .stadium-link-row {

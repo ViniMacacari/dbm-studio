@@ -356,6 +356,10 @@ ipcMain.handle("visualDependencies:getMiniface", (_event, playerId: string) => {
   return visualDependencies().getMiniface(playerId);
 });
 
+ipcMain.handle("visualDependencies:getTeamCrest", (_event, teamId: string) => {
+  return visualDependencies().getTeamCrest(teamId);
+});
+
 app.whenReady().then(() => {
   createWindow();
 

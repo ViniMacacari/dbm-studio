@@ -20,5 +20,6 @@ contextBridge.exposeInMainWorld("dbmaster", {
     ipcRenderer.on("visualDependencies:progress", subscription);
     return () => ipcRenderer.removeListener("visualDependencies:progress", subscription);
   },
-  getPlayerMiniface: (playerId: string) => ipcRenderer.invoke("visualDependencies:getMiniface", playerId)
+  getPlayerMiniface: (playerId: string) => ipcRenderer.invoke("visualDependencies:getMiniface", playerId),
+  getTeamCrest: (teamId: string) => ipcRenderer.invoke("visualDependencies:getTeamCrest", teamId)
 });

@@ -1,6 +1,9 @@
 <section class="player-editor-page team-editor-page" *ngIf="draft as team; else missingTeam">
   <header class="player-editor-header">
     <button type="button" class="back-button" (click)="closeEditor.emit()">Back</button>
+    <div class="team-crest" [class.placeholder]="crestSource !== 'team'">
+      <img *ngIf="crestDataUrl" [src]="crestDataUrl" [alt]="team.displayName" />
+    </div>
     <div class="player-title">
       <span class="player-kicker">Team {{ team.teamId }}</span>
       <h2>{{ team.displayName }}</h2>

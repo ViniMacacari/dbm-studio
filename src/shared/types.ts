@@ -120,3 +120,10 @@ export interface MinifaceImageResult {
   found: boolean;
   source: "player" | "generic" | "missing";
 }
+
+export interface TeamCrestImageResult {
+  teamId: string;
+  dataUrl: string;
+  found: boolean;
+  source: "team" | "missing";
+}

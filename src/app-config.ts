@@ -4,6 +4,7 @@ export interface VisualDependencyConfig {
   fileName: string;
   targetDirectory: string;
   stripRootDirectory?: string;
+  stripRootDirectories?: string[];
   expectedExtension: string;
 }
 
@@ -18,6 +19,14 @@ export class AppConfig {
       targetDirectory: "minifaces",
       stripRootDirectory: "minifaces",
       expectedExtension: ".dds"
+    },
+    {
+      id: "crests",
+      label: "Team crests",
+      fileName: "crests.zip",
+      targetDirectory: "crests",
+      stripRootDirectories: ["crest", "crests"],
+      expectedExtension: ".png"
     }
   ];
 

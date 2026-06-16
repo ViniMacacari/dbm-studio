@@ -8,6 +8,7 @@ import { inflateRawSync } from "node:zlib";
 import { AppConfig, type VisualDependencyConfig } from "../app-config";
 import type {
   MinifaceImageResult,
+  TeamCrestImageResult,
   VisualDependenciesInstallResult,
   VisualDependenciesStatus,
   VisualDependencyProgress,
@@ -158,6 +159,38 @@ export class VisualDependencyManager {
     };
   }
 
+  getTeamCrest(teamId: string): TeamCrestImageResult {
+    const normalizedTeamId = teamId.trim();
+    const crestsPath = this.dependencyTargetPath("crests");
+    const candidates = [
+      normalizedTeamId && !normalizedTeamId.toLowerCase().startsWith("l") ? join(crestsPath, `l${normalizedTeamId}.png`) : "",
+      normalizedTeamId ? join(crestsPath, `${normalizedTeamId}.png`) : ""
+    ].filter(Boolean);
+
+    for (const filePath of candidates) {
+      if (!existsSync(filePath)) {
+        continue;
+      }
+      try {
+        return {
+          teamId,
+          dataUrl: `data:image/png;base64,${readFileSync(filePath).toString("base64")}`,
+          found: true,
+          source: "team"
+        };
+      } catch {
+        continue;
+      }
+    }
+
+    return {
+      teamId,
+      dataUrl: genericCrestDataUrl(normalizedTeamId),
+      found: false,
+      source: "missing"
+    };
+  }
+
   private async installDependency(dependency: VisualDependencyConfig, onProgress?: VisualDependencyProgressCallback): Promise<DependencyInstallAction> {
     const downloadPath = join(this.downloadsPath, dependency.fileName);
     const targetPath = this.dependencyTargetPath(dependency.id);
@@ -234,7 +267,7 @@ export class VisualDependencyManager {
         : `Extracting ${dependency.label}`
     }, true);
     resetDirectory(targetPath, this.rootPath);
-    extractZip(downloadPath, targetPath, dependency.stripRootDirectory, (extractedFiles, totalFiles) => {
+    extractZip(downloadPath, targetPath, dependencyRootDirectories(dependency), (extractedFiles, totalFiles) => {
       emit({
         phase: "extracting",
         receivedBytes: 0,
@@ -625,16 +658,23 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
 }
 
-function extractZip(zipPath: string, outputPath: string, stripRootDirectory?: string, onProgress?: ExtractProgressCallback): void {
+function dependencyRootDirectories(dependency: VisualDependencyConfig): string[] {
+  return [
+    dependency.stripRootDirectory,
+    ...(dependency.stripRootDirectories ?? [])
+  ].filter((directory): directory is string => Boolean(directory));
+}
+
+function extractZip(zipPath: string, outputPath: string, stripRootDirectories: string[] = [], onProgress?: ExtractProgressCallback): void {
   const buffer = readFileSync(zipPath);
   const entries = readZipEntries(buffer);
-  const totalFiles = entries.filter((entry) => Boolean(safeZipEntryName(entry.name, stripRootDirectory))).length;
+  const totalFiles = entries.filter((entry) => Boolean(safeZipEntryName(entry.name, stripRootDirectories))).length;
   let extractedFiles = 0;
   mkdirSync(outputPath, { recursive: true });
   onProgress?.(extractedFiles, totalFiles);
 
   for (const entry of entries) {
-    const outputName = safeZipEntryName(entry.name, stripRootDirectory);
+    const outputName = safeZipEntryName(entry.name, stripRootDirectories);
     if (!outputName) {
       continue;
     }
@@ -721,12 +761,13 @@ function findEndOfCentralDirectory(buffer: Buffer): number {
   throw new Error("ZIP end of central directory was not found.");
 }
 
-function safeZipEntryName(name: string, stripRootDirectory?: string): string {
+function safeZipEntryName(name: string, stripRootDirectories: string[] = []): string {
   let normalized = normalize(name).replace(/^([/\\])+/, "");
-  if (stripRootDirectory) {
+  for (const stripRootDirectory of stripRootDirectories) {
     const root = `${stripRootDirectory}${sep}`;
     if (normalized.toLowerCase().startsWith(root.toLowerCase())) {
       normalized = normalized.slice(root.length);
+      break;
     }
   }
   if (!normalized || normalized === "." || normalized.startsWith("..") || normalize(normalized).startsWith(`..${sep}`)) {
@@ -965,6 +1006,12 @@ function encodeBmp(image: RgbaImage): Buffer {
 function genericMinifaceDataUrl(playerId: string): string {
   const label = playerId ? `ID ${playerId}` : "No image";
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" rx="16" fill="#e8efea"/><circle cx="80" cy="62" r="30" fill="#9aa9a1"/><path d="M30 144c8-32 26-48 50-48s42 16 50 48" fill="#9aa9a1"/><text x="80" y="148" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#405049" text-anchor="middle">${escapeXml(label)}</text></svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
+}
+
+function genericCrestDataUrl(teamId: string): string {
+  const label = teamId ? `ID ${teamId}` : "No crest";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" rx="16" fill="#eef3ef"/><path d="M80 22 126 38v38c0 31-19 53-46 66-27-13-46-35-46-66V38l46-16z" fill="#9aa9a1"/><path d="M80 38 108 48v27c0 20-11 35-28 45-17-10-28-25-28-45V48l28-10z" fill="#eef3ef" opacity=".72"/><text x="80" y="148" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#405049" text-anchor="middle">${escapeXml(label)}</text></svg>`;
   return `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
 }
 
