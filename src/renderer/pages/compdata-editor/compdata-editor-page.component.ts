@@ -9,12 +9,18 @@ import type {
   CompdataStandingSlot,
   CompdataTask,
   CompdataObject,
+  CompdataSetting,
+  CompdataAdvancement,
+  CompdataInitTeam,
   DbProject
 } from "../../../shared/types";
 
 import type { DbMasterApi } from "../../services/dbmaster-api";
 import { LeagueEditorService } from "../../services/league-editor.service";
 import { TeamEditorService } from "../../services/team-editor.service";
+
+import { InputCheckboxComponent } from "../../components/input-checkbox/input-checkbox.component";
+import { SearchListComponent } from "../../components/search-list/search-list.component";
 
 export interface CompdataReferenceLeague {
   leagueId: string;
@@ -47,7 +53,7 @@ const debugCompdataRenderer = (stage: string, detail?: unknown): void => {
 @Component({
   selector: "app-compdata-editor-page",
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, InputCheckboxComponent, SearchListComponent],
   templateUrl: "./compdata-editor-page.component.html",
   styleUrl: "./compdata-editor-page.component.scss"
 })
@@ -62,6 +68,12 @@ export class CompdataEditorPageComponent {
   selectedCompdataCompetitionId = 0;
   compdataCompetitionFilter = "";
   compdataDirty = false;
+  
+  markDirty(): void {
+    this.compdataDirty = true;
+  }
+  
+  activeTab: "hierarchy" | "teams" | "settings" | "standings" | "advancement" | "schedule" | "tasks" | "weather" | "builder" = "builder";
 
   compdataBuilder = {
     sourceLeagueId: "",
@@ -99,6 +111,10 @@ export class CompdataEditorPageComponent {
   get selectedCompdataObject(): CompdataObject | undefined {
     const selected = this.selectedCompdataCompetition;
     return selected ? this.compdataProject?.objects.find((object) => object.id === selected.id) : undefined;
+  }
+
+  setTab(tab: typeof this.activeTab): void {
+    this.activeTab = tab;
   }
 
   private _cachedFilteredCompetitions: CompdataCompetitionSummary[] = [];
@@ -213,6 +229,195 @@ export class CompdataEditorPageComponent {
     }));
     this._lastCompetitionForStageSettings = competition;
     return this._cachedStageSettings;
+  }
+
+  private _cachedTeamOptions: Array<{ value: string; label: string }> = [];
+  private _lastReferenceProjectForTeams?: DbProject;
+
+  get compdataTeamOptions(): Array<{ value: string; label: string }> {
+    if (!this.compdataReferenceProject) {
+      return [];
+    }
+    if (this.compdataReferenceProject === this._lastReferenceProjectForTeams) {
+      return this._cachedTeamOptions;
+    }
+    const table = this.teamEditor.findTeamsTable(this.compdataReferenceProject);
+    if (!table) {
+      this._cachedTeamOptions = [];
+    } else {
+      const teamIdIndex = table.fields.findIndex((f) => f.name === "teamid");
+      const teamNameIndex = table.fields.findIndex((f) => f.name === "teamname");
+      this._cachedTeamOptions = table.rows.map((row) => ({
+        value: row[teamIdIndex] ?? "",
+        label: `${row[teamNameIndex] ?? "Unknown"} (${row[teamIdIndex] ?? ""})`
+      }));
+    }
+    this._lastReferenceProjectForTeams = this.compdataReferenceProject;
+    return this._cachedTeamOptions;
+  }
+
+  get competitionInitTeams() {
+    const id = this.selectedCompdataCompetitionId;
+    return this.compdataProject?.initTeams.filter(t => t.competitionId === id).sort((a, b) => a.position - b.position) ?? [];
+  }
+
+  get competitionSettings() {
+    const id = this.selectedCompdataObject?.id;
+    if (id === undefined) return [];
+    return this.compdataProject?.settings.filter(s => s.objectId === id) ?? [];
+  }
+
+  addSetting(): void {
+    if (!this.compdataProject || !this.selectedCompdataObject) return;
+    this.compdataProject.settings.push({
+      objectId: this.selectedCompdataObject.id,
+      key: "new_setting",
+      value: "0"
+    });
+    this.markDirty();
+  }
+
+  removeSetting(setting: CompdataSetting): void {
+    if (!this.compdataProject) return;
+    const index = this.compdataProject.settings.indexOf(setting);
+    if (index >= 0) {
+      this.compdataProject.settings.splice(index, 1);
+      this.markDirty();
+    }
+  }
+
+  get competitionStandings() {
+    const id = this.selectedCompdataObject?.id;
+    if (id === undefined) return [];
+    return this.compdataProject?.standings.filter(s => s.groupId === id).sort((a, b) => a.position - b.position) ?? [];
+  }
+
+  addStanding(): void {
+    if (!this.compdataProject || !this.selectedCompdataObject) return;
+    const position = this.competitionStandings.length > 0 ? Math.max(...this.competitionStandings.map(s => s.position)) + 1 : 1;
+    this.compdataProject.standings.push({
+      groupId: this.selectedCompdataObject.id,
+      position
+    });
+    this.markDirty();
+  }
+
+  removeStanding(standing: CompdataStandingSlot): void {
+    if (!this.compdataProject) return;
+    const index = this.compdataProject.standings.indexOf(standing);
+    if (index >= 0) {
+      this.compdataProject.standings.splice(index, 1);
+      this.markDirty();
+    }
+  }
+
+  get competitionAdvancements() {
+    const id = this.selectedCompdataObject?.id;
+    if (id === undefined) return [];
+    return this.compdataProject?.advancements.filter(a => a.fromGroupId === id).sort((a, b) => a.fromPosition - b.fromPosition) ?? [];
+  }
+
+  addAdvancement(): void {
+    if (!this.compdataProject || !this.selectedCompdataObject) return;
+    this.compdataProject.advancements.push({
+      fromGroupId: this.selectedCompdataObject.id,
+      fromPosition: 1,
+      toGroupId: 0,
+      toPosition: 1
+    });
+    this.markDirty();
+  }
+
+  removeAdvancement(advancement: CompdataAdvancement): void {
+    if (!this.compdataProject) return;
+    const index = this.compdataProject.advancements.indexOf(advancement);
+    if (index >= 0) {
+      this.compdataProject.advancements.splice(index, 1);
+      this.markDirty();
+    }
+  }
+
+  get competitionSchedules() {
+    const id = this.selectedCompdataObject?.id;
+    if (id === undefined) return [];
+    return this.compdataProject?.schedules.filter(s => s.objectId === id).sort((a, b) => a.day - b.day) ?? [];
+  }
+
+  addScheduleEntry(): void {
+    if (!this.compdataProject || !this.selectedCompdataObject) return;
+    const round = this.competitionSchedules.length > 0 ? Math.max(...this.competitionSchedules.map(s => s.round)) + 1 : 1;
+    this.compdataProject.schedules.push({
+      objectId: this.selectedCompdataObject.id,
+      day: 30 + (round - 1) * 7,
+      round,
+      minGames: 1,
+      maxGames: 10,
+      time: "20:00"
+    });
+    this.markDirty();
+  }
+
+  removeScheduleEntry(schedule: CompdataScheduleEntry): void {
+    if (!this.compdataProject) return;
+    const index = this.compdataProject.schedules.indexOf(schedule);
+    if (index >= 0) {
+      this.compdataProject.schedules.splice(index, 1);
+      this.markDirty();
+    }
+  }
+
+  get competitionTasks() {
+    const id = this.selectedCompdataCompetitionId;
+    return this.compdataProject?.tasks.filter(t => t.competitionId === id) ?? [];
+  }
+
+  addTask(): void {
+    if (!this.compdataProject || !this.selectedCompdataCompetitionId) return;
+    this.compdataProject.tasks.push({
+      competitionId: this.selectedCompdataCompetitionId,
+      timing: "start",
+      action: "FillFromLeague",
+      targetId: this.selectedCompdataObject?.id ?? 0,
+      param1: "0",
+      param2: "0",
+      param3: "0"
+    });
+    this.markDirty();
+  }
+
+  removeTask(task: CompdataTask): void {
+    if (!this.compdataProject) return;
+    const index = this.compdataProject.tasks.indexOf(task);
+    if (index >= 0) {
+      this.compdataProject.tasks.splice(index, 1);
+      this.markDirty();
+    }
+  }
+
+  addInitTeam(): void {
+    if (!this.compdataProject || !this.selectedCompdataCompetitionId) return;
+    const position = this.competitionInitTeams.length > 0 ? Math.max(...this.competitionInitTeams.map(t => t.position)) + 1 : 1;
+    this.compdataProject.initTeams.push({
+      competitionId: this.selectedCompdataCompetitionId,
+      position,
+      teamId: ""
+    });
+    this.markDirty();
+  }
+
+  removeInitTeam(team: CompdataInitTeam): void {
+    if (!this.compdataProject) return;
+    const index = this.compdataProject.initTeams.indexOf(team);
+    if (index >= 0) {
+      this.compdataProject.initTeams.splice(index, 1);
+      this.markDirty();
+    }
+  }
+
+  resolveTeamName(teamId: string): string {
+    if (!teamId) return "No team";
+    const opt = this.compdataTeamOptions.find(o => o.value === teamId);
+    return opt ? opt.label : teamId;
   }
 
   async openCompdataFolder(): Promise<void> {
