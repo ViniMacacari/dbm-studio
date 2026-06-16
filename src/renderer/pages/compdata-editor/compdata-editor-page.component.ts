@@ -73,7 +73,7 @@ export class CompdataEditorPageComponent {
     this.compdataDirty = true;
   }
   
-  activeTab: "hierarchy" | "teams" | "settings" | "standings" | "advancement" | "schedule" | "tasks" | "weather" | "builder" = "builder";
+  activeTab: "hierarchy" | "summary" | "participants" | "stages" | "matches" | "advancements" | "builder" = "builder";
 
   compdataBuilder = {
     sourceLeagueId: "",
@@ -256,11 +256,6 @@ export class CompdataEditorPageComponent {
     return this._cachedTeamOptions;
   }
 
-  get competitionInitTeams() {
-    const id = this.selectedCompdataCompetitionId;
-    return this.compdataProject?.initTeams.filter(t => t.competitionId === id).sort((a, b) => a.position - b.position) ?? [];
-  }
-
   get competitionSettings() {
     const id = this.selectedCompdataObject?.id;
     if (id === undefined) return [];
@@ -284,6 +279,25 @@ export class CompdataEditorPageComponent {
       this.compdataProject.settings.splice(index, 1);
       this.markDirty();
     }
+  }
+
+  updateSetting(key: string, value: string): void {
+    if (!this.compdataProject || !this.selectedCompdataObject) return;
+    const existing = this.competitionSettings.find(s => s.key === key);
+    if (existing) {
+      existing.value = value;
+    } else {
+      this.compdataProject.settings.push({
+        objectId: this.selectedCompdataObject.id,
+        key,
+        value
+      });
+    }
+    this.markDirty();
+  }
+
+  getSetting(key: string, fallback = ""): string {
+    return this.competitionSettings.find(s => s.key === key)?.value ?? fallback;
   }
 
   get competitionStandings() {
@@ -393,15 +407,23 @@ export class CompdataEditorPageComponent {
       this.markDirty();
     }
   }
+  
+  teamToAdd = "";
+
+  get competitionInitTeams() {
+    const id = this.selectedCompdataCompetitionId;
+    return this.compdataProject?.initTeams.filter(t => t.competitionId === id).sort((a, b) => a.position - b.position) ?? [];
+  }
 
   addInitTeam(): void {
-    if (!this.compdataProject || !this.selectedCompdataCompetitionId) return;
+    if (!this.compdataProject || !this.selectedCompdataCompetitionId || !this.teamToAdd) return;
     const position = this.competitionInitTeams.length > 0 ? Math.max(...this.competitionInitTeams.map(t => t.position)) + 1 : 1;
     this.compdataProject.initTeams.push({
       competitionId: this.selectedCompdataCompetitionId,
       position,
-      teamId: ""
+      teamId: this.teamToAdd
     });
+    this.teamToAdd = "";
     this.markDirty();
   }
 
