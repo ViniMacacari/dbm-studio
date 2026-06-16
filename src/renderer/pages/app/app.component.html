@@ -886,5 +886,9 @@
     <div class="spinner"></div>
     <strong>{{ loadingTitle }}</strong>
     <span>{{ loadingDetail }}</span>
+    <div class="loading-progress" *ngIf="loadingPercent !== undefined">
+      <div class="loading-progress-bar" [style.width.%]="loadingPercent"></div>
+    </div>
+    <small *ngIf="loadingPercent !== undefined">{{ loadingPercent }}% {{ loadingProgressLabel }}</small>
   </div>
 </div>

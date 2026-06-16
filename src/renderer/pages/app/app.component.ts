@@ -3,6 +3,7 @@ import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, 
 import { FormsModule } from "@angular/forms";
 import type {
   CompdataCompetitionSummary,
+  CompdataOpenProgress,
   CompdataProject,
   CompdataScheduleEntry,
   CompdataStandingSlot,
@@ -128,6 +129,8 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   loadingActive = false;
   loadingTitle = "Loading";
   loadingDetail = "Please wait";
+  loadingPercent?: number;
+  loadingProgressLabel = "";
   visualDependencyModalVisible = false;
   visualDependencyInstalling = false;
   visualDependencyStatus?: VisualDependenciesStatus;
@@ -500,7 +503,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
 
   async openCompdataFolder(): Promise<void> {
     await this.guarded(async () => {
-      const result = await this.api.openCompdataFolder();
+      const result = await this.openCompdataFolderWithProgress();
       if (result.project) {
         this.compdataProject = result.project;
         this.compdataReferenceProject = undefined;
@@ -512,6 +515,56 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
         void this.loadCompdataFolderReference(result.project.folderPath);
       }
     }, "Opening compdata", "Reading tournament text files");
+  }
+
+  private async openCompdataFolderWithProgress(): Promise<{ canceled?: boolean; project?: CompdataProject; error?: string }> {
+    let readingTimeout: number | undefined;
+    let readingStarted = false;
+    let removeProgressListener: (() => void) | undefined;
+    const clearReadingTimeout = (): void => {
+      if (readingTimeout !== undefined) {
+        window.clearTimeout(readingTimeout);
+        readingTimeout = undefined;
+      }
+    };
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      const armTimeout = (): void => {
+        clearReadingTimeout();
+        readingTimeout = window.setTimeout(() => {
+          reject(new Error("Compdata import timed out after folder selection. The last progress message is shown in the loading box."));
+        }, 20000);
+      };
+      removeProgressListener = this.api.onCompdataOpenProgress((progress) => {
+        this.applyCompdataOpenProgress(progress);
+        if (progress.phase !== "selecting" && !readingStarted) {
+          readingStarted = true;
+          armTimeout();
+        } else if (readingStarted && progress.phase !== "loaded" && progress.phase !== "error") {
+          armTimeout();
+        }
+        if (progress.phase === "loaded" || progress.phase === "error") {
+          clearReadingTimeout();
+          removeProgressListener?.();
+          removeProgressListener = undefined;
+        }
+      });
+    });
+
+    try {
+      return await Promise.race([this.api.openCompdataFolder(), timeoutPromise]);
+    } finally {
+      clearReadingTimeout();
+      removeProgressListener?.();
+    }
+  }
+
+  private applyCompdataOpenProgress(progress: CompdataOpenProgress): void {
+    this.loadingPercent = progress.percent;
+    this.loadingProgressLabel = `${progress.currentStep}/${progress.totalSteps}`;
+    this.loadingDetail = progress.fileName
+      ? `${progress.message} (${progress.fileName})`
+      : progress.message;
+    this.changeDetector.detectChanges();
   }
 
   async openCompdataReferenceDatabase(withLocalization = true): Promise<void> {
@@ -1807,6 +1860,10 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     this.loadingTitle = title;
     this.loadingDetail = detail;
     this.loadingActive = loading;
+    if (!loading) {
+      this.loadingPercent = undefined;
+      this.loadingProgressLabel = "";
+    }
     this.changeDetector.detectChanges();
     if (loading) {
       await this.waitForLoadingPaint();

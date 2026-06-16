@@ -1269,7 +1269,7 @@ td.row-select {
   min-height: 116px;
   display: grid;
   grid-template-columns: 42px 1fr;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto auto auto auto;
   gap: 6px 12px;
   align-items: center;
   border: 1px solid var(--line);
@@ -1296,6 +1296,31 @@ td.row-select {
 .loading-box span {
   color: var(--muted);
   font-size: 13px;
+}
+
+.loading-progress,
+.loading-box small {
+  grid-column: 2;
+}
+
+.loading-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf2ef;
+}
+
+.loading-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 120ms ease;
+}
+
+.loading-box small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 @keyframes spin {

@@ -1,4 +1,5 @@
 import type {
+  CompdataOpenProgress,
   DataTable,
   DbProject,
   MinifaceImageResult,
@@ -16,6 +17,7 @@ export interface DbMasterApi {
   openTextFolder(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;
   openCompdataFolder(): Promise<{ canceled?: boolean; project?: CompdataProject; error?: string }>;
   openCompdataFolderReference(folderPath: string): Promise<{ referenceProject?: DbProject; warnings: string[]; error?: string }>;
+  onCompdataOpenProgress(listener: (progress: CompdataOpenProgress) => void): () => void;
   saveCompdata(project: CompdataProject): Promise<{ folderPath: string; filesWritten: number; warnings: string[] }>;
   saveDatabase(project: DbProject): Promise<{ filePath: string; backupPath?: string; warnings: string[]; tablesWritten: number; localizationSkipped?: boolean }>;
   exportTable(table: DataTable): Promise<{ canceled?: boolean; filePath?: string }>;

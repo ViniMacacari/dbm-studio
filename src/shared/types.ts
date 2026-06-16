@@ -124,6 +124,15 @@ export interface CompdataProject {
   competitions: CompdataCompetitionSummary[];
 }
 
+export interface CompdataOpenProgress {
+  phase: "selecting" | "reading" | "parsing" | "building" | "loaded" | "error";
+  fileName?: string;
+  currentStep: number;
+  totalSteps: number;
+  percent: number;
+  message: string;
+}
+
 export interface DbProject {
   title: string;
   sourceKind: "database" | "xml" | "text-folder" | "snapshot";
