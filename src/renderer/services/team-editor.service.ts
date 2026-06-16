@@ -341,14 +341,14 @@ export class TeamEditorService {
 
   findTeams(project: DbProject | undefined, query: string, limit = 60): TeamSearchResult[] {
     const teams = this.findTeamsTable(project);
-    if (!teams) {
+    if (!project || !teams) {
       return [];
     }
 
     const normalizedQuery = this.normalizeSearch(query.trim());
     const results: TeamSearchResult[] = [];
     for (let rowIndex = 0; rowIndex < teams.rows.length; rowIndex += 1) {
-      const summary = this.createTeamSummary(teams, rowIndex);
+      const summary = this.createTeamSummary(project, teams, rowIndex);
       if (!summary) {
         continue;
       }
@@ -392,7 +392,7 @@ export class TeamEditorService {
     }
 
     const teamId = this.read(teams, rowIndex, "teamid");
-    const displayName = this.displayName(teams, rowIndex, teamId);
+    const displayName = this.displayName(project, teams, rowIndex, teamId);
     const teamOptions = this.teamOptions(project);
     const playerLinks = this.transfers.linkedPlayers(project, teamId);
     const kitLinks = this.withRequiredDefaultKits(project, teamId, this.linkedKits(project, teamId));
@@ -614,7 +614,7 @@ export class TeamEditorService {
 
     this.localization.refreshGeneratedFields(
       draft.localizationFields,
-      this.localization.teamFields(project, draft.teamId, this.displayName(teams, draft.rowIndex, draft.teamId))
+      this.localization.teamFields(project, draft.teamId, this.displayName(project, teams, draft.rowIndex, draft.teamId))
     );
     const localizationResult = this.localization.applyFields(project, draft.localizationFields);
     if (localizationResult) {
@@ -624,7 +624,7 @@ export class TeamEditorService {
     }
 
     return {
-      message: `${this.displayName(teams, draft.rowIndex, draft.teamId)} updated in ${[...changedTables].join(" + ")}`,
+      message: `${this.displayName(project, teams, draft.rowIndex, draft.teamId)} updated in ${[...changedTables].join(" + ")}`,
       changedTables: [...changedTables]
     };
   }
@@ -1228,7 +1228,7 @@ export class TeamEditorService {
     return row;
   }
 
-  private createTeamSummary(teams: DataTable, rowIndex: number): TeamSearchResult | undefined {
+  private createTeamSummary(project: DbProject, teams: DataTable, rowIndex: number): TeamSearchResult | undefined {
     if (!teams.rows[rowIndex]) {
       return undefined;
     }
@@ -1237,7 +1237,7 @@ export class TeamEditorService {
     return {
       rowIndex,
       teamId,
-      displayName: this.displayName(teams, rowIndex, teamId),
+      displayName: this.displayName(project, teams, rowIndex, teamId),
       overall: this.read(teams, rowIndex, "overallrating"),
       attack: this.read(teams, rowIndex, "attackrating"),
       midfield: this.read(teams, rowIndex, "midfieldrating"),
@@ -1588,8 +1588,9 @@ export class TeamEditorService {
     return String(clamped);
   }
 
-  private displayName(table: DataTable, rowIndex: number, teamId: string): string {
-    return this.read(table, rowIndex, "teamname").trim() || `Team ${teamId}`;
+  private displayName(project: DbProject, table: DataTable, rowIndex: number, teamId: string): string {
+    const fallback = this.read(table, rowIndex, "teamname").trim() || `Team ${teamId}`;
+    return this.localization.resolveString(project, `TeamName_${teamId}`, fallback);
   }
 
   private findTable(project: DbProject | undefined, name: string): DataTable | undefined {

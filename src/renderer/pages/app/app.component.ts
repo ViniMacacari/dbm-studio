@@ -308,6 +308,10 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     }));
   }
 
+  get compdataReferenceTeamsCount(): number {
+    return this.teamEditor.findTeamsTable(this.compdataReferenceProject)?.rows.length ?? 0;
+  }
+
   get selectedBuilderLeague(): CompdataReferenceLeague | undefined {
     return this.compdataLeagueOptions.find((league) => league.leagueId === this.compdataBuilder.sourceLeagueId);
   }
@@ -499,11 +503,13 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       const result = await this.api.openCompdataFolder();
       if (result.project) {
         this.compdataProject = result.project;
+        this.compdataReferenceProject = undefined;
         this.selectedCompdataCompetitionId = result.project.competitions[0]?.id ?? 0;
         if (result.project.warnings.length > 0) {
           this.showToast(result.project.warnings[0], "warn");
         }
         this.setStatus(`${result.project.title} loaded with ${result.project.competitions.length} competition(s)`);
+        void this.loadCompdataFolderReference(result.project.folderPath);
       }
     }, "Opening compdata", "Reading tournament text files");
   }
@@ -514,13 +520,50 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       if (result.project) {
         this.compdataReferenceProject = result.project;
         this.setStatus(`${this.compdataReferenceLabel} loaded as read-only reference`);
-        const firstLeague = this.compdataLeagueOptions.find((league) => !league.alreadyInCompdata) ?? this.compdataLeagueOptions[0];
-        if (firstLeague && !this.compdataBuilder.sourceLeagueId) {
-          this.compdataBuilder.sourceLeagueId = firstLeague.leagueId;
-          this.syncCompdataBuilderFromLeague();
-        }
+        this.selectFirstCompdataReferenceLeague();
       }
     }, "Opening DB reference", withLocalization ? "Reading DB/XML and LOC for names" : "Reading DB/XML for names");
+  }
+
+  private selectFirstCompdataReferenceLeague(force = false): void {
+    const options = this.compdataLeagueOptions;
+    const firstLeague = options.find((league) => !league.alreadyInCompdata) ?? options[0];
+    const currentLeagueExists = options.some((league) => league.leagueId === this.compdataBuilder.sourceLeagueId);
+    if (firstLeague && (force || !this.compdataBuilder.sourceLeagueId || !currentLeagueExists)) {
+      this.compdataBuilder.sourceLeagueId = firstLeague.leagueId;
+      this.syncCompdataBuilderFromLeague();
+    }
+  }
+
+  private async loadCompdataFolderReference(folderPath: string): Promise<void> {
+    const currentProject = this.compdataProject;
+    if (!currentProject || currentProject.folderPath !== folderPath) {
+      return;
+    }
+    this.setStatus(`${currentProject.title} loaded. Checking same-folder DB/LOC reference...`);
+    try {
+      const result = await this.api.openCompdataFolderReference(folderPath);
+      if (this.compdataProject?.folderPath !== folderPath) {
+        return;
+      }
+      if (result.referenceProject) {
+        this.compdataReferenceProject = result.referenceProject;
+        this.selectFirstCompdataReferenceLeague(true);
+        this.setStatus(`${this.compdataProject.title} loaded / ${this.compdataReferenceLabel} reference`);
+      } else {
+        this.setStatus(`${this.compdataProject.title} loaded without same-folder DB/LOC reference`);
+      }
+      if (result.warnings.length > 0) {
+        this.showToast(result.warnings[0], "warn");
+      }
+    } catch (error) {
+      if (this.compdataProject?.folderPath !== folderPath) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.showToast(message, "warn");
+      this.setStatus(`${this.compdataProject.title} loaded. DB/LOC reference was not loaded.`);
+    }
   }
 
   async saveCompdata(): Promise<void> {

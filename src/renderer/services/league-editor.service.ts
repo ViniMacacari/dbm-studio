@@ -186,7 +186,7 @@ export class LeagueEditorService {
 
     const leagueId = this.read(leagues, rowIndex, "leagueid");
     const countryId = this.read(leagues, rowIndex, "countryid");
-    const displayName = this.displayName(leagues, rowIndex, leagueId);
+    const displayName = this.displayName(project, leagues, rowIndex, leagueId);
 
     return {
       leagueId,
@@ -265,7 +265,7 @@ export class LeagueEditorService {
 
     this.localization.refreshGeneratedFields(
       draft.localizationFields,
-      this.localization.leagueFields(project, draft.leagueId, this.displayName(leagues, draft.rowIndex, draft.leagueId))
+      this.localization.leagueFields(project, draft.leagueId, this.displayName(project, leagues, draft.rowIndex, draft.leagueId))
     );
     const localizationResult = this.localization.applyFields(project, draft.localizationFields);
     if (localizationResult) {
@@ -275,7 +275,7 @@ export class LeagueEditorService {
     }
 
     return {
-      message: `${this.displayName(leagues, draft.rowIndex, draft.leagueId)} updated in ${[...changedTables].join(" + ")}`,
+      message: `${this.displayName(project, leagues, draft.rowIndex, draft.leagueId)} updated in ${[...changedTables].join(" + ")}`,
       changedTables: [...changedTables]
     };
   }
@@ -395,7 +395,7 @@ export class LeagueEditorService {
     return {
       rowIndex,
       leagueId,
-      displayName: this.displayName(leagues, rowIndex, leagueId),
+      displayName: this.displayName(project, leagues, rowIndex, leagueId),
       countryId,
       countryName: this.nations.resolveNation(project, countryId),
       level: this.read(leagues, rowIndex, "level"),
@@ -562,11 +562,13 @@ export class LeagueEditorService {
       return `Team ${teamId}`;
     }
     const row = teams.rows.find((candidate) => candidate[teamIdColumn] === teamId);
-    return row?.[nameColumn]?.trim() || `Team ${teamId}`;
+    const fallback = row?.[nameColumn]?.trim() || `Team ${teamId}`;
+    return this.localization.resolveString(project, `TeamName_${teamId}`, fallback);
   }
 
-  private displayName(table: DataTable, rowIndex: number, leagueId: string): string {
-    return this.read(table, rowIndex, "leaguename").trim() || `League ${leagueId}`;
+  private displayName(project: DbProject, table: DataTable, rowIndex: number, leagueId: string): string {
+    const fallback = this.read(table, rowIndex, "leaguename").trim() || `League ${leagueId}`;
+    return this.localization.resolveString(project, `LeagueName_${leagueId}`, fallback);
   }
 
   private defaultValueForField(field: FieldDescriptor | undefined): string {
