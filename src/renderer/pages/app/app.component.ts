@@ -520,28 +520,19 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       debugCompdataRenderer("openCompdataFolder:canceled");
       return;
     }
-    let loadingStartedAt = 0;
     try {
       this.openingCompdataFolderPath = folderPath;
       this.queuedCompdataLocalizationFolderPath = undefined;
       debugCompdataRenderer("openCompdataFolder:setLoading:true", { folderPath });
       await this.setLoading(true, "Opening compdata", "Reading tournament text files");
-      loadingStartedAt = performance.now();
       const result = await this.openCompdataFolderWithProgress(folderPath);
       debugCompdataRenderer("openCompdataFolder:result", {
         canceled: result.canceled,
         hasProject: Boolean(result.project),
         error: result.error
       });
-      if (this.loadingActive) {
-        const elapsed = performance.now() - loadingStartedAt;
-        const remaining = Math.max(0, this.minimumLoadingDurationMs - elapsed);
-        if (remaining > 0) {
-          await new Promise<void>((resolve) => window.setTimeout(resolve, remaining));
-        }
-        debugCompdataRenderer("openCompdataFolder:setLoading:false");
-        await this.setLoading(false);
-      }
+      debugCompdataRenderer("openCompdataFolder:setLoading:false");
+      await this.setLoading(false);
 
       if (!result.project) {
         debugCompdataRenderer("openCompdataFolder:noProject");
@@ -560,6 +551,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
         objects: result.project.objects.length
       });
       this.setStatus(`${result.project.title} loaded with ${result.project.competitions.length} competition(s)`);
+      this.queueCompdataLocalizationReferencePrompt(folderPath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[compdata/renderer] openCompdataFolder:error", error);
@@ -573,53 +565,27 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
 
   private async openCompdataFolderWithProgress(folderPath: string): Promise<{ canceled?: boolean; project?: CompdataProject; error?: string }> {
     debugCompdataRenderer("openCompdataFolderWithProgress:start", { folderPath });
-    let readingTimeout: number | undefined;
-    let lastProgressMessage = this.loadingDetail;
     let removeProgressListener: (() => void) | undefined;
-    const clearReadingTimeout = (): void => {
-      if (readingTimeout !== undefined) {
-        window.clearTimeout(readingTimeout);
-        readingTimeout = undefined;
-      }
-    };
-    const timeoutPromise = new Promise<never>((_resolve, reject) => {
-      const armTimeout = (): void => {
-        clearReadingTimeout();
-        readingTimeout = window.setTimeout(() => {
-          debugCompdataRenderer("openCompdataFolderWithProgress:timeout", { lastProgressMessage });
-          reject(new Error(`Compdata import timed out after folder selection. Last step: ${lastProgressMessage}.`));
-        }, 20000);
-      };
-      armTimeout();
+
+    try {
       removeProgressListener = this.api.onCompdataOpenProgress((progress) => {
         debugCompdataRenderer("openCompdataFolderWithProgress:progress", progress);
         this.applyCompdataOpenProgress(progress);
-        lastProgressMessage = progress.fileName
-          ? `${progress.message} (${progress.fileName})`
-          : progress.message;
-        if (progress.phase === "loaded") {
-          this.handleCompdataFolderLoaded(folderPath);
-        }
-        armTimeout();
       });
-    });
 
-    try {
       debugCompdataRenderer("openCompdataFolderWithProgress:invoke");
-      const requestPromise = this.api.openCompdataFolder(folderPath).finally(() => {
-        debugCompdataRenderer("openCompdataFolderWithProgress:invokeFinally");
-        clearReadingTimeout();
-      });
-      const result = await Promise.race([requestPromise, timeoutPromise]);
-      debugCompdataRenderer("openCompdataFolderWithProgress:raceResolved", {
+      const result = await this.api.openCompdataFolder(folderPath);
+      debugCompdataRenderer("openCompdataFolderWithProgress:resolved", {
         canceled: result.canceled,
         hasProjectJson: Boolean(result.projectJson),
         error: result.error,
         projectJsonBytes: result.projectJson?.length ?? 0
       });
+
       if (!result.projectJson) {
         return { canceled: result.canceled, error: result.error };
       }
+
       debugCompdataRenderer("openCompdataFolderWithProgress:jsonParse:start");
       const project = JSON.parse(result.projectJson) as CompdataProject;
       debugCompdataRenderer("openCompdataFolderWithProgress:jsonParse:done", {
@@ -633,7 +599,6 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       };
     } finally {
       debugCompdataRenderer("openCompdataFolderWithProgress:finally");
-      clearReadingTimeout();
       removeProgressListener?.();
     }
   }
@@ -658,10 +623,18 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     }, "Opening DB reference", withLocalization ? "Reading DB/XML and LOC for names" : "Reading DB/XML for names");
   }
 
+  private normalizePath(path: string): string {
+    return path.replace(/\\/g, "/").toLowerCase();
+  }
+
   private async promptCompdataLocalizationReference(folderPath: string): Promise<void> {
     const projectTitle = this.compdataProject?.title ?? "Compdata";
-    if (this.compdataProject?.folderPath !== folderPath && this.openingCompdataFolderPath !== folderPath) {
-      debugCompdataRenderer("promptCompdataLocalizationReference:skipped", { folderPath });
+    const normalizedFolderPath = this.normalizePath(folderPath);
+    const projectPath = this.compdataProject ? this.normalizePath(this.compdataProject.folderPath) : "";
+    const openingPath = this.openingCompdataFolderPath ? this.normalizePath(this.openingCompdataFolderPath) : "";
+    
+    if (projectPath !== normalizedFolderPath && openingPath !== normalizedFolderPath) {
+      debugCompdataRenderer("promptCompdataLocalizationReference:skipped", { folderPath, projectPath, openingPath });
       return;
     }
 
@@ -673,8 +646,10 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       hasReferenceProject: Boolean(result.referenceProject),
       warnings: result.warnings
     });
-    if (!this.compdataProject || this.compdataProject.folderPath !== folderPath) {
-      debugCompdataRenderer("promptCompdataLocalizationReference:projectChanged", { folderPath });
+    
+    const currentProjectPath = this.compdataProject ? this.normalizePath(this.compdataProject.folderPath) : "";
+    if (currentProjectPath !== normalizedFolderPath) {
+      debugCompdataRenderer("promptCompdataLocalizationReference:projectChanged", { folderPath, currentProjectPath });
       return;
     }
     if (result.canceled) {
@@ -700,8 +675,11 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   }
 
   private async runQueuedCompdataLocalizationReferencePrompt(folderPath: string): Promise<void> {
-    if (!this.compdataProject || this.compdataProject.folderPath !== folderPath) {
-      debugCompdataRenderer("runQueuedCompdataLocalizationReferencePrompt:skipped", { folderPath });
+    const normalizedFolderPath = this.normalizePath(folderPath);
+    const projectPath = this.compdataProject ? this.normalizePath(this.compdataProject.folderPath) : "";
+    
+    if (projectPath !== normalizedFolderPath) {
+      debugCompdataRenderer("runQueuedCompdataLocalizationReferencePrompt:skipped", { folderPath, projectPath });
       return;
     }
     debugCompdataRenderer("runQueuedCompdataLocalizationReferencePrompt:start", { folderPath });
@@ -710,30 +688,12 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[compdata/renderer] runQueuedCompdataLocalizationReferencePrompt:error", error);
-      if (this.compdataProject?.folderPath === folderPath) {
+      const currentProjectPath = this.compdataProject ? this.normalizePath(this.compdataProject.folderPath) : "";
+      if (currentProjectPath === normalizedFolderPath) {
         this.showToast(message, "error");
-        this.setStatus(`${this.compdataProject.title} loaded without LOC reference`);
+        this.setStatus(`${this.compdataProject?.title} loaded without LOC reference`);
       }
     }
-  }
-
-  private handleCompdataFolderLoaded(folderPath: string): void {
-    if (this.loadingActive) {
-      debugCompdataRenderer("handleCompdataFolderLoaded:closeLoading", { folderPath });
-      this.loadingActive = false;
-      this.loadingPercent = undefined;
-      this.loadingProgressLabel = "";
-      this.changeDetector.detectChanges();
-      console.log('deve sair')
-    }
-    if (this.queuedCompdataLocalizationFolderPath === folderPath) {
-      console.log('não saiu')
-      return;
-    }
-    this.queuedCompdataLocalizationFolderPath = folderPath;
-    debugCompdataRenderer("handleCompdataFolderLoaded:queueLocalizationPrompt", { folderPath });
-    this.loadingActive = false;
-    // this.queueCompdataLocalizationReferencePrompt(folderPath);
   }
 
   private selectFirstCompdataReferenceLeague(force = false): void {
