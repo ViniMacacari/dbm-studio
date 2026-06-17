@@ -22,6 +22,7 @@
     "fast-xml-parser": "^5.8.0",
     "fifadate": "^0.0.9",
     "rxjs": "^7.8.2",
+    "transfermarkt-parser": "^0.1.1",
     "zone.js": "^0.15.1"
   },
   "devDependencies": {
