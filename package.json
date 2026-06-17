@@ -36,7 +36,7 @@
   "build": {
     "appId": "com.dbm.studio",
     "productName": "DBM Studio",
-    "asar": false,
+    "asar": true,
     "files": [
       "dist/**/*",
       "package.json"
@@ -50,6 +50,10 @@
     "win": {
       "icon": "app.ico",
       "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     },
     "linux": {
       "target": "AppImage",
