@@ -58,11 +58,11 @@ export class CompdataEditorPageComponent {
   selectedCompdataCompetitionId = 0;
   compdataCompetitionFilter = "";
   compdataDirty = false;
-  
+
   markDirty(): void {
     this.compdataDirty = true;
   }
-  
+
   activeTab: "summary" | "participants" | "stages" | "matches" | "advancements" | "builder" = "summary";
 
   compdataBuilder = {
@@ -95,7 +95,7 @@ export class CompdataEditorPageComponent {
     private readonly localization: LocalizationService,
     private readonly toastService: ToastService,
     private readonly loadingService: LoadingService
-  ) {}
+  ) { }
 
   get selectedCompdataCompetition(): CompdataCompetitionSummary | undefined {
     return this.compdataProject?.competitions.find((competition) => competition.id === this.selectedCompdataCompetitionId);
@@ -123,7 +123,7 @@ export class CompdataEditorPageComponent {
     ) {
       return this._cachedFilteredCompetitions;
     }
-    
+
     this._cachedFilteredCompetitions = (this.compdataProject?.competitions ?? []).filter((competition) => {
       if (!filter) {
         return true;
@@ -135,7 +135,7 @@ export class CompdataEditorPageComponent {
         String(competition.id)
       ].some((value) => value.toLowerCase().includes(filter));
     });
-    
+
     this._lastFilterString = filter;
     this._lastProjectForFilteredCompetitions = this.compdataProject;
     return this._cachedFilteredCompetitions;
@@ -255,7 +255,6 @@ export class CompdataEditorPageComponent {
     return this._cachedTeamOptions;
   }
 
-  /** All object IDs that belong to the selected competition (competition root + stages + groups) */
   get selectedCompetitionObjectIds(): Set<number> {
     const comp = this.selectedCompdataCompetition;
     if (!comp) return new Set();
@@ -417,7 +416,7 @@ export class CompdataEditorPageComponent {
       this.markDirty();
     }
   }
-  
+
   teamToAdd = "";
 
   get competitionInitTeams() {
@@ -450,7 +449,6 @@ export class CompdataEditorPageComponent {
     if (!teamId) return "Vaga em aberto";
     const opt = this.compdataTeamOptions.find(o => o.value === teamId);
     if (opt) return opt.label;
-    // Fallback: try localization directly
     if (this.compdataReferenceProject) {
       const resolved = this.localization.resolveString(this.compdataReferenceProject, `TeamName_${teamId}`, "");
       if (resolved) return `${resolved} (${teamId})`;
@@ -491,23 +489,18 @@ export class CompdataEditorPageComponent {
         return;
       }
 
-      // Delay applying the project to the UI until AFTER the localization reference is loaded
-      // This matches the user's requested flow: load txt -> open xml -> open db -> load db -> show editor
-
-      // Ensure the UI updates to show the prompt before blocking the thread
       this.loadingService.show("LOC Reference", "Please select LOC XML and DB/.loc when prompted");
       await new Promise(resolve => setTimeout(resolve, 350));
 
       const locPromise = this.api.openCompdataLocalizationReference();
-      
+
       const locTimer = setTimeout(() => {
         this.loadingService.show("Reading LOC Database", "Please wait... this may take up to 30 seconds");
       }, 800);
 
       const locResult = await locPromise;
       clearTimeout(locTimer);
-      
-      // Now that everything is loaded, we apply to the UI
+
       this.compdataProject = result.project;
       this.compdataReferenceProject = undefined;
       this.selectedCompdataCompetitionId = result.project.competitions[0]?.id ?? 0;
@@ -519,7 +512,7 @@ export class CompdataEditorPageComponent {
         const reason = locResult.warnings?.[0] ?? "LOC reference was not loaded";
         this.statusChanged.emit(`${result.project.title} loaded without LOC reference. ${reason}`);
       }
-      
+
       if (result.project.warnings.length > 0) {
         this.toastService.show(result.project.warnings[0], "warn");
       }
@@ -534,7 +527,7 @@ export class CompdataEditorPageComponent {
 
       this.changeDetector.detectChanges();
 
-      
+
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[compdata/renderer] openCompdataFolder:error", error);
@@ -617,8 +610,6 @@ export class CompdataEditorPageComponent {
   private normalizePath(path: string): string {
     return path.replace(/\\/g, "/").toLowerCase();
   }
-
-
 
   private selectFirstCompdataReferenceLeague(force = false): void {
     const options = this.compdataLeagueOptions;
