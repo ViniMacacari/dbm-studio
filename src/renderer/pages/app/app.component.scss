@@ -503,6 +503,11 @@
   object-fit: cover;
 }
 
+.player-result.has-crest .result-miniface img {
+  object-fit: contain;
+  padding: 3px;
+}
+
 .result-miniface.placeholder img {
   object-fit: contain;
 }

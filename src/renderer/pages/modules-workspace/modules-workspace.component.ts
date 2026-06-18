@@ -70,7 +70,7 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
   private observer?: IntersectionObserver;
 
   // Batch loading queue – max 20 at a time (images + transfer details)
-  private imageQueue: { playerId: string; teamId?: string; rowIndex?: number }[] = [];
+  private imageQueue: { playerId?: string; teamId?: string; rowIndex?: number }[] = [];
   private imageLoading = false;
   private readonly IMAGE_BATCH_SIZE = 20;
   private transferResolvedRows = new Set<number>();
@@ -222,12 +222,12 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
           const element = entry.target as HTMLElement;
-          const playerId = element.getAttribute("data-player-id");
-          const teamId = element.getAttribute("data-team-id");
-          if (playerId) {
+          const playerId = element.getAttribute("data-player-id") || undefined;
+          const teamId = element.getAttribute("data-team-id") || undefined;
+          if (playerId || teamId) {
             const rowIndexAttr = element.getAttribute("data-row-index");
             const rowIndex = rowIndexAttr ? Number(rowIndexAttr) : undefined;
-            this.enqueueImage(playerId, teamId || undefined, rowIndex);
+            this.enqueueImage(playerId, teamId, rowIndex);
             this.observer?.unobserve(element);
             queued = true;
           }
@@ -243,13 +243,13 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
 
     // Observe elements inside active scroll container
     setTimeout(() => {
-      const elements = scrollContainer.querySelectorAll(".player-result[data-player-id], .transfer-card[data-player-id]");
+      const elements = scrollContainer.querySelectorAll(".player-result[data-player-id], .player-result[data-team-id], .transfer-card[data-player-id]");
       elements.forEach(el => this.observer?.observe(el));
     }, 100);
   }
 
   /** Push an item into the image queue (skip if already loaded or queued) */
-  private enqueueImage(playerId: string, teamId?: string, rowIndex?: number): void {
+  private enqueueImage(playerId?: string, teamId?: string, rowIndex?: number): void {
     // For transfer items, always queue if details not yet resolved
     if (rowIndex !== undefined && !this.transferResolvedRows.has(rowIndex)) {
       const alreadyQueued = this.imageQueue.some(q => q.rowIndex === rowIndex);
@@ -258,20 +258,30 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
       }
       return;
     }
-    // Skip if player image already loaded/loading
-    if (this.playerMinifaces[playerId]) {
-      // Still need to check team crest
-      if (teamId && !this.teamCrests[teamId]) {
-        const alreadyQueued = this.imageQueue.some(q => q.playerId === playerId && q.teamId === teamId);
+    if (playerId) {
+      // Skip if player image already loaded/loading
+      if (this.playerMinifaces[playerId]) {
+        // Still need to check team crest
+        if (teamId && !this.teamCrests[teamId]) {
+          const alreadyQueued = this.imageQueue.some(q => q.playerId === playerId && q.teamId === teamId);
+          if (!alreadyQueued) {
+            this.imageQueue.push({ playerId, teamId, rowIndex });
+          }
+        }
+        return;
+      }
+      const alreadyQueued = this.imageQueue.some(q => q.playerId === playerId);
+      if (!alreadyQueued) {
+        this.imageQueue.push({ playerId, teamId, rowIndex });
+      }
+    } else if (teamId) {
+      // Skip if team crest already loaded/loading
+      if (!this.teamCrests[teamId]) {
+        const alreadyQueued = this.imageQueue.some(q => !q.playerId && q.teamId === teamId);
         if (!alreadyQueued) {
           this.imageQueue.push({ playerId, teamId, rowIndex });
         }
       }
-      return;
-    }
-    const alreadyQueued = this.imageQueue.some(q => q.playerId === playerId);
-    if (!alreadyQueued) {
-      this.imageQueue.push({ playerId, teamId, rowIndex });
     }
   }
 
@@ -299,7 +309,7 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
   }
 
   /** Load a single player miniface + team crest + resolve transfer details (if needed) */
-  private async loadSingleImage(playerId: string, teamId?: string, rowIndex?: number): Promise<void> {
+  private async loadSingleImage(playerId?: string, teamId?: string, rowIndex?: number): Promise<void> {
     // Resolve transfer details (name, overall, age, nationality) lazily
     if (rowIndex !== undefined && !this.transferResolvedRows.has(rowIndex)) {
       this.transferResolvedRows.add(rowIndex);
@@ -349,6 +359,7 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
     this.teamSearchResults = this.teamEditor.findTeams(this.project, this.teamSearchTerm, this.teamSearchTerm.trim() ? 80 : 30);
     const suffix = this.teamSearchTerm.trim() ? ` for "${this.teamSearchTerm.trim()}"` : "";
     this.statusChanged.emit(`${this.teamSearchResults.length} team result(s)${suffix}`);
+    this.setupObserver();
   }
 
   async searchLeagues(title = "Searching leagues", detail = "Resolving countries and team links"): Promise<void> {

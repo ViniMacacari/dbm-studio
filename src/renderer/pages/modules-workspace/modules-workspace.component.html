@@ -120,8 +120,13 @@
       </div>
 
       <div class="player-results" *ngIf="teamSearchResults.length > 0; else noTeamResults">
-        <button type="button" class="player-result"
-          *ngFor="let team of teamSearchResults; trackBy: trackByTeamResult" (click)="openTeamFromModule(team)">
+        <button type="button" class="player-result has-miniface has-crest"
+          *ngFor="let team of teamSearchResults; trackBy: trackByTeamResult"
+          [attr.data-team-id]="team.teamId"
+          (click)="openTeamFromModule(team)">
+          <div class="result-miniface" [class.placeholder]="teamCrests[team.teamId]?.source !== 'team'">
+            <img *ngIf="teamCrests[team.teamId]?.dataUrl as crestUrl" [src]="crestUrl" [alt]="team.displayName" />
+          </div>
           <span class="result-main">
             <strong>{{ team.displayName }}</strong>
             <span>ID {{ team.teamId }}</span>
