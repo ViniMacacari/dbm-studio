@@ -481,6 +481,32 @@
   padding: 10px 12px;
 }
 
+.player-result.has-miniface {
+  grid-template-columns: auto minmax(220px, 1fr) minmax(260px, 1.2fr);
+}
+
+.result-miniface {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #eef3ef;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.result-miniface img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.result-miniface.placeholder img {
+  object-fit: contain;
+}
+
 .player-result:hover:not(:disabled) {
   background: #f8fbf9;
 }

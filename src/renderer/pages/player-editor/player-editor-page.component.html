@@ -18,18 +18,15 @@
     <div class="editor-actions">
       <button type="button" class="apply-button" (click)="apply()">Apply</button>
       <button type="button" class="secondary-apply-button" (click)="applyAndBack()">Apply and Back</button>
-      <button type="button" class="secondary-apply-button" [disabled]="!canSaveDatabase" (click)="applyAndSave()">Apply and Save</button>
+      <button type="button" class="secondary-apply-button" [disabled]="!canSaveDatabase" (click)="applyAndSave()">Apply
+        and Save</button>
     </div>
   </header>
 
   <nav class="editor-tabs" aria-label="Player editor tabs">
     <button type="button" [class.active]="activeTab === 'identity'" (click)="setTab('identity')">Identity</button>
-    <button
-      *ngFor="let section of sections; trackBy: trackBySection"
-      type="button"
-      [class.active]="activeTab === section.id"
-      (click)="setTab(section.id)"
-    >
+    <button *ngFor="let section of sections; trackBy: trackBySection" type="button"
+      [class.active]="activeTab === section.id" (click)="setTab(section.id)">
       {{ section.title }}
     </button>
   </nav>
@@ -62,46 +59,43 @@
       <div class="editor-grid">
         <label class="field-block" *ngFor="let field of player.identityFields; trackBy: trackByField">
           <span>{{ field.label }}</span>
-          <app-search-list
-            *ngIf="field.inputType === 'nation'; else identityInput"
-            [options]="nationOptions"
-            [(value)]="field.value"
-            [disabled]="field.readonly"
-            placeholder="Search country"
-          ></app-search-list>
+          <app-search-list *ngIf="field.inputType === 'nation'; else identityInput" [options]="nationOptions"
+            [(value)]="field.value" [disabled]="field.readonly" placeholder="Search country"></app-search-list>
           <ng-template #identityInput>
-            <input
-              [type]="field.inputType"
-              [(ngModel)]="field.value"
-              [readonly]="field.readonly"
-              [min]="field.min"
-              [max]="field.max"
-            />
+            <select *ngIf="field.inputType === 'position'; else defaultIdentityInput" [(ngModel)]="field.value"
+              [disabled]="field.readonly">
+              <option *ngFor="let pos of positionOptions" [value]="pos.id">
+                {{ pos.name }}
+              </option>
+            </select>
+            <ng-template #defaultIdentityInput>
+              <input [type]="field.inputType" [(ngModel)]="field.value" [readonly]="field.readonly" [min]="field.min"
+                [max]="field.max" />
+            </ng-template>
           </ng-template>
           <small *ngIf="field.relation">{{ field.relation }}</small>
         </label>
       </div>
     </section>
 
-    <section class="editor-panel" *ngFor="let section of sections; trackBy: trackBySection" [class.hidden]="activeTab !== section.id">
+    <section class="editor-panel" *ngFor="let section of sections; trackBy: trackBySection"
+      [class.hidden]="activeTab !== section.id">
       <div class="editor-grid">
         <label class="field-block" *ngFor="let field of section.fields; trackBy: trackByField">
           <span>{{ field.label }}</span>
-          <app-search-list
-            *ngIf="field.inputType === 'nation'; else sectionInput"
-            [options]="nationOptions"
-            [(value)]="field.value"
-            [disabled]="field.readonly"
-            placeholder="Search country"
-          ></app-search-list>
+          <app-search-list *ngIf="field.inputType === 'nation'; else sectionInput" [options]="nationOptions"
+            [(value)]="field.value" [disabled]="field.readonly" placeholder="Search country"></app-search-list>
           <ng-template #sectionInput>
-            <input
-              [type]="field.inputType"
-              [(ngModel)]="field.value"
-              [readonly]="field.readonly"
-              [min]="field.min"
-              [max]="field.max"
-            />
+            <select *ngIf="field.inputType === 'position'; else defaultSectionInput" [(ngModel)]="field.value"
+              [disabled]="field.readonly">
+              <option *ngFor="let pos of positionOptions" [value]="pos.id">
+                {{ pos.name }}
+              </option>
+            </select>
+            <ng-template #defaultSectionInput>
+              <input [type]="field.inputType" [(ngModel)]="field.value" [readonly]="field.readonly" [min]="field.min"
+                [max]="field.max" />
+            </ng-template>
           </ng-template>
           <small *ngIf="field.relation">{{ field.relation }}</small>
         </label>

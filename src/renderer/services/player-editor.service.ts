@@ -18,7 +18,7 @@ export interface PlayerEditorFieldDraft {
   column: string;
   label: string;
   value: string;
-  inputType: "number" | "text" | "date" | "nation";
+  inputType: "number" | "text" | "date" | "nation" | "position";
   readonly?: boolean;
   min?: number;
   max?: number;
@@ -68,7 +68,7 @@ export interface PlayerCreationResult {
 interface FieldDefinition {
   column: string;
   label: string;
-  inputType?: "number" | "text" | "nation";
+  inputType?: "number" | "text" | "nation" | "position";
   readonly?: boolean;
   min?: number;
   max?: number;
@@ -125,10 +125,10 @@ export class PlayerEditorService {
         { column: "internationalrep", label: "International rep", min: 0, max: 5 },
         { column: "skillmoves", label: "Skill moves", min: 0, max: 5 },
         { column: "weakfootabilitytypecode", label: "Weak foot", min: 0, max: 5 },
-        { column: "preferredposition1", label: "Position 1" },
-        { column: "preferredposition2", label: "Position 2" },
-        { column: "preferredposition3", label: "Position 3" },
-        { column: "preferredposition4", label: "Position 4" }
+        { column: "preferredposition1", label: "Position 1", inputType: "position" },
+        { column: "preferredposition2", label: "Position 2", inputType: "position" },
+        { column: "preferredposition3", label: "Position 3", inputType: "position" },
+        { column: "preferredposition4", label: "Position 4", inputType: "position" }
       ]
     },
     {
@@ -626,7 +626,7 @@ export class PlayerEditorService {
       return isoToFifaDateCode(field.value, field.column);
     }
 
-    if (field.inputType === "number" || field.inputType === "nation") {
+    if (field.inputType === "number" || field.inputType === "nation" || field.inputType === "position") {
       return this.validateNumericField(field);
     }
 

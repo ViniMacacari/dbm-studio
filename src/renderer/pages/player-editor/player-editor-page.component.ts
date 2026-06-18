@@ -8,6 +8,7 @@ import type { DbMasterApi } from "../../services/dbmaster-api";
 import { NationService } from "../../services/nation.service";
 import { PlayerEditorService } from "../../services/player-editor.service";
 import type { PlayerEditorDraft, PlayerEditorFieldDraft } from "../../services/player-editor.service";
+import { positionInformation } from "../../../utils/position-mapper/position-mapper";
 
 @Component({
   selector: "app-player-editor-page",
@@ -27,6 +28,7 @@ export class PlayerEditorPageComponent implements OnChanges {
 
   draft?: PlayerEditorDraft;
   nationOptions: SearchListOption[] = [];
+  positionOptions = positionInformation.map(pos => ({ name: pos.name, id: pos.id.toString() }));
   activeTab = "identity";
   lastApplied = "";
   lastAppliedTone: "info" | "error" = "info";

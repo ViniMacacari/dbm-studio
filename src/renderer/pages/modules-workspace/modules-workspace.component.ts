@@ -33,6 +33,7 @@ export class ModulesWorkspaceComponent implements OnInit {
   // Player search state
   playerSearchTerm = "";
   playerSearchResults: PlayerSearchResult[] = [];
+  playerMinifaces: Record<string, { dataUrl: string; source: string }> = {};
 
   // Team search state
   teamSearchTerm = "";
@@ -163,6 +164,23 @@ export class ModulesWorkspaceComponent implements OnInit {
     this.playerSearchResults = this.playerEditor.findPlayers(this.project, this.playerSearchTerm, this.playerSearchTerm.trim() ? 80 : 30);
     const suffix = this.playerSearchTerm.trim() ? ` for "${this.playerSearchTerm.trim()}"` : "";
     this.statusChanged.emit(`${this.playerSearchResults.length} player result(s)${suffix}`);
+    void this.loadPlayerMinifaces(this.playerSearchResults);
+  }
+
+  async loadPlayerMinifaces(results: PlayerSearchResult[]): Promise<void> {
+    const idsToLoad = results.map(r => r.playerId).filter(id => !this.playerMinifaces[id]);
+    if (idsToLoad.length === 0) return;
+
+    await Promise.all(
+      idsToLoad.map(async (playerId) => {
+        try {
+          const res = await window.dbmaster.getPlayerMiniface(playerId);
+          this.playerMinifaces[playerId] = res;
+        } catch {
+          this.playerMinifaces[playerId] = { dataUrl: "", source: "missing" };
+        }
+      })
+    );
   }
 
   async searchTeams(title = "Searching teams", detail = "Reading team rows"): Promise<void> {

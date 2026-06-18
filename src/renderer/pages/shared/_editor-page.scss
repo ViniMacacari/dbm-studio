@@ -167,7 +167,8 @@
   line-height: 1.2;
 }
 
-.field-block input {
+.field-block input,
+.field-block select {
   width: 100%;
   min-width: 0;
   height: 32px;
@@ -178,14 +179,16 @@
   padding: 0 8px;
 }
 
-.field-block input:focus {
+.field-block input:focus,
+.field-block select:focus {
   outline: 2px solid var(--accent-2);
   outline-offset: -2px;
   background: white;
 }
 
 .field-block input[readonly],
-.field-block input:disabled {
+.field-block input:disabled,
+.field-block select:disabled {
   color: var(--muted);
   background: #eef3ef;
 }

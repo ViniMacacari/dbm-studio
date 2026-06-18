@@ -66,9 +66,12 @@
     </div>
 
     <div class="player-results" *ngIf="playerSearchResults.length > 0; else noPlayerResults">
-      <button type="button" class="player-result"
+      <button type="button" class="player-result has-miniface"
         *ngFor="let player of playerSearchResults; trackBy: trackByPlayerResult"
         (click)="openPlayerFromModule(player)">
+        <div class="result-miniface" [class.placeholder]="playerMinifaces[player.playerId]?.source !== 'player'">
+          <img *ngIf="playerMinifaces[player.playerId]?.dataUrl as dataUrl" [src]="dataUrl" [alt]="player.displayName" />
+        </div>
         <span class="result-main">
           <strong>{{ player.displayName }}</strong>
           <span>ID {{ player.playerId }}</span>
