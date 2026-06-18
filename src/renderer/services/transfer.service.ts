@@ -24,6 +24,7 @@ export interface TransferSearchResult extends TeamPlayerLinkDraft {
   potential?: string;
   age?: number;
   nationalityName?: string;
+  isNationalTeam?: boolean;
 }
 
 export interface TransferApplyResult {
@@ -37,6 +38,41 @@ export class TransferService {
 
   findTeamPlayerLinksTable(project?: DbProject): DataTable | undefined {
     return this.findTable(project, "teamplayerlinks");
+  }
+
+  findTeamNationLinksTable(project?: DbProject): DataTable | undefined {
+    return this.findTable(project, "teamnationlinks");
+  }
+
+  isNationalTeam(project: DbProject, teamId: string): boolean {
+    const teams = this.findTeamsTable(project);
+    if (!teams) {
+      return false;
+    }
+    const teamIdColumn = this.columnIndex(teams, "teamid");
+    if (teamIdColumn < 0) {
+      return false;
+    }
+    const row = teams.rows.find((r) => r[teamIdColumn] === teamId);
+    if (!row) {
+      return false;
+    }
+
+    const clubWorth = this.readRowValue(teams, row, "clubworth");
+    const youthDev = this.readRowValue(teams, row, "youthdevelopment");
+    const profitability = this.readRowValue(teams, row, "profitability");
+    const popularity = this.readRowValue(teams, row, "popularity");
+    const opponentWeak = this.readRowValue(teams, row, "opponentweakthreshold");
+
+    return clubWorth === "0" && youthDev === "0" && profitability === "0" && popularity === "0" && opponentWeak !== "0";
+  }
+
+  private readRowValue(table: DataTable, row: string[], column: string): string {
+    const colIdx = this.columnIndex(table, column);
+    if (colIdx < 0) {
+      return "";
+    }
+    return row[colIdx] ?? "";
   }
 
   canUseTransferModule(project?: DbProject): boolean {
@@ -59,6 +95,9 @@ export class TransferService {
       .flatMap((row): SearchListOption[] => {
         const teamId = row[teamIdColumn] ?? "";
         if (!teamId) {
+          return [];
+        }
+        if (project && this.isNationalTeam(project, teamId)) {
           return [];
         }
         const label = (nameColumn >= 0 ? row[nameColumn] : "")?.trim() || `Team ${teamId}`;
@@ -152,6 +191,12 @@ export class TransferService {
 
     const playerId = this.read(links, linkRowIndex, "playerid");
     const sourceTeamId = this.read(links, linkRowIndex, "teamid");
+    if (this.isNationalTeam(project, sourceTeamId)) {
+      throw new Error("Cannot transfer players from a national team.");
+    }
+    if (this.isNationalTeam(project, destinationTeamId)) {
+      throw new Error("Cannot transfer players to a national team.");
+    }
     if (!this.resolveTeamName(project, destinationTeamId)) {
       throw new Error("Destination team was not found.");
     }
@@ -251,7 +296,8 @@ export class TransferService {
       overall: summary?.overall,
       potential: summary?.potential,
       age: summary?.age,
-      nationalityName: summary?.nationalityName
+      nationalityName: summary?.nationalityName,
+      isNationalTeam: this.isNationalTeam(project, draft.teamId)
     };
   }
 

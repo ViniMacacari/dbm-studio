@@ -115,7 +115,10 @@ export class TeamEditorPageComponent implements OnChanges {
     if (!this.draft) {
       return;
     }
-    this.teamEditor.removePlayerFromDraft(this.draft, playerId);
+    this.runDraftAction(() => {
+      this.teamEditor.removePlayerFromDraft(this.draft!, playerId);
+      return "Player removed from roster draft";
+    });
   }
 
   addNation(): void {

@@ -243,9 +243,10 @@
           </div>
           <app-search-list class="transfer-destination" [options]="teamOptions"
             [value]="transferDestination(player)" placeholder="Destination club"
+            [disabled]="player.isNationalTeam || false"
             (valueChange)="setTransferDestination(player, $event)"></app-search-list>
           <button type="button" class="apply-button"
-            [disabled]="!transferDestination(player) || transferDestination(player) === player.teamId"
+            [disabled]="player.isNationalTeam || !transferDestination(player) || transferDestination(player) === player.teamId"
             (click)="transferPlayer(player)">
             Transfer
           </button>
