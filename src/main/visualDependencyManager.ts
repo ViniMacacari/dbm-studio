@@ -7,6 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { inflateRawSync } from "node:zlib";
 import { AppConfig, type VisualDependencyConfig } from "../app-config";
 import type {
+  LeagueLogoImageResult,
   MinifaceImageResult,
   TeamCrestImageResult,
   VisualDependenciesInstallResult,
@@ -186,6 +187,38 @@ export class VisualDependencyManager {
     return {
       teamId,
       dataUrl: genericCrestDataUrl(normalizedTeamId),
+      found: false,
+      source: "missing"
+    };
+  }
+
+  getLeagueLogo(leagueId: string): LeagueLogoImageResult {
+    const normalizedLeagueId = leagueId.trim();
+    const competitionsPath = this.dependencyTargetPath("competitions");
+    const candidates = [
+      normalizedLeagueId && !normalizedLeagueId.toLowerCase().startsWith("l") ? join(competitionsPath, `l${normalizedLeagueId}.png`) : "",
+      normalizedLeagueId ? join(competitionsPath, `${normalizedLeagueId}.png`) : ""
+    ].filter(Boolean);
+
+    for (const filePath of candidates) {
+      if (!existsSync(filePath)) {
+        continue;
+      }
+      try {
+        return {
+          leagueId,
+          dataUrl: `data:image/png;base64,${readFileSync(filePath).toString("base64")}`,
+          found: true,
+          source: "league"
+        };
+      } catch {
+        continue;
+      }
+    }
+
+    return {
+      leagueId,
+      dataUrl: genericCrestDataUrl(normalizedLeagueId),
       found: false,
       source: "missing"
     };

@@ -701,6 +701,10 @@ ipcMain.handle("visualDependencies:getTeamCrest", (_event, teamId: string) => {
   return visualDependencies().getTeamCrest(teamId);
 });
 
+ipcMain.handle("visualDependencies:getLeagueLogo", (_event, leagueId: string) => {
+  return visualDependencies().getLeagueLogo(leagueId);
+});
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   createWindow();

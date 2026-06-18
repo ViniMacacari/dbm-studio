@@ -27,6 +27,14 @@ export class AppConfig {
       targetDirectory: "crests",
       stripRootDirectories: ["crest", "crests"],
       expectedExtension: ".png"
+    },
+    {
+      id: "competitions",
+      label: "League logos",
+      fileName: "competitions.zip",
+      targetDirectory: "competitions",
+      stripRootDirectories: ["competitions", "competition"],
+      expectedExtension: ".png"
     }
   ];
 
