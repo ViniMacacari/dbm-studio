@@ -2,6 +2,8 @@ import { Injectable } from "@angular/core";
 import type { DataTable, DbProject, FieldDescriptor } from "../../shared/types";
 import type { SearchListOption } from "../components/search-list/search-list.component";
 import { PlayerEditorService } from "./player-editor.service";
+import { NationService } from "./nation.service";
+import { fifaDateCodeToAge } from "./fifa-date";
 
 export interface TeamPlayerLinkDraft {
   rowIndex: number;
@@ -34,7 +36,10 @@ export interface TransferApplyResult {
 
 @Injectable({ providedIn: "root" })
 export class TransferService {
-  constructor(private readonly players: PlayerEditorService) {}
+  constructor(
+    private readonly players: PlayerEditorService,
+    private readonly nations: NationService
+  ) {}
 
   findTeamPlayerLinksTable(project?: DbProject): DataTable | undefined {
     return this.findTable(project, "teamplayerlinks");
@@ -58,11 +63,17 @@ export class TransferService {
       return false;
     }
 
-    const clubWorth = this.readRowValue(teams, row, "clubworth");
-    const youthDev = this.readRowValue(teams, row, "youthdevelopment");
-    const profitability = this.readRowValue(teams, row, "profitability");
-    const popularity = this.readRowValue(teams, row, "popularity");
-    const opponentWeak = this.readRowValue(teams, row, "opponentweakthreshold");
+    const clubWorthCol = this.columnIndex(teams, "clubworth");
+    const youthDevCol = this.columnIndex(teams, "youthdevelopment");
+    const profitabilityCol = this.columnIndex(teams, "profitability");
+    const popularityCol = this.columnIndex(teams, "popularity");
+    const opponentWeakCol = this.columnIndex(teams, "opponentweakthreshold");
+
+    const clubWorth = clubWorthCol >= 0 ? row[clubWorthCol] ?? "" : "";
+    const youthDev = youthDevCol >= 0 ? row[youthDevCol] ?? "" : "";
+    const profitability = profitabilityCol >= 0 ? row[profitabilityCol] ?? "" : "";
+    const popularity = popularityCol >= 0 ? row[popularityCol] ?? "" : "";
+    const opponentWeak = opponentWeakCol >= 0 ? row[opponentWeakCol] ?? "" : "";
 
     return clubWorth === "0" && youthDev === "0" && profitability === "0" && popularity === "0" && opponentWeak !== "0";
   }
@@ -149,28 +160,396 @@ export class TransferService {
       .sort((left, right) => this.numericValue(left.jerseyNumber) - this.numericValue(right.jerseyNumber) || left.displayName.localeCompare(right.displayName));
   }
 
+  private checkTableSortedByNameId(table: DataTable & { _isNameIdSorted?: boolean }, nameIdCol: number): boolean {
+    if (table._isNameIdSorted !== undefined) {
+      return table._isNameIdSorted;
+    }
+    let sorted = true;
+    let prev = -Infinity;
+    for (const row of table.rows) {
+      const val = Number(row[nameIdCol]);
+      if (Number.isInteger(val)) {
+        if (val < prev) {
+          sorted = false;
+          break;
+        }
+        prev = val;
+      }
+    }
+    table._isNameIdSorted = sorted;
+    return sorted;
+  }
+
+  private binarySearchName(table: DataTable, nameIdCol: number, nameCol: number, nameId: string): string | undefined {
+    let low = 0;
+    let high = table.rows.length - 1;
+    const target = Number(nameId);
+    if (!Number.isInteger(target)) {
+      return undefined;
+    }
+
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      const row = table.rows[mid];
+      if (!row) break;
+      const midVal = Number(row[nameIdCol]);
+      if (midVal === target) {
+        return row[nameCol]?.trim();
+      } else if (midVal < target) {
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return undefined;
+  }
+
+  private nameMapLazy(table: DataTable & { _lazyNameMap?: Map<string, string> }): Map<string, string> {
+    if (!table._lazyNameMap) {
+      table._lazyNameMap = new Map<string, string>();
+    }
+    return table._lazyNameMap;
+  }
+
+  private lookupNameFast(project: DbProject, tableName: string, nameId: string): string {
+    const table = this.findTable(project, tableName);
+    if (!table || !nameId || nameId === "0" || nameId === "-1") {
+      return "";
+    }
+    const nameIdCol = this.columnIndex(table, "nameid");
+    const nameCol = this.columnIndex(table, "name");
+    if (nameIdCol < 0 || nameCol < 0) {
+      return "";
+    }
+
+    if (this.checkTableSortedByNameId(table, nameIdCol)) {
+      const val = this.binarySearchName(table, nameIdCol, nameCol, nameId);
+      if (val !== undefined) {
+        return this.isReadableName(val) ? val : "";
+      }
+    }
+
+    const lazyMap = this.nameMapLazy(table);
+    if (lazyMap.has(nameId)) {
+      const val = lazyMap.get(nameId) ?? "";
+      return this.isReadableName(val) ? val : "";
+    }
+
+    const row = table.rows.find(r => r[nameIdCol] === nameId);
+    const val = row ? row[nameCol]?.trim() ?? "" : "";
+    lazyMap.set(nameId, val);
+    return this.isReadableName(val) ? val : "";
+  }
+
+  private isReadableName(value: string): boolean {
+    return Boolean(value && /[^\d\s.-]/.test(value));
+  }
+
+  private lookupEditedName(project: DbProject, playerId: string): { firstname: string; surname: string; commonname: string; playerjerseyname: string } | undefined {
+    const table = this.findTable(project, "editedplayernames");
+    if (!table) {
+      return undefined;
+    }
+    const playerIdCol = this.columnIndex(table, "playerid");
+    if (playerIdCol < 0) {
+      return undefined;
+    }
+    
+    const lazyMap = (table as any)._lazyEditedMap || new Map();
+    if (!(table as any)._lazyEditedMap) {
+      (table as any)._lazyEditedMap = lazyMap;
+    }
+    
+    if (lazyMap.has(playerId)) {
+      return lazyMap.get(playerId) || undefined;
+    }
+    
+    const row = table.rows.find(r => r[playerIdCol] === playerId);
+    if (!row) {
+      lazyMap.set(playerId, null);
+      return undefined;
+    }
+    
+    const firstnameCol = this.columnIndex(table, "firstname");
+    const surnameCol = this.columnIndex(table, "surname");
+    const commonNameCol = this.columnIndex(table, "commonname");
+    const jerseyNameCol = this.columnIndex(table, "playerjerseyname");
+    
+    const res = {
+      firstname: firstnameCol >= 0 ? row[firstnameCol] ?? "" : "",
+      surname: surnameCol >= 0 ? row[surnameCol] ?? "" : "",
+      commonname: commonNameCol >= 0 ? row[commonNameCol] ?? "" : "",
+      playerjerseyname: jerseyNameCol >= 0 ? row[jerseyNameCol] ?? "" : ""
+    };
+    lazyMap.set(playerId, res);
+    return res;
+  }
+
+  private resolvePlayerNameFast(project: DbProject, playerId: string, playersTable: DataTable, rowIndex: number): string {
+    const edited = this.lookupEditedName(project, playerId);
+    if (edited && (edited.firstname || edited.surname || edited.commonname || edited.playerjerseyname)) {
+      return this.displayName(edited, playerId);
+    }
+    
+    const firstnameid = this.read(playersTable, rowIndex, "firstnameid");
+    const lastnameid = this.read(playersTable, rowIndex, "lastnameid");
+    const commonnameid = this.read(playersTable, rowIndex, "commonnameid");
+    const playerjerseynameid = this.read(playersTable, rowIndex, "playerjerseynameid");
+    
+    const firstname = this.lookupNameFast(project, "dcplayernames", firstnameid) || this.lookupNameFast(project, "playernames", firstnameid);
+    const surname = this.lookupNameFast(project, "dcplayernames", lastnameid) || this.lookupNameFast(project, "playernames", lastnameid);
+    const commonname = this.lookupNameFast(project, "dcplayernames", commonnameid) || this.lookupNameFast(project, "playernames", commonnameid);
+    const playerjerseyname = this.lookupNameFast(project, "dcplayernames", playerjerseynameid) || this.lookupNameFast(project, "playernames", playerjerseynameid);
+    
+    return this.displayName({ firstname, surname, commonname, playerjerseyname }, playerId);
+  }
+
+  private displayName(names: { firstname: string; surname: string; commonname: string; playerjerseyname: string }, playerId: string): string {
+    if (names.commonname) {
+      return names.commonname;
+    }
+    const parts = [names.firstname, names.surname].filter(Boolean);
+    if (parts.length > 0) {
+      return parts.join(" ");
+    }
+    if (names.playerjerseyname) {
+      return names.playerjerseyname;
+    }
+    return `Player ${playerId}`;
+  }
+
+  private resolvePlayerSummaryFast(project: DbProject, playerId: string): { displayName: string; overall: string; potential: string; age: number | undefined; nationalityName: string } | undefined {
+    const playersTable = this.findTable(project, "players");
+    if (!playersTable) {
+      return undefined;
+    }
+    
+    const playerIdCol = this.columnIndex(playersTable, "playerid");
+    if (playerIdCol < 0) {
+      return undefined;
+    }
+    
+    const indexMap = (playersTable as any)._indexMap || new Map();
+    if (!(playersTable as any)._indexMap) {
+      (playersTable as any)._indexMap = indexMap;
+      for (let r = 0; r < playersTable.rows.length; r++) {
+        const id = playersTable.rows[r]?.[playerIdCol];
+        if (id) {
+          indexMap.set(id, r);
+        }
+      }
+    }
+    
+    const rowIndex = indexMap.get(playerId) ?? -1;
+    if (rowIndex < 0) {
+      return undefined;
+    }
+    
+    const displayName = this.resolvePlayerNameFast(project, playerId, playersTable, rowIndex);
+    const birthdate = this.read(playersTable, rowIndex, "birthdate");
+    const overall = this.read(playersTable, rowIndex, "overallrating");
+    const potential = this.read(playersTable, rowIndex, "potential");
+    const nationality = this.read(playersTable, rowIndex, "nationality");
+    
+    return {
+      displayName,
+      overall,
+      potential,
+      age: fifaDateCodeToAge(birthdate),
+      nationalityName: this.nations.resolveNation(project, nationality)
+    };
+  }
+
   findTransferPlayers(project: DbProject | undefined, query: string, limit = 80): TransferSearchResult[] {
     const links = this.findTeamPlayerLinksTable(project);
     if (!project || !links) {
       return [];
     }
 
+    const teamNamesMap = new Map<string, string>();
+    const teamsTable = this.findTeamsTable(project);
+    if (teamsTable) {
+      const teamIdCol = this.columnIndex(teamsTable, "teamid");
+      const nameCol = this.columnIndex(teamsTable, "teamname");
+      if (teamIdCol >= 0) {
+        for (const row of teamsTable.rows) {
+          const teamId = row[teamIdCol];
+          if (teamId) {
+            teamNamesMap.set(teamId, (nameCol >= 0 ? row[nameCol] : "")?.trim() || `Team ${teamId}`);
+          }
+        }
+      }
+    }
+
     const normalizedQuery = this.normalizeSearch(query.trim());
+    let matchingPlayerIds: Set<string> | null = null;
+
+    if (normalizedQuery) {
+      matchingPlayerIds = new Set<string>();
+
+      const matchingNameIds = new Set<string>();
+      
+      const playernames = project.tables.find(t => t.name.toLowerCase() === "playernames");
+      if (playernames) {
+        const nameIdCol = this.columnIndex(playernames, "nameid");
+        const nameCol = this.columnIndex(playernames, "name");
+        if (nameIdCol >= 0 && nameCol >= 0) {
+          for (const row of playernames.rows) {
+            const nameVal = row[nameCol];
+            if (nameVal && this.normalizeSearch(nameVal).includes(normalizedQuery)) {
+              const nameId = row[nameIdCol];
+              if (nameId) matchingNameIds.add(nameId);
+            }
+          }
+        }
+      }
+
+      const dcplayernames = project.tables.find(t => t.name.toLowerCase() === "dcplayernames");
+      if (dcplayernames) {
+        const nameIdCol = this.columnIndex(dcplayernames, "nameid");
+        const nameCol = this.columnIndex(dcplayernames, "name");
+        if (nameIdCol >= 0 && nameCol >= 0) {
+          for (const row of dcplayernames.rows) {
+            const nameVal = row[nameCol];
+            if (nameVal && this.normalizeSearch(nameVal).includes(normalizedQuery)) {
+              const nameId = row[nameIdCol];
+              if (nameId) matchingNameIds.add(nameId);
+            }
+          }
+        }
+      }
+
+      const matchingPlayerIdsByEditedName = new Set<string>();
+      const editedplayernames = project.tables.find(t => t.name.toLowerCase() === "editedplayernames");
+      if (editedplayernames) {
+        const playerIdCol = this.columnIndex(editedplayernames, "playerid");
+        const firstnameCol = this.columnIndex(editedplayernames, "firstname");
+        const surnameCol = this.columnIndex(editedplayernames, "surname");
+        const commonnameCol = this.columnIndex(editedplayernames, "commonname");
+        const jerseynameCol = this.columnIndex(editedplayernames, "playerjerseyname");
+        if (playerIdCol >= 0) {
+          for (const row of editedplayernames.rows) {
+            const pid = row[playerIdCol];
+            if (!pid) continue;
+            const match =
+              (firstnameCol >= 0 && row[firstnameCol] && this.normalizeSearch(row[firstnameCol]).includes(normalizedQuery)) ||
+              (surnameCol >= 0 && row[surnameCol] && this.normalizeSearch(row[surnameCol]).includes(normalizedQuery)) ||
+              (commonnameCol >= 0 && row[commonnameCol] && this.normalizeSearch(row[commonnameCol]).includes(normalizedQuery)) ||
+              (jerseynameCol >= 0 && row[jerseynameCol] && this.normalizeSearch(row[jerseynameCol]).includes(normalizedQuery));
+            if (match) {
+              matchingPlayerIdsByEditedName.add(pid);
+            }
+          }
+        }
+      }
+
+      const matchingNationIds = new Set<string>();
+      const nationsTable = project.tables.find(t => t.name.toLowerCase() === "nations");
+      if (nationsTable) {
+        const nationIdCol = this.columnIndex(nationsTable, "nationid");
+        const nationNameCol = this.columnIndex(nationsTable, "nationname");
+        if (nationIdCol >= 0 && nationNameCol >= 0) {
+          for (const row of nationsTable.rows) {
+            const nName = row[nationNameCol];
+            if (nName && this.normalizeSearch(nName).includes(normalizedQuery)) {
+              const nid = row[nationIdCol];
+              if (nid) matchingNationIds.add(nid);
+            }
+          }
+        }
+      }
+
+      const playersTable = project.tables.find(t => t.name.toLowerCase() === "players");
+      if (playersTable) {
+        const playerIdCol = this.columnIndex(playersTable, "playerid");
+        const firstnameidCol = this.columnIndex(playersTable, "firstnameid");
+        const lastnameidCol = this.columnIndex(playersTable, "lastnameid");
+        const commonnameidCol = this.columnIndex(playersTable, "commonnameid");
+        const jerseynameidCol = this.columnIndex(playersTable, "playerjerseynameid");
+        const nationalityCol = this.columnIndex(playersTable, "nationality");
+
+        if (playerIdCol >= 0) {
+          for (const row of playersTable.rows) {
+            const pid = row[playerIdCol];
+            if (!pid) continue;
+
+            const isIdMatch = pid.includes(normalizedQuery);
+            const isNameMatch =
+              (firstnameidCol >= 0 && row[firstnameidCol] && matchingNameIds.has(row[firstnameidCol])) ||
+              (lastnameidCol >= 0 && row[lastnameidCol] && matchingNameIds.has(row[lastnameidCol])) ||
+              (commonnameidCol >= 0 && row[commonnameidCol] && matchingNameIds.has(row[commonnameidCol])) ||
+              (jerseynameidCol >= 0 && row[jerseynameidCol] && matchingNameIds.has(row[jerseynameidCol])) ||
+              matchingPlayerIdsByEditedName.has(pid);
+
+            const isNationMatch = nationalityCol >= 0 && row[nationalityCol] && matchingNationIds.has(row[nationalityCol]);
+
+            if (isIdMatch || isNameMatch || isNationMatch) {
+              matchingPlayerIds.add(pid);
+            }
+          }
+        }
+      }
+    }
+
     const results: TransferSearchResult[] = [];
-    for (let rowIndex = 0; rowIndex < links.rows.length; rowIndex += 1) {
-      const link = this.createTransferSearchResult(project, links, rowIndex);
-      if (!link) {
-        continue;
-      }
-      if (normalizedQuery && !this.transferMatchesQuery(link, normalizedQuery)) {
-        continue;
-      }
-      results.push(link);
-      if (results.length >= limit) {
-        break;
+    const linkPlayerIdCol = this.columnIndex(links, "playerid");
+    const linkTeamIdCol = this.columnIndex(links, "teamid");
+
+    if (linkPlayerIdCol >= 0 && linkTeamIdCol >= 0) {
+      for (let rowIndex = 0; rowIndex < links.rows.length; rowIndex += 1) {
+        const row = links.rows[rowIndex];
+        if (!row) continue;
+        const playerId = row[linkPlayerIdCol] ?? "";
+        const teamId = row[linkTeamIdCol] ?? "";
+        if (!playerId || !teamId) {
+          continue;
+        }
+
+        if (normalizedQuery && matchingPlayerIds) {
+          const teamName = teamNamesMap.get(teamId) || `Team ${teamId}`;
+          const isTeamIdMatch = teamId.includes(normalizedQuery);
+          const isTeamNameMatch = this.normalizeSearch(teamName).includes(normalizedQuery);
+          const isPlayerMatch = matchingPlayerIds.has(playerId);
+
+          if (!isTeamIdMatch && !isTeamNameMatch && !isPlayerMatch) {
+            continue;
+          }
+        }
+
+        // Lightweight result – no name/summary resolution yet
+        results.push({
+          rowIndex,
+          playerId,
+          displayName: `Player ${playerId}`,
+          teamId,
+          teamName: teamNamesMap.get(teamId) || `Team ${teamId}`,
+          jerseyNumber: this.readRowValue(links, row, "jerseynumber") || "99",
+          position: this.readRowValue(links, row, "position") || "0",
+          form: this.readRowValue(links, row, "form") || "0",
+          injury: this.readRowValue(links, row, "injury") || "0",
+          leagueAppearances: this.readRowValue(links, row, "leagueappearances") || "0",
+          leagueGoals: this.readRowValue(links, row, "leaguegoals") || "0",
+          yellows: this.readRowValue(links, row, "yellows") || "0",
+          reds: this.readRowValue(links, row, "reds") || "0"
+        });
+        if (results.length >= limit) {
+          break;
+        }
       }
     }
     return results;
+  }
+
+  /** Resolve display details (name, overall, age, nationality) for a single transfer result – call lazily for visible rows only */
+  resolveTransferDetails(project: DbProject, result: TransferSearchResult): void {
+    const summary = this.resolvePlayerSummaryFast(project, result.playerId);
+    if (summary) {
+      result.displayName = summary.displayName;
+      result.overall = summary.overall;
+      result.potential = summary.potential;
+      result.age = summary.age;
+      result.nationalityName = summary.nationalityName;
+    }
   }
 
   transferPlayer(project: DbProject | undefined, linkRowIndex: number, destinationTeamId: string): TransferApplyResult {
@@ -207,7 +586,28 @@ export class TransferService {
     this.write(links, linkRowIndex, "teamid", destinationTeamId);
     links.changed = true;
 
-    const playerName = this.players.resolvePlayerNameById(project, playerId);
+    const playersTable = this.findTable(project, "players");
+    let playerName = `Player ${playerId}`;
+    if (playersTable) {
+      const playerIdCol = this.columnIndex(playersTable, "playerid");
+      if (playerIdCol >= 0) {
+        const indexMap = (playersTable as any)._indexMap || new Map();
+        if (!(playersTable as any)._indexMap) {
+          (playersTable as any)._indexMap = indexMap;
+          for (let r = 0; r < playersTable.rows.length; r++) {
+            const id = playersTable.rows[r]?.[playerIdCol];
+            if (id) {
+              indexMap.set(id, r);
+            }
+          }
+        }
+        const pRowIndex = indexMap.get(playerId) ?? -1;
+        if (pRowIndex >= 0) {
+          playerName = this.resolvePlayerNameFast(project, playerId, playersTable, pRowIndex);
+        }
+      }
+    }
+
     const sourceName = this.resolveTeamName(project, sourceTeamId) || `Team ${sourceTeamId}`;
     const destinationName = this.resolveTeamName(project, destinationTeamId) || `Team ${destinationTeamId}`;
     return {
@@ -284,24 +684,33 @@ export class TransferService {
     };
   }
 
-  private createTransferSearchResult(project: DbProject, links: DataTable, rowIndex: number): TransferSearchResult | undefined {
-    const draft = this.createTeamPlayerLinkDraft(project, links, rowIndex);
+  private createTransferSearchResult(
+    project: DbProject,
+    links: DataTable,
+    rowIndex: number,
+    teamNamesMap?: Map<string, string>
+  ): TransferSearchResult | undefined {
+    const draft = this.createTeamPlayerLinkDraft(project, links, rowIndex, teamNamesMap);
     if (!draft) {
       return undefined;
     }
 
-    const summary = this.players.resolvePlayerSummaryById(project, draft.playerId);
+    const summary = this.resolvePlayerSummaryFast(project, draft.playerId);
     return {
       ...draft,
       overall: summary?.overall,
       potential: summary?.potential,
       age: summary?.age,
-      nationalityName: summary?.nationalityName,
-      isNationalTeam: this.isNationalTeam(project, draft.teamId)
+      nationalityName: summary?.nationalityName
     };
   }
 
-  private createTeamPlayerLinkDraft(project: DbProject, links: DataTable, rowIndex: number): TeamPlayerLinkDraft | undefined {
+  private createTeamPlayerLinkDraft(
+    project: DbProject,
+    links: DataTable,
+    rowIndex: number,
+    teamNamesMap?: Map<string, string>
+  ): TeamPlayerLinkDraft | undefined {
     if (!links.rows[rowIndex]) {
       return undefined;
     }
@@ -312,12 +721,38 @@ export class TransferService {
       return undefined;
     }
 
+    const teamName = teamNamesMap
+      ? (teamNamesMap.get(teamId) || `Team ${teamId}`)
+      : (this.resolveTeamName(project, teamId) || `Team ${teamId}`);
+
+    const playersTable = this.findTable(project, "players");
+    let displayName = `Player ${playerId}`;
+    if (playersTable) {
+      const playerIdCol = this.columnIndex(playersTable, "playerid");
+      if (playerIdCol >= 0) {
+        const indexMap = (playersTable as any)._indexMap || new Map();
+        if (!(playersTable as any)._indexMap) {
+          (playersTable as any)._indexMap = indexMap;
+          for (let r = 0; r < playersTable.rows.length; r++) {
+            const id = playersTable.rows[r]?.[playerIdCol];
+            if (id) {
+              indexMap.set(id, r);
+            }
+          }
+        }
+        const pRowIndex = indexMap.get(playerId) ?? -1;
+        if (pRowIndex >= 0) {
+          displayName = this.resolvePlayerNameFast(project, playerId, playersTable, pRowIndex);
+        }
+      }
+    }
+
     return {
       rowIndex,
       playerId,
-      displayName: this.players.resolvePlayerNameById(project, playerId),
+      displayName,
       teamId,
-      teamName: this.resolveTeamName(project, teamId) || `Team ${teamId}`,
+      teamName,
       jerseyNumber: this.read(links, rowIndex, "jerseynumber") || "99",
       position: this.read(links, rowIndex, "position") || "0",
       form: this.read(links, rowIndex, "form") || "0",
@@ -327,16 +762,6 @@ export class TransferService {
       yellows: this.read(links, rowIndex, "yellows") || "0",
       reds: this.read(links, rowIndex, "reds") || "0"
     };
-  }
-
-  private transferMatchesQuery(link: TransferSearchResult, normalizedQuery: string): boolean {
-    return [
-      link.displayName,
-      link.playerId,
-      link.teamName,
-      link.teamId,
-      link.nationalityName ?? ""
-    ].some((value) => this.normalizeSearch(value).includes(normalizedQuery));
   }
 
   private findPreferredPlayerLinkRow(links: DataTable, playerLink: TeamPlayerLinkDraft, teamId: string, playerIdColumn: number, teamIdColumn: number): number {

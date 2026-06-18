@@ -1,8 +1,8 @@
-import { Component, EventEmitter, Input, OnInit, Output, ViewEncapsulation } from "@angular/core";
+import { Component, EventEmitter, Input, OnInit, OnDestroy, Output, ViewEncapsulation } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../../../shared/types";
-import { SearchListComponent } from "../../components/search-list/search-list.component";
+import { SearchListComponent, SearchListOption } from "../../components/search-list/search-list.component";
 import { LeagueEditorService, LeagueSearchResult } from "../../services/league-editor.service";
 import { NationService } from "../../services/nation.service";
 import { PlayerEditorService, PlayerSearchResult } from "../../services/player-editor.service";
@@ -18,7 +18,7 @@ import { LoadingService } from "../../services/loading.service";
   templateUrl: "./modules-workspace.component.html",
   encapsulation: ViewEncapsulation.None
 })
-export class ModulesWorkspaceComponent implements OnInit {
+export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
   @Input() project?: DbProject;
   @Output() showHome = new EventEmitter<void>();
   @Output() showTable = new EventEmitter<void>();
@@ -49,6 +49,17 @@ export class ModulesWorkspaceComponent implements OnInit {
   transferSearchTerm = "";
   transferSearchResults: TransferSearchResult[] = [];
   transferDestinations: Record<number, string> = {};
+  teamIsNational: Record<string, boolean> = {};
+  cachedTeamOptions: SearchListOption[] = [];
+
+  private observer?: IntersectionObserver;
+
+  // Batch loading queue – max 20 at a time (images + transfer details)
+  private imageQueue: { playerId: string; teamId?: string; rowIndex?: number }[] = [];
+  private imageLoading = false;
+  private readonly IMAGE_BATCH_SIZE = 20;
+  private transferResolvedRows = new Set<number>();
+  private transferResultsByRow = new Map<number, TransferSearchResult>();
 
   constructor(
     private readonly leagueEditor: LeagueEditorService,
@@ -62,6 +73,13 @@ export class ModulesWorkspaceComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     await this.loadActiveModule();
+  }
+
+  ngOnDestroy(): void {
+    if (this.observer) {
+      this.observer.disconnect();
+    }
+    this.imageQueue = [];
   }
 
   // Helper to run actions inside loading guard
@@ -130,7 +148,7 @@ export class ModulesWorkspaceComponent implements OnInit {
   }
 
   get teamOptions() {
-    return this.transfers.teamOptions(this.project);
+    return this.cachedTeamOptions;
   }
 
   async selectModule(module: "players" | "teams" | "leagues" | "transfers"): Promise<void> {
@@ -165,23 +183,143 @@ export class ModulesWorkspaceComponent implements OnInit {
     this.playerSearchResults = this.playerEditor.findPlayers(this.project, this.playerSearchTerm, this.playerSearchTerm.trim() ? 80 : 30);
     const suffix = this.playerSearchTerm.trim() ? ` for "${this.playerSearchTerm.trim()}"` : "";
     this.statusChanged.emit(`${this.playerSearchResults.length} player result(s)${suffix}`);
-    void this.loadPlayerMinifaces(this.playerSearchResults);
+    this.setupObserver();
   }
 
-  async loadPlayerMinifaces(results: PlayerSearchResult[]): Promise<void> {
-    const idsToLoad = results.map(r => r.playerId).filter(id => !this.playerMinifaces[id]);
-    if (idsToLoad.length === 0) return;
+  setupObserver(): void {
+    if (this.observer) {
+      this.observer.disconnect();
+    }
 
-    await Promise.all(
-      idsToLoad.map(async (playerId) => {
-        try {
-          const res = await window.dbmaster.getPlayerMiniface(playerId);
-          this.playerMinifaces[playerId] = res;
-        } catch {
-          this.playerMinifaces[playerId] = { dataUrl: "", source: "missing" };
+    // Reset queue for fresh module load / search
+    this.imageQueue = [];
+    this.imageLoading = false;
+
+    const scrollContainer = document.querySelector(".module-main");
+    if (!scrollContainer) {
+      setTimeout(() => this.setupObserver(), 100);
+      return;
+    }
+
+    this.observer = new IntersectionObserver((entries) => {
+      let queued = false;
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const element = entry.target as HTMLElement;
+          const playerId = element.getAttribute("data-player-id");
+          const teamId = element.getAttribute("data-team-id");
+          if (playerId) {
+            const rowIndexAttr = element.getAttribute("data-row-index");
+            const rowIndex = rowIndexAttr ? Number(rowIndexAttr) : undefined;
+            this.enqueueImage(playerId, teamId || undefined, rowIndex);
+            this.observer?.unobserve(element);
+            queued = true;
+          }
         }
-      })
-    );
+      });
+      if (queued) {
+        void this.processImageQueue();
+      }
+    }, {
+      root: scrollContainer,
+      rootMargin: "200px"
+    });
+
+    // Observe elements inside active scroll container
+    setTimeout(() => {
+      const elements = scrollContainer.querySelectorAll(".player-result[data-player-id], .transfer-card[data-player-id]");
+      elements.forEach(el => this.observer?.observe(el));
+    }, 100);
+  }
+
+  /** Push an item into the image queue (skip if already loaded or queued) */
+  private enqueueImage(playerId: string, teamId?: string, rowIndex?: number): void {
+    // For transfer items, always queue if details not yet resolved
+    if (rowIndex !== undefined && !this.transferResolvedRows.has(rowIndex)) {
+      const alreadyQueued = this.imageQueue.some(q => q.rowIndex === rowIndex);
+      if (!alreadyQueued) {
+        this.imageQueue.push({ playerId, teamId, rowIndex });
+      }
+      return;
+    }
+    // Skip if player image already loaded/loading
+    if (this.playerMinifaces[playerId]) {
+      // Still need to check team crest
+      if (teamId && !this.teamCrests[teamId]) {
+        const alreadyQueued = this.imageQueue.some(q => q.playerId === playerId && q.teamId === teamId);
+        if (!alreadyQueued) {
+          this.imageQueue.push({ playerId, teamId, rowIndex });
+        }
+      }
+      return;
+    }
+    const alreadyQueued = this.imageQueue.some(q => q.playerId === playerId);
+    if (!alreadyQueued) {
+      this.imageQueue.push({ playerId, teamId, rowIndex });
+    }
+  }
+
+  /** Drain the image queue in batches of IMAGE_BATCH_SIZE */
+  private async processImageQueue(): Promise<void> {
+    if (this.imageLoading) {
+      return; // another batch is already running
+    }
+    this.imageLoading = true;
+
+    while (this.imageQueue.length > 0) {
+      // Take a batch of up to 20
+      const batch = this.imageQueue.splice(0, this.IMAGE_BATCH_SIZE);
+
+      // Fire all requests in the batch concurrently
+      await Promise.all(batch.map(item => this.loadSingleImage(item.playerId, item.teamId, item.rowIndex)));
+
+      // Yield to the UI thread between batches so the app stays responsive
+      if (this.imageQueue.length > 0) {
+        await new Promise<void>(resolve => setTimeout(resolve, 50));
+      }
+    }
+
+    this.imageLoading = false;
+  }
+
+  /** Load a single player miniface + team crest + resolve transfer details (if needed) */
+  private async loadSingleImage(playerId: string, teamId?: string, rowIndex?: number): Promise<void> {
+    // Resolve transfer details (name, overall, age, nationality) lazily
+    if (rowIndex !== undefined && !this.transferResolvedRows.has(rowIndex)) {
+      this.transferResolvedRows.add(rowIndex);
+      const result = this.transferResultsByRow.get(rowIndex);
+      if (result && this.project) {
+        this.transfers.resolveTransferDetails(this.project, result);
+      }
+    }
+
+    if (playerId && !this.playerMinifaces[playerId]) {
+      this.playerMinifaces[playerId] = { dataUrl: "", source: "loading" };
+      try {
+        const res = await window.dbmaster.getPlayerMiniface(playerId);
+        this.playerMinifaces[playerId] = res;
+      } catch {
+        this.playerMinifaces[playerId] = { dataUrl: "", source: "missing" };
+      }
+    }
+    if (teamId) {
+      if (!this.teamCrests[teamId]) {
+        this.teamCrests[teamId] = { dataUrl: "", source: "loading" };
+        try {
+          const res = await window.dbmaster.getTeamCrest(teamId);
+          this.teamCrests[teamId] = res;
+        } catch {
+          this.teamCrests[teamId] = { dataUrl: "", source: "missing" };
+        }
+      }
+      if (this.teamIsNational[teamId] === undefined) {
+        if (this.project) {
+          this.teamIsNational[teamId] = this.transfers.isNationalTeam(this.project, teamId);
+        } else {
+          this.teamIsNational[teamId] = false;
+        }
+      }
+    }
   }
 
   async searchTeams(title = "Searching teams", detail = "Reading team rows"): Promise<void> {
@@ -223,43 +361,28 @@ export class ModulesWorkspaceComponent implements OnInit {
   async searchTransfers(title = "Searching transfers", detail = "Resolving players and clubs"): Promise<void> {
     await this.guarded(async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      // Compute team options once (cached for the session)
+      if (this.cachedTeamOptions.length === 0) {
+        this.cachedTeamOptions = this.transfers.teamOptions(this.project);
+      }
       this.refreshTransferSearch();
     }, title, detail);
   }
 
   refreshTransferSearch(): void {
     this.transferSearchResults = this.transfers.findTransferPlayers(this.project, this.transferSearchTerm, this.transferSearchTerm.trim() ? 100 : 40);
+    // Build lookup map and clear resolved state for lazy detail resolution
+    this.transferResolvedRows.clear();
+    this.transferResultsByRow.clear();
+    for (const r of this.transferSearchResults) {
+      this.transferResultsByRow.set(r.rowIndex, r);
+    }
     this.transferDestinations = Object.fromEntries(
       this.transferSearchResults.map((player) => [player.rowIndex, this.transferDestinations[player.rowIndex] ?? ""])
     );
     const suffix = this.transferSearchTerm.trim() ? ` for "${this.transferSearchTerm.trim()}"` : "";
     this.statusChanged.emit(`${this.transferSearchResults.length} transfer result(s)${suffix}`);
-    void this.loadTransferImages(this.transferSearchResults);
-  }
-
-  async loadTransferImages(results: TransferSearchResult[]): Promise<void> {
-    const playerIdsToLoad = results.map(r => r.playerId).filter(id => !this.playerMinifaces[id]);
-    const teamIdsToLoad = results.map(r => r.teamId).filter(id => !this.teamCrests[id]);
-
-    const playerPromises = playerIdsToLoad.map(async (playerId) => {
-      try {
-        const res = await window.dbmaster.getPlayerMiniface(playerId);
-        this.playerMinifaces[playerId] = res;
-      } catch {
-        this.playerMinifaces[playerId] = { dataUrl: "", source: "missing" };
-      }
-    });
-
-    const teamPromises = teamIdsToLoad.map(async (teamId) => {
-      try {
-        const res = await window.dbmaster.getTeamCrest(teamId);
-        this.teamCrests[teamId] = res;
-      } catch {
-        this.teamCrests[teamId] = { dataUrl: "", source: "missing" };
-      }
-    });
-
-    await Promise.all([...playerPromises, ...teamPromises]);
+    this.setupObserver();
   }
 
   transferDestination(player: TransferSearchResult): string {

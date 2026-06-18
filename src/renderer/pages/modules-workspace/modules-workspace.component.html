@@ -68,6 +68,7 @@
     <div class="player-results" *ngIf="playerSearchResults.length > 0; else noPlayerResults">
       <button type="button" class="player-result has-miniface"
         *ngFor="let player of playerSearchResults; trackBy: trackByPlayerResult"
+        [attr.data-player-id]="player.playerId"
         (click)="openPlayerFromModule(player)">
         <div class="result-miniface" [class.placeholder]="playerMinifaces[player.playerId]?.source !== 'player'">
           <img *ngIf="playerMinifaces[player.playerId]?.dataUrl as dataUrl" [src]="dataUrl" [alt]="player.displayName" />
@@ -217,7 +218,8 @@
       </div>
 
       <div class="transfer-results" *ngIf="transferSearchResults.length > 0; else noTransferResults">
-        <article class="transfer-card" *ngFor="let player of transferSearchResults; trackBy: trackByTransferResult">
+        <article class="transfer-card" *ngFor="let player of transferSearchResults; trackBy: trackByTransferResult"
+          [attr.data-player-id]="player.playerId" [attr.data-team-id]="player.teamId" [attr.data-row-index]="player.rowIndex">
           <div class="transfer-player">
             <div class="transfer-avatar-group">
               <div class="transfer-miniface" [class.placeholder]="playerMinifaces[player.playerId]?.source !== 'player'">
@@ -243,10 +245,10 @@
           </div>
           <app-search-list class="transfer-destination" [options]="teamOptions"
             [value]="transferDestination(player)" placeholder="Destination club"
-            [disabled]="player.isNationalTeam || false"
+            [disabled]="teamIsNational[player.teamId] || false"
             (valueChange)="setTransferDestination(player, $event)"></app-search-list>
           <button type="button" class="apply-button"
-            [disabled]="player.isNationalTeam || !transferDestination(player) || transferDestination(player) === player.teamId"
+            [disabled]="teamIsNational[player.teamId] || !transferDestination(player) || transferDestination(player) === player.teamId"
             (click)="transferPlayer(player)">
             Transfer
           </button>
