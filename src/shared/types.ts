@@ -234,3 +234,10 @@ export interface TeamCrestImageResult {
   found: boolean;
   source: "team" | "missing";
 }
+
+export interface LeagueLogoImageResult {
+  leagueId: string;
+  dataUrl: string;
+  found: boolean;
+  source: "league" | "missing";
+}

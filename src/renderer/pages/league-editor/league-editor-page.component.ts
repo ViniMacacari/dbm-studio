@@ -8,6 +8,7 @@ import { LeagueEditorService } from "../../services/league-editor.service";
 import type { LeagueEditorDraft, LeagueEditorFieldDraft, LeagueTeamLinkDraft } from "../../services/league-editor.service";
 import type { LocalizationFieldDraft } from "../../services/localization.service";
 import { NationService } from "../../services/nation.service";
+import type { DbMasterApi } from "../../services/dbmaster-api";
 
 @Component({
   selector: "app-league-editor-page",
@@ -30,6 +31,10 @@ export class LeagueEditorPageComponent implements OnChanges {
   activeTab = "identity";
   lastApplied = "";
   lastAppliedTone: "info" | "error" = "info";
+  logoDataUrl = "";
+  logoSource: "league" | "missing" = "missing";
+  private readonly api: DbMasterApi = window.dbmaster;
+  private logoRequestId = 0;
 
   constructor(
     private readonly leagueEditor: LeagueEditorService,
@@ -127,10 +132,34 @@ export class LeagueEditorPageComponent implements OnChanges {
   private loadDraft(resetTab = true): void {
     this.draft = this.project ? this.leagueEditor.createDraft(this.project, this.rowIndex, this.isNew) : undefined;
     this.nationOptions = this.nations.nationOptions(this.project);
+    if (this.draft) {
+      void this.loadLogo(this.draft.leagueId);
+    } else {
+      this.logoDataUrl = "";
+      this.logoSource = "missing";
+    }
     if (resetTab) {
       this.activeTab = "identity";
       this.lastApplied = "";
       this.lastAppliedTone = "info";
+    }
+  }
+
+  private async loadLogo(leagueId: string): Promise<void> {
+    const requestId = ++this.logoRequestId;
+    try {
+      const result = await this.api.getLeagueLogo(leagueId);
+      if (requestId !== this.logoRequestId) {
+        return;
+      }
+      this.logoDataUrl = result.dataUrl;
+      this.logoSource = result.source;
+    } catch {
+      if (requestId !== this.logoRequestId) {
+        return;
+      }
+      this.logoDataUrl = "";
+      this.logoSource = "missing";
     }
   }
 }

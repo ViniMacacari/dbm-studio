@@ -2,6 +2,7 @@ import type {
   CompdataOpenProgress,
   DataTable,
   DbProject,
+  LeagueLogoImageResult,
   MinifaceImageResult,
   TeamCrestImageResult,
   VisualDependenciesInstallResult,
@@ -33,6 +34,7 @@ export interface DbMasterApi {
   onVisualDependenciesProgress(listener: (progress: VisualDependencyProgress) => void): () => void;
   getPlayerMiniface(playerId: string): Promise<MinifaceImageResult>;
   getTeamCrest(teamId: string): Promise<TeamCrestImageResult>;
+  getLeagueLogo(leagueId: string): Promise<LeagueLogoImageResult>;
 }
 
 declare global {

@@ -178,9 +178,13 @@
       </div>
 
       <div class="player-results" *ngIf="leagueSearchResults.length > 0; else noLeagueResults">
-        <button type="button" class="player-result"
+        <button type="button" class="player-result has-miniface has-crest"
           *ngFor="let league of leagueSearchResults; trackBy: trackByLeagueResult"
+          [attr.data-league-id]="league.leagueId"
           (click)="openLeagueFromModule(league)">
+          <div class="result-miniface" [class.placeholder]="leagueLogos[league.leagueId]?.source !== 'league'">
+            <img *ngIf="leagueLogos[league.leagueId]?.dataUrl as logoUrl" [src]="logoUrl" [alt]="league.displayName" />
+          </div>
           <span class="result-main">
             <strong>{{ league.displayName }}</strong>
             <span>ID {{ league.leagueId }}</span>

@@ -50,6 +50,7 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
   playerSearchResults: PlayerSearchResult[] = [];
   playerMinifaces: Record<string, { dataUrl: string; source: string }> = {};
   teamCrests: Record<string, { dataUrl: string; source: string }> = {};
+  leagueLogos: Record<string, { dataUrl: string; source: string }> = {};
 
   // Team search state
   teamSearchTerm = "";
@@ -70,7 +71,7 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
   private observer?: IntersectionObserver;
 
   // Batch loading queue – max 20 at a time (images + transfer details)
-  private imageQueue: { playerId?: string; teamId?: string; rowIndex?: number }[] = [];
+  private imageQueue: { playerId?: string; teamId?: string; leagueId?: string; rowIndex?: number }[] = [];
   private imageLoading = false;
   private readonly IMAGE_BATCH_SIZE = 20;
   private transferResolvedRows = new Set<number>();
@@ -224,10 +225,11 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
           const element = entry.target as HTMLElement;
           const playerId = element.getAttribute("data-player-id") || undefined;
           const teamId = element.getAttribute("data-team-id") || undefined;
-          if (playerId || teamId) {
+          const leagueId = element.getAttribute("data-league-id") || undefined;
+          if (playerId || teamId || leagueId) {
             const rowIndexAttr = element.getAttribute("data-row-index");
             const rowIndex = rowIndexAttr ? Number(rowIndexAttr) : undefined;
-            this.enqueueImage(playerId, teamId, rowIndex);
+            this.enqueueImage(playerId, teamId, leagueId, rowIndex);
             this.observer?.unobserve(element);
             queued = true;
           }
@@ -243,18 +245,18 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
 
     // Observe elements inside active scroll container
     setTimeout(() => {
-      const elements = scrollContainer.querySelectorAll(".player-result[data-player-id], .player-result[data-team-id], .transfer-card[data-player-id]");
+      const elements = scrollContainer.querySelectorAll(".player-result[data-player-id], .player-result[data-team-id], .player-result[data-league-id], .transfer-card[data-player-id]");
       elements.forEach(el => this.observer?.observe(el));
     }, 100);
   }
 
   /** Push an item into the image queue (skip if already loaded or queued) */
-  private enqueueImage(playerId?: string, teamId?: string, rowIndex?: number): void {
+  private enqueueImage(playerId?: string, teamId?: string, leagueId?: string, rowIndex?: number): void {
     // For transfer items, always queue if details not yet resolved
     if (rowIndex !== undefined && !this.transferResolvedRows.has(rowIndex)) {
       const alreadyQueued = this.imageQueue.some(q => q.rowIndex === rowIndex);
       if (!alreadyQueued) {
-        this.imageQueue.push({ playerId, teamId, rowIndex });
+        this.imageQueue.push({ playerId, teamId, leagueId, rowIndex });
       }
       return;
     }
@@ -265,21 +267,29 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
         if (teamId && !this.teamCrests[teamId]) {
           const alreadyQueued = this.imageQueue.some(q => q.playerId === playerId && q.teamId === teamId);
           if (!alreadyQueued) {
-            this.imageQueue.push({ playerId, teamId, rowIndex });
+            this.imageQueue.push({ playerId, teamId, leagueId, rowIndex });
           }
         }
         return;
       }
       const alreadyQueued = this.imageQueue.some(q => q.playerId === playerId);
       if (!alreadyQueued) {
-        this.imageQueue.push({ playerId, teamId, rowIndex });
+        this.imageQueue.push({ playerId, teamId, leagueId, rowIndex });
       }
     } else if (teamId) {
       // Skip if team crest already loaded/loading
       if (!this.teamCrests[teamId]) {
         const alreadyQueued = this.imageQueue.some(q => !q.playerId && q.teamId === teamId);
         if (!alreadyQueued) {
-          this.imageQueue.push({ playerId, teamId, rowIndex });
+          this.imageQueue.push({ playerId, teamId, leagueId, rowIndex });
+        }
+      }
+    } else if (leagueId) {
+      // Skip if league logo already loaded/loading
+      if (!this.leagueLogos[leagueId]) {
+        const alreadyQueued = this.imageQueue.some(q => !q.playerId && !q.teamId && q.leagueId === leagueId);
+        if (!alreadyQueued) {
+          this.imageQueue.push({ playerId, teamId, leagueId, rowIndex });
         }
       }
     }
@@ -297,7 +307,7 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
       const batch = this.imageQueue.splice(0, this.IMAGE_BATCH_SIZE);
 
       // Fire all requests in the batch concurrently
-      await Promise.all(batch.map(item => this.loadSingleImage(item.playerId, item.teamId, item.rowIndex)));
+      await Promise.all(batch.map(item => this.loadSingleImage(item.playerId, item.teamId, item.leagueId, item.rowIndex)));
 
       // Yield to the UI thread between batches so the app stays responsive
       if (this.imageQueue.length > 0) {
@@ -309,7 +319,7 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
   }
 
   /** Load a single player miniface + team crest + resolve transfer details (if needed) */
-  private async loadSingleImage(playerId?: string, teamId?: string, rowIndex?: number): Promise<void> {
+  private async loadSingleImage(playerId?: string, teamId?: string, leagueId?: string, rowIndex?: number): Promise<void> {
     // Resolve transfer details (name, overall, age, nationality) lazily
     if (rowIndex !== undefined && !this.transferResolvedRows.has(rowIndex)) {
       this.transferResolvedRows.add(rowIndex);
@@ -346,6 +356,17 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
         }
       }
     }
+    if (leagueId) {
+      if (!this.leagueLogos[leagueId]) {
+        this.leagueLogos[leagueId] = { dataUrl: "", source: "loading" };
+        try {
+          const res = await window.dbmaster.getLeagueLogo(leagueId);
+          this.leagueLogos[leagueId] = res;
+        } catch {
+          this.leagueLogos[leagueId] = { dataUrl: "", source: "missing" };
+        }
+      }
+    }
   }
 
   async searchTeams(title = "Searching teams", detail = "Reading team rows"): Promise<void> {
@@ -378,6 +399,7 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
     );
     const suffix = this.leagueSearchTerm.trim() ? ` for "${this.leagueSearchTerm.trim()}"` : "";
     this.statusChanged.emit(`${this.leagueSearchResults.length} league result(s)${suffix}`);
+    this.setupObserver();
   }
 
   clearLeagueCountryFilter(): void {

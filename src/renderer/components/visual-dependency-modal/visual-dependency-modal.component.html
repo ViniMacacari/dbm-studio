@@ -11,7 +11,7 @@
     <p>{{ message }}</p>
     <p class="dependency-storage" *ngIf="status?.rootPath as rootPath">
       <strong>Storage folder</strong>
-      <span>{{ rootPath }}</span>
+      <span>{{ formatPath(rootPath) }}</span>
     </p>
 
     <div class="dependency-list" *ngIf="status as statusData">
@@ -28,7 +28,7 @@
             : 'Not installed' }}
           </span>
         </div>
-        <small>{{ dependency.targetPath }}</small>
+        <small>{{ formatPath(dependency.targetPath) }}</small>
       </div>
     </div>
 

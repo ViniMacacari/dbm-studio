@@ -132,4 +132,26 @@ export class VisualDependencyModalComponent implements OnInit, OnDestroy {
     this.visible = false;
     this.visibleChange.emit(false);
   }
+
+  formatPath(path?: string): string {
+    if (!path) {
+      return "";
+    }
+    // Windows: C:\Users\name\...
+    const winMatch = path.match(/^([a-z]:\\Users\\[^\\]+)/i);
+    if (winMatch) {
+      return path.replace(winMatch[1], "~");
+    }
+    // Linux: /home/name/...
+    const linuxMatch = path.match(/^(\/home\/[^\/]+)/);
+    if (linuxMatch) {
+      return path.replace(linuxMatch[1], "~");
+    }
+    // macOS: /Users/name/...
+    const macMatch = path.match(/^(\/Users\/[^\/]+)/);
+    if (macMatch) {
+      return path.replace(macMatch[1], "~");
+    }
+    return path;
+  }
 }
