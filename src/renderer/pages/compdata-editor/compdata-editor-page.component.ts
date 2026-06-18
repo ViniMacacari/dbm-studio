@@ -19,6 +19,8 @@ import type { DbMasterApi } from "../../services/dbmaster-api";
 import { LeagueEditorService } from "../../services/league-editor.service";
 import { TeamEditorService } from "../../services/team-editor.service";
 import { LocalizationService } from "../../services/localization.service";
+import { ToastService } from "../../services/toast.service";
+import { LoadingService } from "../../services/loading.service";
 
 import { InputCheckboxComponent } from "../../components/input-checkbox/input-checkbox.component";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
@@ -29,17 +31,6 @@ export interface CompdataReferenceLeague {
   countryName: string;
   teamsCount: number;
   alreadyInCompdata: boolean;
-}
-
-export interface CompdataOpenProgressEvent {
-  loading: boolean;
-  title?: string;
-  detail?: string;
-}
-
-export interface CompdataToastEvent {
-  message: string;
-  tone: "info" | "warn" | "error";
 }
 
 const debugCompdataRenderer = (stage: string, detail?: unknown): void => {
@@ -61,8 +52,6 @@ const debugCompdataRenderer = (stage: string, detail?: unknown): void => {
 export class CompdataEditorPageComponent {
   @Output() showHome = new EventEmitter<void>();
   @Output() statusChanged = new EventEmitter<string>();
-  @Output() toastTriggered = new EventEmitter<CompdataToastEvent>();
-  @Output() loadingStateChanged = new EventEmitter<CompdataOpenProgressEvent>();
 
   compdataProject?: CompdataProject;
   compdataReferenceProject?: DbProject;
@@ -103,7 +92,9 @@ export class CompdataEditorPageComponent {
     private readonly changeDetector: ChangeDetectorRef,
     private readonly leagueEditor: LeagueEditorService,
     private readonly teamEditor: TeamEditorService,
-    private readonly localization: LocalizationService
+    private readonly localization: LocalizationService,
+    private readonly toastService: ToastService,
+    private readonly loadingService: LoadingService
   ) {}
 
   get selectedCompdataCompetition(): CompdataCompetitionSummary | undefined {
@@ -487,7 +478,7 @@ export class CompdataEditorPageComponent {
       this.openingCompdataFolderPath = folderPath;
       this.queuedCompdataLocalizationFolderPath = undefined;
       debugCompdataRenderer("openCompdataFolder:setLoading:true", { folderPath });
-      this.loadingStateChanged.emit({ loading: true, title: "Opening compdata", detail: "Reading tournament text files" });
+      this.loadingService.show("Opening compdata", "Reading tournament text files");
       const result = await this.openCompdataFolderWithProgress(folderPath);
       debugCompdataRenderer("openCompdataFolder:result", {
         canceled: result.canceled,
@@ -504,13 +495,13 @@ export class CompdataEditorPageComponent {
       // This matches the user's requested flow: load txt -> open xml -> open db -> load db -> show editor
 
       // Ensure the UI updates to show the prompt before blocking the thread
-      this.loadingStateChanged.emit({ loading: true, title: "LOC Reference", detail: "Please select LOC XML and DB/.loc when prompted" });
+      this.loadingService.show("LOC Reference", "Please select LOC XML and DB/.loc when prompted");
       await new Promise(resolve => setTimeout(resolve, 350));
 
       const locPromise = this.api.openCompdataLocalizationReference();
       
       const locTimer = setTimeout(() => {
-        this.loadingStateChanged.emit({ loading: true, title: "Reading LOC Database", detail: "Please wait... this may take up to 30 seconds" });
+        this.loadingService.show("Reading LOC Database", "Please wait... this may take up to 30 seconds");
       }, 800);
 
       const locResult = await locPromise;
@@ -530,10 +521,10 @@ export class CompdataEditorPageComponent {
       }
       
       if (result.project.warnings.length > 0) {
-        this.toastTriggered.emit({ message: result.project.warnings[0], tone: "warn" });
+        this.toastService.show(result.project.warnings[0], "warn");
       }
       if (locResult.warnings && locResult.warnings.length > 0) {
-        this.toastTriggered.emit({ message: locResult.warnings[0], tone: "warn" });
+        this.toastService.show(locResult.warnings[0], "warn");
       }
       debugCompdataRenderer("openCompdataFolder:projectApplied", {
         title: result.project.title,
@@ -547,11 +538,11 @@ export class CompdataEditorPageComponent {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[compdata/renderer] openCompdataFolder:error", error);
-      this.toastTriggered.emit({ message, tone: "error" });
+      this.toastService.show(message, "error");
       this.statusChanged.emit("Error");
     } finally {
       this.openingCompdataFolderPath = undefined;
-      this.loadingStateChanged.emit({ loading: false });
+      this.loadingService.hide();
     }
   }
 
@@ -596,20 +587,18 @@ export class CompdataEditorPageComponent {
   }
 
   private applyCompdataOpenProgress(progress: CompdataOpenProgress): void {
-    this.loadingStateChanged.emit({
-      loading: true,
-      title: "Opening compdata",
-      detail: progress.fileName ? `${progress.message} (${progress.fileName})` : progress.message
-    });
+    this.loadingService.show(
+      "Opening compdata",
+      progress.fileName ? `${progress.message} (${progress.fileName})` : progress.message
+    );
   }
 
   async openCompdataReferenceDatabase(withLocalization = true): Promise<void> {
     try {
-      this.loadingStateChanged.emit({
-        loading: true,
-        title: "Opening DB reference",
-        detail: withLocalization ? "Reading DB/XML and LOC for names" : "Reading DB/XML for names"
-      });
+      this.loadingService.show(
+        "Opening DB reference",
+        withLocalization ? "Reading DB/XML and LOC for names" : "Reading DB/XML for names"
+      );
       const result = withLocalization ? await this.api.openDatabaseWithLocalization() : await this.api.openDatabase();
       if (result.project) {
         this.compdataReferenceProject = result.project;
@@ -618,10 +607,10 @@ export class CompdataEditorPageComponent {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.toastTriggered.emit({ message, tone: "error" });
+      this.toastService.show(message, "error");
       this.statusChanged.emit("Error");
     } finally {
-      this.loadingStateChanged.emit({ loading: false });
+      this.loadingService.hide();
     }
   }
 
@@ -646,7 +635,7 @@ export class CompdataEditorPageComponent {
       if (!this.compdataProject) {
         return;
       }
-      this.loadingStateChanged.emit({ loading: true, title: "Saving compdata", detail: "Writing tournament text files" });
+      this.loadingService.show("Saving compdata", "Writing tournament text files");
       const result = await this.api.saveCompdata(this.compdataProject);
       this.compdataDirty = false;
       this.statusChanged.emit(`${result.filesWritten} compdata file(s) saved`);
@@ -655,14 +644,14 @@ export class CompdataEditorPageComponent {
         for (const w of result.warnings) {
           console.warn(` - ${w}`);
         }
-        this.toastTriggered.emit({ message: result.warnings[0], tone: "warn" });
+        this.toastService.show(result.warnings[0], "warn");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.toastTriggered.emit({ message, tone: "error" });
+      this.toastService.show(message, "error");
       this.statusChanged.emit("Error");
     } finally {
-      this.loadingStateChanged.emit({ loading: false });
+      this.loadingService.hide();
     }
   }
 
@@ -720,11 +709,11 @@ export class CompdataEditorPageComponent {
     const compdata = this.compdataProject;
     const league = this.selectedBuilderLeague;
     if (!compdata) {
-      this.toastTriggered.emit({ message: "Open a compdata folder first.", tone: "warn" });
+      this.toastService.show("Open a compdata folder first.", "warn");
       return;
     }
     if (!league) {
-      this.toastTriggered.emit({ message: "Open a DB reference and choose a source league.", tone: "warn" });
+      this.toastService.show("Open a DB reference and choose a source league.", "warn");
       return;
     }
 

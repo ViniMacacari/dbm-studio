@@ -25,7 +25,6 @@
             <small>DB + XML + LOC</small>
           </span>
         </button>
-        <!-- <button type="button" class="home-option compdata-option" (click)="openCompdataWorkspace()"> -->
         <button type="button" class="home-option compdata-option disabled">
           <span class="option-index">03</span>
           <span class="option-copy">
@@ -37,9 +36,7 @@
     </div>
   </section>
 
-  <app-compdata-editor-page *ngSwitchCase="'compdata'" (showHome)="showLauncher()" (statusChanged)="setStatus($event)"
-    (toastTriggered)="showToast($event.message, $event.tone)"
-    (loadingStateChanged)="setLoading($event.loading, $event.title, $event.detail)"></app-compdata-editor-page>
+  <app-compdata-editor-page *ngSwitchCase="'compdata'" (showHome)="showLauncher()" (statusChanged)="setStatus($event)"></app-compdata-editor-page>
 
   <section class="launcher-screen" *ngSwitchCase="'launcher'">
     <header class="screen-header">
@@ -64,8 +61,7 @@
         </button>
         <button type="button" class="choice-card" [disabled]="!canUseModules" (click)="openModulesWorkspace()">
           <span class="choice-title">Modules</span>
-          <span class="choice-meta">{{ playersCount }} players / {{ teamsCount }} teams / {{ leaguesCount }}
-            leagues</span>
+          <span class="choice-meta">{{ playersCount }} players / {{ teamsCount }} teams / {{ leaguesCount }} leagues</span>
         </button>
       </div>
 
@@ -219,261 +215,15 @@
     </main>
   </div>
 
-  <section class="modules-screen" *ngSwitchCase="'modules'">
-    <header class="screen-header">
-      <div class="brand compact-brand">
-        <div class="brand-mark">DBM</div>
-        <div>
-          <h1>{{ appName }}</h1>
-          <p>{{ projectSubtitle }}</p>
-        </div>
-      </div>
-      <div class="screen-actions">
-        <button type="button" (click)="showLauncher()">Home</button>
-        <button type="button" (click)="openTableWorkspace()">Table</button>
-        <button type="button" [disabled]="!canSaveDatabase" (click)="saveProject()">Save</button>
-      </div>
-    </header>
-
-    <main class="module-layout">
-      <aside class="module-rail">
-        <button type="button" [class.active]="activeModule === 'players'" [disabled]="!canUsePlayerModule"
-          (click)="selectModule('players')">
-          <span>Players</span>
-          <strong>{{ playersCount }}</strong>
-        </button>
-        <button type="button" [class.active]="activeModule === 'teams'" [disabled]="!canUseTeamModule"
-          (click)="selectModule('teams')">
-          <span>Teams</span>
-          <strong>{{ teamsCount }}</strong>
-        </button>
-        <button type="button" [class.active]="activeModule === 'leagues'" [disabled]="!canUseLeagueModule"
-          (click)="selectModule('leagues')">
-          <span>Leagues</span>
-          <strong>{{ leaguesCount }}</strong>
-        </button>
-        <button type="button" [class.active]="activeModule === 'transfers'" [disabled]="!canUseTransferModule"
-          (click)="selectModule('transfers')">
-          <span>Transfers</span>
-          <strong>{{ transfersCount }}</strong>
-        </button>
-        <button type="button" disabled>
-          <span>Stadiums</span>
-          <strong>Locked</strong>
-        </button>
-      </aside>
-
-      <section class="module-main" *ngIf="activeModule === 'players'; else nonPlayerModule">
-        <div class="module-title-row">
-          <div>
-            <span class="module-kicker">Module</span>
-            <h2>Players</h2>
-          </div>
-          <span class="module-total">{{ playersCount }} rows</span>
-        </div>
-
-        <div class="player-module-toolbar">
-          <form class="player-searchbar" (submit)="$event.preventDefault(); searchPlayers()">
-            <input type="search" name="playerSearchTerm" placeholder="Search player by name or ID"
-              [(ngModel)]="playerSearchTerm" />
-            <button type="submit" aria-label="Search players" title="Search players">
-              <span class="search-icon" aria-hidden="true"></span>
-            </button>
-          </form>
-          <button type="button" class="create-player-button" [disabled]="!canUsePlayerModule"
-            (click)="createPlayerFromModule()">
-            <span class="plus-icon" aria-hidden="true"></span>
-            <span>Create Player</span>
-          </button>
-        </div>
-
-        <div class="player-results" *ngIf="playerSearchResults.length > 0; else noPlayerResults">
-          <button type="button" class="player-result"
-            *ngFor="let player of playerSearchResults; trackBy: trackByPlayerResult"
-            (click)="openPlayerFromModule(player)">
-            <span class="result-main">
-              <strong>{{ player.displayName }}</strong>
-              <span>ID {{ player.playerId }}</span>
-            </span>
-            <span class="result-meta">
-              <span *ngIf="player.nationalityName">{{ player.nationalityName }}</span>
-              <span *ngIf="player.age !== undefined">{{ player.age }} years</span>
-              <span *ngIf="player.overall">OVR {{ player.overall }}</span>
-              <span *ngIf="player.potential">POT {{ player.potential }}</span>
-              <span>names: {{ player.nameSource }}</span>
-            </span>
-          </button>
-        </div>
-
-        <ng-template #noPlayerResults>
-          <div class="empty-state module-empty">
-            <strong>No players found.</strong>
-          </div>
-        </ng-template>
-      </section>
-
-      <ng-template #nonPlayerModule>
-        <section class="module-main" *ngIf="activeModule === 'teams'; else nonTeamModule">
-          <div class="module-title-row">
-            <div>
-              <span class="module-kicker">Module</span>
-              <h2>Teams</h2>
-            </div>
-            <span class="module-total">{{ teamsCount }} rows</span>
-          </div>
-
-          <div class="player-module-toolbar">
-            <form class="player-searchbar" (submit)="$event.preventDefault(); searchTeams()">
-              <input type="search" name="teamSearchTerm" placeholder="Search team by name or ID"
-                [(ngModel)]="teamSearchTerm" />
-              <button type="submit" aria-label="Search teams" title="Search teams">
-                <span class="search-icon" aria-hidden="true"></span>
-              </button>
-            </form>
-            <button type="button" class="create-player-button" [disabled]="!canUseTeamModule"
-              (click)="createTeamFromModule()">
-              <span class="plus-icon" aria-hidden="true"></span>
-              <span>Create Team</span>
-            </button>
-          </div>
-
-          <div class="player-results" *ngIf="teamSearchResults.length > 0; else noTeamResults">
-            <button type="button" class="player-result"
-              *ngFor="let team of teamSearchResults; trackBy: trackByTeamResult" (click)="openTeamFromModule(team)">
-              <span class="result-main">
-                <strong>{{ team.displayName }}</strong>
-                <span>ID {{ team.teamId }}</span>
-              </span>
-              <span class="result-meta">
-                <span *ngIf="team.overall">OVR {{ team.overall }}</span>
-                <span *ngIf="team.attack">ATT {{ team.attack }}</span>
-                <span *ngIf="team.midfield">MID {{ team.midfield }}</span>
-                <span *ngIf="team.defense">DEF {{ team.defense }}</span>
-                <span *ngIf="team.foundationYear">Founded {{ team.foundationYear }}</span>
-              </span>
-            </button>
-          </div>
-
-          <ng-template #noTeamResults>
-            <div class="empty-state module-empty">
-              <strong>No teams found.</strong>
-            </div>
-          </ng-template>
-        </section>
-      </ng-template>
-
-      <ng-template #nonTeamModule>
-        <section class="module-main" *ngIf="activeModule === 'leagues'; else transfersModule">
-          <div class="module-title-row">
-            <div>
-              <span class="module-kicker">Module</span>
-              <h2>Leagues</h2>
-            </div>
-            <span class="module-total">{{ leaguesCount }} rows</span>
-          </div>
-
-          <div class="player-module-toolbar league-filter-toolbar">
-            <form class="player-searchbar" (submit)="$event.preventDefault(); searchLeagues()">
-              <input type="search" name="leagueSearchTerm" placeholder="Search league by name or ID"
-                [(ngModel)]="leagueSearchTerm" />
-              <button type="submit" aria-label="Search leagues" title="Search leagues">
-                <span class="search-icon" aria-hidden="true"></span>
-              </button>
-            </form>
-            <app-search-list class="module-filter-select" [options]="nationOptions" [(value)]="leagueCountryFilter"
-              placeholder="Filter by country" (valueChange)="refreshLeagueSearch()"></app-search-list>
-            <button type="button" [disabled]="!leagueCountryFilter" (click)="clearLeagueCountryFilter()">Clear</button>
-            <button type="button" class="create-player-button" [disabled]="!canUseLeagueModule"
-              (click)="createLeagueFromModule()">
-              <span class="plus-icon" aria-hidden="true"></span>
-              <span>Create League</span>
-            </button>
-          </div>
-
-          <div class="player-results" *ngIf="leagueSearchResults.length > 0; else noLeagueResults">
-            <button type="button" class="player-result"
-              *ngFor="let league of leagueSearchResults; trackBy: trackByLeagueResult"
-              (click)="openLeagueFromModule(league)">
-              <span class="result-main">
-                <strong>{{ league.displayName }}</strong>
-                <span>ID {{ league.leagueId }}</span>
-              </span>
-              <span class="result-meta">
-                <span *ngIf="league.countryName">{{ league.countryName }}</span>
-                <span *ngIf="league.level">Level {{ league.level }}</span>
-                <span *ngIf="league.leagueType">Type {{ league.leagueType }}</span>
-                <span>{{ league.teamsCount }} teams</span>
-              </span>
-            </button>
-          </div>
-
-          <ng-template #noLeagueResults>
-            <div class="empty-state module-empty">
-              <strong>No leagues found.</strong>
-            </div>
-          </ng-template>
-        </section>
-      </ng-template>
-
-      <ng-template #transfersModule>
-        <section class="module-main">
-          <div class="module-title-row">
-            <div>
-              <span class="module-kicker">Module</span>
-              <h2>Transfers</h2>
-            </div>
-            <span class="module-total">{{ transfersCount }} player links</span>
-          </div>
-
-          <div class="player-module-toolbar">
-            <form class="player-searchbar" (submit)="$event.preventDefault(); searchTransfers()">
-              <input type="search" name="transferSearchTerm" placeholder="Search player, ID, or current team"
-                [(ngModel)]="transferSearchTerm" />
-              <button type="submit" aria-label="Search transfers" title="Search transfers">
-                <span class="search-icon" aria-hidden="true"></span>
-              </button>
-            </form>
-          </div>
-
-          <div class="transfer-results" *ngIf="transferSearchResults.length > 0; else noTransferResults">
-            <article class="transfer-card" *ngFor="let player of transferSearchResults; trackBy: trackByTransferResult">
-              <div class="transfer-player">
-                <div class="result-main">
-                  <strong>{{ player.displayName }}</strong>
-                  <span>ID {{ player.playerId }}</span>
-                </div>
-                <div class="result-meta">
-                  <span>{{ player.teamName }}</span>
-                  <span *ngIf="player.overall">OVR {{ player.overall }}</span>
-                  <span *ngIf="player.potential">POT {{ player.potential }}</span>
-                  <span *ngIf="player.age !== undefined">{{ player.age }} years</span>
-                  <span *ngIf="player.nationalityName">{{ player.nationalityName }}</span>
-                </div>
-              </div>
-              <app-search-list class="transfer-destination" [options]="teamOptions"
-                [value]="transferDestination(player)" placeholder="Destination club"
-                (valueChange)="setTransferDestination(player, $event)"></app-search-list>
-              <button type="button" class="apply-button"
-                [disabled]="!transferDestination(player) || transferDestination(player) === player.teamId"
-                (click)="transferPlayer(player)">
-                Transfer
-              </button>
-            </article>
-          </div>
-
-          <ng-template #noTransferResults>
-            <div class="empty-state module-empty">
-              <strong>No transfer players found.</strong>
-            </div>
-          </ng-template>
-        </section>
-      </ng-template>
-    </main>
-
-    <footer class="screen-footer">
-      <span>{{ statusLine }}</span>
-    </footer>
-  </section>
+  <app-modules-workspace *ngSwitchCase="'modules'" class="modules-screen" [project]="project" 
+    (showHome)="showLauncher()" 
+    (showTable)="openTableWorkspace()" 
+    (openPlayer)="openPlayerFromModule($event)" 
+    (openTeam)="openTeamFromModule($event)" 
+    (openLeague)="openLeagueFromModule($event)" 
+    (saveRequest)="saveProject()" 
+    (statusChanged)="setStatus($event)">
+  </app-modules-workspace>
 
   <section class="editor-screen" *ngSwitchCase="'playerEditor'">
     <app-player-editor-page *ngIf="project as loadedProject" [project]="loadedProject" [rowIndex]="playerEditorRowIndex"
@@ -497,76 +247,21 @@
   </section>
 </ng-container>
 
-<div class="dependency-modal-backdrop" *ngIf="visualDependencyModalVisible">
-  <section class="dependency-modal" role="dialog" aria-modal="true" aria-labelledby="visual-dependencies-title">
-    <div class="dependency-modal-header">
-      <div>
-        <span class="module-kicker">Optional setup</span>
-        <h2 id="visual-dependencies-title">Visual dependencies</h2>
-      </div>
-      <button type="button" [disabled]="visualDependencyInstalling || visualDependencyStatus?.allCurrent" (click)="closeVisualDependencyModal()">Skip</button>
-    </div>
+<app-visual-dependency-modal [(visible)]="visualDependencyModalVisible"></app-visual-dependency-modal>
 
-    <p>{{ visualDependencyMessage }}</p>
-    <p class="dependency-storage" *ngIf="visualDependencyStatus?.rootPath as rootPath">
-      <strong>Storage folder</strong>
-      <span>{{ rootPath }}</span>
-    </p>
-
-    <div class="dependency-list" *ngIf="visualDependencyStatus as status">
-      <div class="dependency-row" *ngFor="let dependency of status.dependencies">
-        <div>
-          <strong>{{ dependency.label }}</strong>
-          <span>
-            {{ dependency.updateAvailable
-            ? 'Update available'
-            : dependency.current
-            ? dependency.filesCount + ' file(s) installed'
-            : dependency.installed
-            ? dependency.filesCount + ' file(s) installed, zip missing'
-            : 'Not installed' }}
-          </span>
-        </div>
-        <small>{{ dependency.targetPath }}</small>
-      </div>
-    </div>
-
-    <div class="dependency-progress" *ngIf="visualDependencyInstalling || visualDependencyProgress">
-      <div class="dependency-progress-label">
-        <span>{{ visualDependencyProgress?.message || 'Preparing download' }}</span>
-        <strong>{{ visualDependencyProgressPercent }}%</strong>
-      </div>
-      <div class="dependency-progress-track" aria-label="Visual dependency download progress">
-        <div class="dependency-progress-bar" [style.width.%]="visualDependencyProgressPercent"></div>
-      </div>
-    </div>
-
-    <p class="dependency-error" *ngIf="visualDependencyError">{{ visualDependencyError }}</p>
-
-    <div class="dependency-actions">
-      <button type="button" [disabled]="visualDependencyInstalling || visualDependencyStatus?.allCurrent" (click)="closeVisualDependencyModal()">Not
-        now</button>
-      <button type="button" class="primary-action" [disabled]="visualDependencyInstalling"
-        (click)="visualDependencyStatus?.allCurrent ? closeVisualDependencyModal() : installVisualDependencies()">
-        {{ visualDependencyPrimaryActionLabel }}
-      </button>
-    </div>
-  </section>
+<div class="toast" [class.hidden]="!toastService.visible" [class.warn]="toastService.tone === 'warn'"
+  [class.error]="toastService.tone === 'error'">
+  {{ toastService.message }}
 </div>
 
-<div class="toast" [class.hidden]="!toastVisible" [class.warn]="toastTone === 'warn'"
-  [class.error]="toastTone === 'error'">
-  {{ toastMessage }}
-</div>
-
-<div class="loading-overlay" *ngIf="loadingActive">
+<div class="loading-overlay" *ngIf="loadingService.active">
   <div class="loading-box">
     <div class="spinner"></div>
-    <strong>{{ loadingTitle }}</strong>
-    <span>{{ loadingDetail }}</span>
-    <div class="loading-progress" *ngIf="loadingPercent !== undefined">
-      <div class="loading-progress-bar" [style.width.%]="loadingPercent"></div>
+    <strong>{{ loadingService.title }}</strong>
+    <span>{{ loadingService.detail }}</span>
+    <div class="loading-progress" *ngIf="loadingService.percent !== undefined">
+      <div class="loading-progress-bar" [style.width.%]="loadingService.percent"></div>
     </div>
-    <small *ngIf="loadingPercent !== undefined">{{ loadingPercent }}% {{ loadingProgressLabel }}</small>
+    <small *ngIf="loadingService.percent !== undefined">{{ loadingService.percent }}% {{ loadingService.progressLabel }}</small>
   </div>
 </div>

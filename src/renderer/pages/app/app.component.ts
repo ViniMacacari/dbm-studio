@@ -1,59 +1,63 @@
 import { CommonModule } from "@angular/common";
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from "@angular/core";
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild, ViewEncapsulation } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type {
   DataTable,
   DbProject,
-  FieldDescriptor,
-  VisualDependenciesStatus,
-  VisualDependencyProgress
+  FieldDescriptor
 } from "../../../shared/types";
 import { InputCheckboxComponent } from "../../components/input-checkbox/input-checkbox.component";
-import { SearchListComponent } from "../../components/search-list/search-list.component";
 import type { DbMasterApi } from "../../services/dbmaster-api";
 import { LeagueEditorService } from "../../services/league-editor.service";
-import type { LeagueSearchResult } from "../../services/league-editor.service";
 import { NationService } from "../../services/nation.service";
 import { PlayerEditorService } from "../../services/player-editor.service";
-import type { PlayerSearchResult } from "../../services/player-editor.service";
 import { TeamEditorService } from "../../services/team-editor.service";
-import type { TeamSearchResult } from "../../services/team-editor.service";
 import { TransferService } from "../../services/transfer.service";
-import type { TransferSearchResult } from "../../services/transfer.service";
+import { ToastService, ToastTone } from "../../services/toast.service";
+import { LoadingService } from "../../services/loading.service";
 import { LeagueEditorPageComponent } from "../league-editor/league-editor-page.component";
 import { PlayerEditorPageComponent } from "../player-editor/player-editor-page.component";
 import { TeamEditorPageComponent } from "../team-editor/team-editor-page.component";
 import { CompdataEditorPageComponent } from "../compdata-editor/compdata-editor-page.component";
+import { VisualDependencyModalComponent } from "../../components/visual-dependency-modal/visual-dependency-modal.component";
+import { ModulesWorkspaceComponent } from "../modules-workspace/modules-workspace.component";
 import packageInfo from "../../../../package.json";
 
-type ToastTone = "info" | "warn" | "error";
 type ViewMode = "home" | "launcher" | "table" | "modules" | "compdata" | "playerEditor" | "teamEditor" | "leagueEditor";
-type ModuleMode = "players" | "teams" | "leagues" | "transfers";
 
 interface TableListItem {
   table: DataTable;
   index: number;
 }
 
-
-
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [CommonModule, FormsModule, PlayerEditorPageComponent, TeamEditorPageComponent, LeagueEditorPageComponent, CompdataEditorPageComponent, SearchListComponent, InputCheckboxComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    PlayerEditorPageComponent,
+    TeamEditorPageComponent,
+    LeagueEditorPageComponent,
+    CompdataEditorPageComponent,
+    InputCheckboxComponent,
+    VisualDependencyModalComponent,
+    ModulesWorkspaceComponent
+  ],
   templateUrl: "./app.component.html",
-  styleUrl: "./app.component.scss"
+  styleUrl: "./app.component.scss",
+  encapsulation: ViewEncapsulation.None
 })
-export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
+export class AppComponent implements AfterViewInit, OnInit {
   @ViewChild("gridWrap") private gridWrap?: ElementRef<HTMLElement>;
   @ViewChild("dataGrid") private dataGrid?: ElementRef<HTMLTableElement>;
   @ViewChild("horizontalScroll") private horizontalScroll?: ElementRef<HTMLElement>;
   @ViewChild("horizontalScrollInner") private horizontalScrollInner?: ElementRef<HTMLElement>;
   @ViewChild(CompdataEditorPageComponent) compdataEditor?: CompdataEditorPageComponent;
+  @ViewChild(ModulesWorkspaceComponent) modulesWorkspace?: ModulesWorkspaceComponent;
 
   private readonly api: DbMasterApi = window.dbmaster;
   private readonly minimumLoadingDurationMs = 400;
-  private removeVisualDependencyProgressListener?: () => void;
   readonly appName = "DBM Studio";
   readonly appVersion = packageInfo.version;
 
@@ -63,30 +67,23 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     private readonly nations: NationService,
     private readonly playerEditor: PlayerEditorService,
     private readonly teamEditor: TeamEditorService,
-    private readonly transfers: TransferService
-  ) {}
+    private readonly transfers: TransferService,
+    public readonly toastService: ToastService,
+    public readonly loadingService: LoadingService
+  ) { }
 
   project?: DbProject;
   currentTableIndex = 0;
   viewMode: ViewMode = "home";
-  activeModule: ModuleMode = "players";
+
   playerEditorReturnMode: "table" | "modules" = "table";
   playerEditorRowIndex = 0;
   playerEditorIsNew = false;
-  playerSearchTerm = "";
-  playerSearchResults: PlayerSearchResult[] = [];
   teamEditorRowIndex = 0;
   teamEditorIsNew = false;
-  teamSearchTerm = "";
-  teamSearchResults: TeamSearchResult[] = [];
   leagueEditorRowIndex = 0;
   leagueEditorIsNew = false;
-  leagueSearchTerm = "";
-  leagueCountryFilter = "";
-  leagueSearchResults: LeagueSearchResult[] = [];
-  transferSearchTerm = "";
-  transferSearchResults: TransferSearchResult[] = [];
-  transferDestinations: Record<number, string> = {};
+
   page = 0;
   pageSize = 100;
   selectedColumnIndex = 0;
@@ -97,37 +94,15 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   searchTerm = "";
   searchExact = false;
   statusLine = "Ready";
-  toastMessage = "";
-  toastTone: ToastTone = "info";
-  toastVisible = false;
-  loadingActive = false;
-  loadingTitle = "Loading";
-  loadingDetail = "Please wait";
-  loadingPercent?: number;
-  loadingProgressLabel = "";
-  visualDependencyModalVisible = false;
-  visualDependencyInstalling = false;
-  visualDependencyStatus?: VisualDependenciesStatus;
-  visualDependencyProgress?: VisualDependencyProgress;
-  visualDependencyMessage = "";
-  visualDependencyError = "";
 
+  visualDependencyModalVisible = false;
 
   ngOnInit(): void {
-    this.removeVisualDependencyProgressListener = this.api.onVisualDependenciesProgress((progress) => {
-      this.visualDependencyProgress = progress;
-      this.visualDependencyMessage = progress.message;
-      this.changeDetector.detectChanges();
-    });
-    void this.loadVisualDependencyStatus();
+    void this.checkVisualDependencyStatus();
   }
 
   ngAfterViewInit(): void {
     this.syncHorizontalScrollbar();
-  }
-
-  ngOnDestroy(): void {
-    this.removeVisualDependencyProgressListener?.();
   }
 
   get projectSubtitle(): string {
@@ -179,14 +154,6 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     return this.transfers.findTeamPlayerLinksTable(this.project)?.rows.length ?? 0;
   }
 
-  get nationOptions() {
-    return this.nations.nationOptions(this.project);
-  }
-
-  get teamOptions() {
-    return this.transfers.teamOptions(this.project);
-  }
-
   get tableCount(): number {
     return this.project?.tables.length ?? 0;
   }
@@ -194,28 +161,6 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   get canSaveDatabase(): boolean {
     return this.project?.sourceKind === "database" && this.project.databaseWritable === true && Boolean(this.project.dbPath);
   }
-
-  get visualDependencyProgressPercent(): number {
-    return Math.max(0, Math.min(100, Math.round(this.visualDependencyProgress?.percent ?? 0)));
-  }
-
-  get visualDependencyPrimaryActionLabel(): string {
-    if (this.visualDependencyStatus?.allCurrent) {
-      return "Done";
-    }
-    if (this.visualDependencyInstalling) {
-      return "Downloading...";
-    }
-    if (this.visualDependencyStatus?.dependencies.some((dependency) => dependency.updateAvailable)) {
-      return "Update";
-    }
-    if (this.visualDependencyStatus?.allInstalled) {
-      return "Check";
-    }
-    return "Download";
-  }
-
-
 
   get hasTable(): boolean {
     return Boolean(this.currentTable());
@@ -319,22 +264,6 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     return rowIndex;
   }
 
-  trackByPlayerResult(_index: number, player: PlayerSearchResult): string {
-    return `${player.rowIndex}:${player.playerId}`;
-  }
-
-  trackByTeamResult(_index: number, team: TeamSearchResult): string {
-    return `${team.rowIndex}:${team.teamId}`;
-  }
-
-  trackByLeagueResult(_index: number, league: LeagueSearchResult): string {
-    return `${league.rowIndex}:${league.leagueId}`;
-  }
-
-  trackByTransferResult(_index: number, player: TransferSearchResult): string {
-    return `${player.rowIndex}:${player.playerId}`;
-  }
-
   async openDatabase(): Promise<void> {
     await this.guarded(async () => {
       const result = await this.api.openDatabase();
@@ -370,8 +299,6 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
       }
     }, "Opening text tables", "Reading exported .txt files");
   }
-
-
 
   async saveProject(title = "Saving database", detail = "Writing .db file and backup"): Promise<void> {
     await this.guarded(async () => {
@@ -467,60 +394,6 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     });
   }
 
-  async installVisualDependencies(): Promise<void> {
-    this.visualDependencyInstalling = true;
-    this.visualDependencyError = "";
-    this.visualDependencyMessage = "Downloading visual dependencies";
-    this.visualDependencyProgress = {
-      id: "visual-dependencies",
-      label: "Visual dependencies",
-      phase: "queued",
-      receivedBytes: 0,
-      percent: 0,
-      message: "Preparing visual dependency download"
-    };
-    try {
-      const result = await this.api.installVisualDependencies();
-      this.visualDependencyStatus = result;
-      this.visualDependencyMessage = result.warnings.length > 0
-        ? `Installed with ${result.warnings.length} warning(s).`
-        : result.installed.length > 0
-          ? `Installed ${result.installed.length} visual package(s).`
-          : result.skipped.length > 0
-            ? "Visual packages are already up to date."
-            : "No visual packages needed downloading.";
-      if (result.warnings.length > 0) {
-        this.visualDependencyError = result.warnings.join(" ");
-      }
-      const dependency = result.dependencies.find((candidate) => candidate.id === result.installed[0]) ?? result.dependencies[0];
-      this.visualDependencyProgress = {
-        id: dependency?.id ?? "visual-dependencies",
-        label: dependency?.label ?? "Visual dependencies",
-        phase: result.warnings.length > 0 ? "error" : "installed",
-        receivedBytes: 0,
-        percent: result.warnings.length > 0 ? this.visualDependencyProgressPercent : 100,
-        message: this.visualDependencyMessage
-      };
-    } catch (error) {
-      this.visualDependencyError = error instanceof Error ? error.message : String(error);
-      this.visualDependencyMessage = "Visual dependency download failed";
-      this.visualDependencyProgress = {
-        id: this.visualDependencyProgress?.id ?? "visual-dependencies",
-        label: this.visualDependencyProgress?.label ?? "Visual dependencies",
-        phase: "error",
-        receivedBytes: 0,
-        percent: this.visualDependencyProgressPercent,
-        message: this.visualDependencyMessage
-      };
-    } finally {
-      this.visualDependencyInstalling = false;
-    }
-  }
-
-  closeVisualDependencyModal(): void {
-    this.visualDependencyModalVisible = false;
-  }
-
   async calculateHashes(): Promise<void> {
     await this.guarded(async () => {
       const table = this.currentTable();
@@ -581,176 +454,34 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     this.resetHorizontalScroll();
   }
 
-  async openModulesWorkspace(module: ModuleMode = this.activeModule): Promise<void> {
+  async openModulesWorkspace(module?: "players" | "teams" | "leagues" | "transfers"): Promise<void> {
     if (!this.project) {
       this.showToast("Open a DB/XML pair first.", "warn");
       this.viewMode = "home";
       return;
     }
-    this.activeModule = module;
     this.viewMode = "modules";
-    await this.loadActiveModule();
-  }
-
-  async selectModule(module: ModuleMode): Promise<void> {
-    this.activeModule = module;
-    await this.loadActiveModule();
-  }
-
-  async loadActiveModule(): Promise<void> {
-    if (this.activeModule === "teams") {
-      await this.searchTeams("Loading teams", "Reading team rows");
-      return;
+    if (module && this.modulesWorkspace) {
+      await this.modulesWorkspace.selectModule(module);
     }
-    if (this.activeModule === "leagues") {
-      await this.searchLeagues("Loading leagues", "Resolving countries and team links");
-      return;
-    }
-    if (this.activeModule === "transfers") {
-      await this.searchTransfers("Loading transfers", "Reading player club links");
-      return;
-    }
-    await this.searchPlayers("Loading players", "Resolving names and relations");
   }
 
-  async searchPlayers(title = "Searching players", detail = "Resolving names and relations"): Promise<void> {
-    await this.guarded(async () => {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      this.refreshPlayerSearch();
-    }, title, detail);
-  }
-
-  refreshPlayerSearch(): void {
-    this.playerSearchResults = this.playerEditor.findPlayers(this.project, this.playerSearchTerm, this.playerSearchTerm.trim() ? 80 : 30);
-    const suffix = this.playerSearchTerm.trim() ? ` for "${this.playerSearchTerm.trim()}"` : "";
-    this.setStatus(`${this.playerSearchResults.length} player result(s)${suffix}`);
-  }
-
-  async searchTeams(title = "Searching teams", detail = "Reading team rows"): Promise<void> {
-    await this.guarded(async () => {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      this.refreshTeamSearch();
-    }, title, detail);
-  }
-
-  refreshTeamSearch(): void {
-    this.teamSearchResults = this.teamEditor.findTeams(this.project, this.teamSearchTerm, this.teamSearchTerm.trim() ? 80 : 30);
-    const suffix = this.teamSearchTerm.trim() ? ` for "${this.teamSearchTerm.trim()}"` : "";
-    this.setStatus(`${this.teamSearchResults.length} team result(s)${suffix}`);
-  }
-
-  async searchLeagues(title = "Searching leagues", detail = "Resolving countries and team links"): Promise<void> {
-    await this.guarded(async () => {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      this.refreshLeagueSearch();
-    }, title, detail);
-  }
-
-  refreshLeagueSearch(): void {
-    this.leagueSearchResults = this.leagueEditor.findLeagues(
-      this.project,
-      this.leagueSearchTerm,
-      this.leagueCountryFilter,
-      this.leagueSearchTerm.trim() || this.leagueCountryFilter ? 120 : 60
-    );
-    const suffix = this.leagueSearchTerm.trim() ? ` for "${this.leagueSearchTerm.trim()}"` : "";
-    this.setStatus(`${this.leagueSearchResults.length} league result(s)${suffix}`);
-  }
-
-  clearLeagueCountryFilter(): void {
-    this.leagueCountryFilter = "";
-    this.refreshLeagueSearch();
-  }
-
-  async searchTransfers(title = "Searching transfers", detail = "Resolving players and clubs"): Promise<void> {
-    await this.guarded(async () => {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      this.refreshTransferSearch();
-    }, title, detail);
-  }
-
-  refreshTransferSearch(): void {
-    this.transferSearchResults = this.transfers.findTransferPlayers(this.project, this.transferSearchTerm, this.transferSearchTerm.trim() ? 100 : 40);
-    this.transferDestinations = Object.fromEntries(
-      this.transferSearchResults.map((player) => [player.rowIndex, this.transferDestinations[player.rowIndex] ?? ""])
-    );
-    const suffix = this.transferSearchTerm.trim() ? ` for "${this.transferSearchTerm.trim()}"` : "";
-    this.setStatus(`${this.transferSearchResults.length} transfer result(s)${suffix}`);
-  }
-
-  transferDestination(player: TransferSearchResult): string {
-    return this.transferDestinations[player.rowIndex] ?? "";
-  }
-
-  setTransferDestination(player: TransferSearchResult, teamId: string): void {
-    this.transferDestinations = {
-      ...this.transferDestinations,
-      [player.rowIndex]: teamId
-    };
-  }
-
-  async transferPlayer(player: TransferSearchResult): Promise<void> {
-    await this.guarded(async () => {
-      const result = this.transfers.transferPlayer(this.project, player.rowIndex, this.transferDestination(player));
-      this.refreshTransferSearch();
-      this.setStatus(result.message);
-    }, "Transferring player", "Updating teamplayerlinks");
-  }
-
-  openPlayerFromModule(player: PlayerSearchResult): void {
-    this.playerEditorRowIndex = player.rowIndex;
-    this.playerEditorIsNew = false;
+  openPlayerFromModule(event: { rowIndex: number, isNew: boolean }): void {
+    this.playerEditorRowIndex = event.rowIndex;
+    this.playerEditorIsNew = event.isNew;
     this.playerEditorReturnMode = "modules";
     this.viewMode = "playerEditor";
   }
 
-  async createPlayerFromModule(): Promise<void> {
-    await this.guarded(async () => {
-      const result = this.playerEditor.createPlayer(this.project);
-      this.playerSearchTerm = result.playerId;
-      this.refreshPlayerSearch();
-      this.playerEditorRowIndex = result.rowIndex;
-      this.playerEditorIsNew = true;
-      this.playerEditorReturnMode = "modules";
-      this.viewMode = "playerEditor";
-      this.setStatus(result.message);
-    }, "Creating player", "Preparing players and edited names");
-  }
-
-  async createTeamFromModule(): Promise<void> {
-    await this.guarded(async () => {
-      const result = this.teamEditor.createTeam(this.project);
-      this.teamSearchTerm = result.teamId;
-      this.refreshTeamSearch();
-      this.teamEditorRowIndex = result.rowIndex;
-      this.teamEditorIsNew = true;
-      this.viewMode = "teamEditor";
-      this.setStatus(result.message);
-    }, "Creating team", "Preparing teams table");
-  }
-
-  async createLeagueFromModule(): Promise<void> {
-    await this.guarded(async () => {
-      const result = this.leagueEditor.createLeague(this.project);
-      this.leagueSearchTerm = result.leagueId;
-      this.leagueCountryFilter = "";
-      this.refreshLeagueSearch();
-      this.leagueEditorRowIndex = result.rowIndex;
-      this.leagueEditorIsNew = true;
-      this.viewMode = "leagueEditor";
-      this.setStatus(result.message);
-    }, "Creating league", "Preparing leagues table");
-  }
-
-  openTeamFromModule(team: TeamSearchResult): void {
-    this.teamEditorRowIndex = team.rowIndex;
-    this.teamEditorIsNew = false;
+  openTeamFromModule(event: { rowIndex: number, isNew: boolean }): void {
+    this.teamEditorRowIndex = event.rowIndex;
+    this.teamEditorIsNew = event.isNew;
     this.viewMode = "teamEditor";
   }
 
-  openLeagueFromModule(league: LeagueSearchResult): void {
-    this.leagueEditorRowIndex = league.rowIndex;
-    this.leagueEditorIsNew = false;
+  openLeagueFromModule(event: { rowIndex: number, isNew: boolean }): void {
+    this.leagueEditorRowIndex = event.rowIndex;
+    this.leagueEditorIsNew = event.isNew;
     this.viewMode = "leagueEditor";
   }
 
@@ -785,10 +516,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     }
     table.rows[rowIndex][columnIndex] = input.value;
     table.changed = true;
-    this.leagueEditor.invalidateTable(table);
-    this.nations.invalidateTable(table);
-    this.playerEditor.invalidateTable(table);
-    this.teamEditor.invalidateTable(table);
+    this.invalidateTableCaches(table);
     this.setStatus(`${table.name} changed`);
   }
 
@@ -833,29 +561,27 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   closePlayerEditor(): void {
     this.viewMode = this.playerEditorReturnMode;
     if (this.viewMode === "modules") {
-      this.refreshPlayerSearch();
+      this.modulesWorkspace?.refreshPlayerSearch();
     }
     this.resetHorizontalScroll();
   }
 
   closeTeamEditor(): void {
     this.viewMode = "modules";
-    this.activeModule = "teams";
-    this.refreshTeamSearch();
+    void this.modulesWorkspace?.selectModule("teams");
     this.resetHorizontalScroll();
   }
 
   closeLeagueEditor(): void {
     this.viewMode = "modules";
-    this.activeModule = "leagues";
-    this.refreshLeagueSearch();
+    void this.modulesWorkspace?.selectModule("leagues");
     this.resetHorizontalScroll();
   }
 
   onPlayerEditorApplied(message: string): void {
     this.setStatus(message);
     if (this.playerEditorReturnMode === "modules") {
-      this.refreshPlayerSearch();
+      this.modulesWorkspace?.refreshPlayerSearch();
     }
     this.syncHorizontalScrollbar();
   }
@@ -867,7 +593,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
 
   onTeamEditorApplied(message: string): void {
     this.setStatus(message);
-    this.refreshTeamSearch();
+    this.modulesWorkspace?.refreshTeamSearch();
     this.syncHorizontalScrollbar();
   }
 
@@ -878,7 +604,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
 
   onLeagueEditorApplied(message: string): void {
     this.setStatus(message);
-    this.refreshLeagueSearch();
+    this.modulesWorkspace?.refreshLeagueSearch();
     this.syncHorizontalScrollbar();
   }
 
@@ -915,10 +641,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     }
     table.rows.push(...this.copied.rows.map((row) => [...row]));
     table.changed = true;
-    this.leagueEditor.invalidateTable(table);
-    this.nations.invalidateTable(table);
-    this.playerEditor.invalidateTable(table);
-    this.teamEditor.invalidateTable(table);
+    this.invalidateTableCaches(table);
     this.syncHorizontalScrollbar();
     this.setStatus(`${this.copied.rows.length} row(s) pasted`);
   }
@@ -958,10 +681,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     }
     table.rows = table.rows.filter((_row, index) => !selected.has(index));
     table.changed = true;
-    this.leagueEditor.invalidateTable(table);
-    this.nations.invalidateTable(table);
-    this.playerEditor.invalidateTable(table);
-    this.teamEditor.invalidateTable(table);
+    this.invalidateTableCaches(table);
     this.selectedRows.clear();
     this.syncHorizontalScrollbar();
     if (showMessage) {
@@ -1065,18 +785,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     this.playerEditor.invalidateProject(project);
     this.teamEditor.invalidateProject(project);
     this.viewMode = "launcher";
-    this.activeModule = "players";
     this.currentTableIndex = 0;
-    this.playerSearchTerm = "";
-    this.playerSearchResults = [];
-    this.teamSearchTerm = "";
-    this.teamSearchResults = [];
-    this.leagueSearchTerm = "";
-    this.leagueCountryFilter = "";
-    this.leagueSearchResults = [];
-    this.transferSearchTerm = "";
-    this.transferSearchResults = [];
-    this.transferDestinations = {};
     this.page = 0;
     this.selectedColumnIndex = 0;
     this.selectedRows.clear();
@@ -1089,21 +798,12 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     this.resetHorizontalScroll();
   }
 
-
-
-  private async loadVisualDependencyStatus(): Promise<void> {
+  private async checkVisualDependencyStatus(): Promise<void> {
     try {
-      this.visualDependencyStatus = await this.api.getVisualDependenciesStatus();
-      this.visualDependencyProgress = undefined;
-      const hasUpdate = this.visualDependencyStatus.dependencies.some((dependency) => dependency.updateAvailable);
-      this.visualDependencyMessage = this.visualDependencyStatus.allCurrent
-        ? "Visual dependencies are already installed."
-        : hasUpdate
-          ? "A newer visual dependency package is available."
-          : "Visual dependencies are optional and can be downloaded now.";
-      this.visualDependencyModalVisible = !this.visualDependencyStatus.allCurrent;
+      const status = await this.api.getVisualDependenciesStatus();
+      this.visualDependencyModalVisible = !status.allCurrent;
     } catch (error) {
-      this.visualDependencyError = error instanceof Error ? error.message : String(error);
+      console.error("[checkVisualDependencyStatus] Error fetching status:", error);
     }
   }
 
@@ -1123,10 +823,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     imported.fields = table.fields;
     imported.changed = true;
     project.tables[this.currentTableIndex] = imported;
-    this.leagueEditor.invalidateTable(imported);
-    this.nations.invalidateTable(imported);
-    this.playerEditor.invalidateTable(imported);
-    this.teamEditor.invalidateTable(imported);
+    this.invalidateTableCaches(imported);
     this.syncHorizontalScrollbar();
     this.setStatus(`${table.name} imported`);
   }
@@ -1171,13 +868,14 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
     let loadingStartedAt = 0;
     try {
       if (title) {
-        await this.setLoading(true, title, detail ?? "Please wait");
+        this.loadingService.show(title, detail ?? "Please wait");
+        this.changeDetector.detectChanges();
         loadingStartedAt = performance.now();
       }
       await action();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.showToast(message, "error");
+      this.toastService.show(message, "error");
       this.setStatus("Error");
     } finally {
       if (title) {
@@ -1186,46 +884,19 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
         if (remaining > 0) {
           await new Promise<void>((resolve) => window.setTimeout(resolve, remaining));
         }
-        await this.setLoading(false);
+        this.loadingService.hide();
+        this.changeDetector.detectChanges();
       }
     }
   }
 
   async setLoading(loading: boolean, title = "Loading", detail = "Please wait"): Promise<void> {
-    this.loadingTitle = title;
-    this.loadingDetail = detail;
-    this.loadingActive = loading;
-    if (!loading) {
-      this.loadingPercent = undefined;
-      this.loadingProgressLabel = "";
+    if (loading) {
+      this.loadingService.show(title, detail);
+    } else {
+      this.loadingService.hide();
     }
     this.changeDetector.detectChanges();
-    if (loading) {
-      await this.waitForLoadingPaint();
-    }
-  }
-
-  private async waitForLoadingPaint(): Promise<void> {
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-    await this.waitForAnimationFrameOrTimeout();
-    await this.waitForAnimationFrameOrTimeout();
-  }
-
-  private async waitForAnimationFrameOrTimeout(timeoutMs = 120): Promise<void> {
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      const finish = (): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        window.clearTimeout(timeoutId);
-        resolve();
-      };
-      const timeoutId = window.setTimeout(finish, timeoutMs);
-      // Native dialogs can temporarily throttle RAF in Electron; fall back to a short timeout.
-      requestAnimationFrame(() => finish());
-    });
   }
 
   setStatus(message: string): void {
@@ -1233,12 +904,7 @@ export class AppComponent implements AfterViewInit, OnDestroy, OnInit {
   }
 
   showToast(message: string, tone: ToastTone = "info"): void {
-    this.toastMessage = message;
-    this.toastTone = tone;
-    this.toastVisible = true;
-    window.setTimeout(() => {
-      this.toastVisible = false;
-    }, 5200);
+    this.toastService.show(message, tone);
   }
 
   private resetHorizontalScroll(): void {
