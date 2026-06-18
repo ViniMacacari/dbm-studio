@@ -1,12 +1,7 @@
 import { CommonModule } from "@angular/common";
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild, ViewEncapsulation } from "@angular/core";
+import { ChangeDetectorRef, Component, OnInit, ViewChild, ViewEncapsulation } from "@angular/core";
 import { FormsModule } from "@angular/forms";
-import type {
-  DataTable,
-  DbProject,
-  FieldDescriptor
-} from "../../../shared/types";
-import { InputCheckboxComponent } from "../../components/input-checkbox/input-checkbox.component";
+import type { DbProject } from "../../../shared/types";
 import type { DbMasterApi } from "../../services/dbmaster-api";
 import { LeagueEditorService } from "../../services/league-editor.service";
 import { NationService } from "../../services/nation.service";
@@ -15,20 +10,17 @@ import { TeamEditorService } from "../../services/team-editor.service";
 import { TransferService } from "../../services/transfer.service";
 import { ToastService, ToastTone } from "../../services/toast.service";
 import { LoadingService } from "../../services/loading.service";
+import { ProjectService } from "../../services/project.service";
 import { LeagueEditorPageComponent } from "../league-editor/league-editor-page.component";
 import { PlayerEditorPageComponent } from "../player-editor/player-editor-page.component";
 import { TeamEditorPageComponent } from "../team-editor/team-editor-page.component";
 import { CompdataEditorPageComponent } from "../compdata-editor/compdata-editor-page.component";
 import { VisualDependencyModalComponent } from "../../components/visual-dependency-modal/visual-dependency-modal.component";
 import { ModulesWorkspaceComponent } from "../modules-workspace/modules-workspace.component";
+import { TableWorkspaceComponent } from "../table-workspace/table-workspace.component";
 import packageInfo from "../../../../package.json";
 
 type ViewMode = "home" | "launcher" | "table" | "modules" | "compdata" | "playerEditor" | "teamEditor" | "leagueEditor";
-
-interface TableListItem {
-  table: DataTable;
-  index: number;
-}
 
 @Component({
   selector: "app-root",
@@ -40,24 +32,20 @@ interface TableListItem {
     TeamEditorPageComponent,
     LeagueEditorPageComponent,
     CompdataEditorPageComponent,
-    InputCheckboxComponent,
     VisualDependencyModalComponent,
-    ModulesWorkspaceComponent
+    ModulesWorkspaceComponent,
+    TableWorkspaceComponent
   ],
   templateUrl: "./app.component.html",
   styleUrl: "./app.component.scss",
   encapsulation: ViewEncapsulation.None
 })
-export class AppComponent implements AfterViewInit, OnInit {
-  @ViewChild("gridWrap") private gridWrap?: ElementRef<HTMLElement>;
-  @ViewChild("dataGrid") private dataGrid?: ElementRef<HTMLTableElement>;
-  @ViewChild("horizontalScroll") private horizontalScroll?: ElementRef<HTMLElement>;
-  @ViewChild("horizontalScrollInner") private horizontalScrollInner?: ElementRef<HTMLElement>;
+export class AppComponent implements OnInit {
   @ViewChild(CompdataEditorPageComponent) compdataEditor?: CompdataEditorPageComponent;
   @ViewChild(ModulesWorkspaceComponent) modulesWorkspace?: ModulesWorkspaceComponent;
+  @ViewChild(TableWorkspaceComponent) tableWorkspace?: TableWorkspaceComponent;
 
   private readonly api: DbMasterApi = window.dbmaster;
-  private readonly minimumLoadingDurationMs = 400;
   readonly appName = "DBM Studio";
   readonly appVersion = packageInfo.version;
 
@@ -68,14 +56,14 @@ export class AppComponent implements AfterViewInit, OnInit {
     private readonly playerEditor: PlayerEditorService,
     private readonly teamEditor: TeamEditorService,
     private readonly transfers: TransferService,
+    public readonly projectService: ProjectService,
     public readonly toastService: ToastService,
     public readonly loadingService: LoadingService
-  ) { }
+  ) {}
 
-  project?: DbProject;
-  currentTableIndex = 0;
   viewMode: ViewMode = "home";
-
+  
+  // Editor parameters
   playerEditorReturnMode: "table" | "modules" = "table";
   playerEditorRowIndex = 0;
   playerEditorIsNew = false;
@@ -84,38 +72,23 @@ export class AppComponent implements AfterViewInit, OnInit {
   leagueEditorRowIndex = 0;
   leagueEditorIsNew = false;
 
-  page = 0;
-  pageSize = 100;
-  selectedColumnIndex = 0;
-  selectedRows = new Set<number>();
-  copied?: { tableName: string; rows: string[][] };
-  sort?: { column: number; direction: 1 | -1 };
-  tableFilter = "";
-  searchTerm = "";
-  searchExact = false;
-  statusLine = "Ready";
-
+  // Visual dependency Modal visibility state
   visualDependencyModalVisible = false;
 
   ngOnInit(): void {
     void this.checkVisualDependencyStatus();
   }
 
-  ngAfterViewInit(): void {
-    this.syncHorizontalScrollbar();
+  get project(): DbProject | undefined {
+    return this.projectService.project;
   }
 
   get projectSubtitle(): string {
-    if (!this.project) {
-      return "No project loaded";
-    }
-    const mode = this.project.binaryReadMode && this.project.binaryReadMode !== "none" ? ` / ${this.project.binaryReadMode}` : "";
-    const localization = this.project.localization ? " / loc" : "";
-    return `${this.project.title} / ${this.project.sourceKind}${mode}${localization}`;
+    return this.projectService.projectSubtitle;
   }
 
   get hasProject(): boolean {
-    return Boolean(this.project);
+    return this.projectService.hasProject;
   }
 
   get canUsePlayerModule(): boolean {
@@ -155,275 +128,62 @@ export class AppComponent implements AfterViewInit, OnInit {
   }
 
   get tableCount(): number {
-    return this.project?.tables.length ?? 0;
+    return this.projectService.tableCount;
   }
 
   get canSaveDatabase(): boolean {
-    return this.project?.sourceKind === "database" && this.project.databaseWritable === true && Boolean(this.project.dbPath);
+    return this.projectService.canSaveDatabase;
   }
 
-  get hasTable(): boolean {
-    return Boolean(this.currentTable());
-  }
-
-  get isPlayersTable(): boolean {
-    return this.playerEditor.isPlayersTable(this.currentTable());
-  }
-
-  get canOpenPlayerEditor(): boolean {
-    return this.isPlayersTable && this.selectedRows.size === 1;
-  }
-
-  get selectedPlayerName(): string {
-    if (!this.project || !this.isPlayersTable || this.selectedRows.size !== 1) {
-      return "";
-    }
-    return this.playerEditor.resolvePlayerName(this.project, this.selectedRowIndexes()[0]);
-  }
-
-  get hasSelection(): boolean {
-    return this.selectedRows.size > 0;
-  }
-
-  get canPaste(): boolean {
-    return this.hasTable && Boolean(this.copied);
-  }
-
-  get canReplace(): boolean {
-    return this.hasSelection && this.canPaste;
-  }
-
-  get fieldInfo(): string {
-    const table = this.currentTable();
-    if (!table) {
-      return "-";
-    }
-    const field = table.fields[this.selectedColumnIndex];
-    if (!field) {
-      return table.warning || `${table.rows.length} records`;
-    }
-    const range = field.rangeHigh >= field.rangeLow ? ` / ${field.rangeLow}..${field.rangeHigh}` : "";
-    const depth = field.depth ? ` / ${field.depth} bits` : "";
-    return `${field.kind}${range}${depth}`;
-  }
-
-  get pageInfo(): string {
-    const table = this.currentTable();
-    if (!table || table.rows.length === 0) {
-      return "0 - 0 / 0";
-    }
-    const { start, end, total } = this.pageBounds(table);
-    return `${start + 1} - ${end} / ${total}`;
-  }
-
-  get isPrevDisabled(): boolean {
-    return this.page === 0;
-  }
-
-  get isNextDisabled(): boolean {
-    const table = this.currentTable();
-    if (!table) {
-      return true;
-    }
-    return this.pageBounds(table).end >= table.rows.length;
-  }
-
-  filteredTables(): TableListItem[] {
-    const filter = this.tableFilter.trim().toLowerCase();
-    return (this.project?.tables ?? [])
-      .map((table, index) => ({ table, index }))
-      .filter((item) => !filter || item.table.name.toLowerCase().includes(filter));
-  }
-
-  currentTable(): DataTable | undefined {
-    return this.project?.tables[this.currentTableIndex];
-  }
-
-  visibleRowIndexes(): number[] {
-    const table = this.currentTable();
-    if (!table) {
-      return [];
-    }
-    const { start, end } = this.pageBounds(table);
-    const indexes: number[] = [];
-    for (let index = start; index < end; index += 1) {
-      indexes.push(index);
-    }
-    return indexes;
-  }
-
-  trackByTable(_index: number, item: TableListItem): string {
-    return `${item.index}:${item.table.name}`;
-  }
-
-  trackByColumn(index: number): number {
-    return index;
-  }
-
-  trackByRowIndex(_index: number, rowIndex: number): number {
-    return rowIndex;
+  get statusLine(): string {
+    return this.projectService.statusLine;
   }
 
   async openDatabase(): Promise<void> {
-    await this.guarded(async () => {
-      const result = await this.api.openDatabase();
-      if (result.project) {
-        this.loadProject(result.project);
-      }
-    }, "Opening database", "Reading XML and DB tables");
+    await this.projectService.openDatabase();
+    if (this.project) {
+      this.viewMode = "launcher";
+    }
   }
 
   async openDatabaseWithLocalization(): Promise<void> {
-    await this.guarded(async () => {
-      const result = await this.api.openDatabaseWithLocalization();
-      if (result.project) {
-        this.loadProject(result.project);
-      }
-    }, "Opening database and language files", "Reading main DB/XML and loc DB/XML");
+    await this.projectService.openDatabaseWithLocalization();
+    if (this.project) {
+      this.viewMode = "launcher";
+    }
   }
 
   async openXml(): Promise<void> {
-    await this.guarded(async () => {
-      const result = await this.api.openXml();
-      if (result.project) {
-        this.loadProject(result.project);
-      }
-    });
+    await this.projectService.openXml();
+    if (this.project) {
+      this.viewMode = "launcher";
+    }
   }
 
   async openTextFolder(): Promise<void> {
-    await this.guarded(async () => {
-      const result = await this.api.openTextFolder();
-      if (result.project) {
-        this.loadProject(result.project);
-      }
-    }, "Opening text tables", "Reading exported .txt files");
+    await this.projectService.openTextFolder();
+    if (this.project) {
+      this.viewMode = "launcher";
+    }
   }
 
-  async saveProject(title = "Saving database", detail = "Writing .db file and backup"): Promise<void> {
-    await this.guarded(async () => {
-      if (!this.project) {
-        return;
-      }
-      const result = await this.api.saveDatabase(this.project);
-      if (result.filePath) {
-        if (result.tablesWritten === 0) {
-          const warning = result.warnings[0];
-          if (warning) {
-            this.showToast(warning, "warn");
-            this.setStatus(warning);
-          } else {
-            this.setStatus("No changes to save");
-          }
-          return;
-        }
-        for (const table of this.project.tables) {
-          table.changed = false;
-        }
-        if (!result.localizationSkipped) {
-          for (const table of this.project.localization?.tables ?? []) {
-            table.changed = false;
-          }
-        }
-        const warnings = result.warnings.length > 0 ? ` ${result.warnings.length} warning(s).` : "";
-        if (result.warnings.length > 0) {
-          console.warn("[saveProject] Warnings during save:");
-          for (const w of result.warnings) {
-            console.warn(` - ${w}`);
-          }
-        }
-        if (result.localizationSkipped && result.warnings.length > 0) {
-          this.showToast(result.warnings[result.warnings.length - 1], "warn");
-        }
-        this.setStatus(`${result.tablesWritten} table(s) saved to DB.${warnings}`);
-      }
-    }, title, detail);
-  }
-
-  async exportTable(): Promise<void> {
-    await this.guarded(async () => {
-      const table = this.currentTable();
-      if (!table) {
-        return;
-      }
-      const result = await this.api.exportTable(table);
-      if (result.filePath) {
-        this.setStatus(`${table.name} exported`);
-      }
-    });
+  async saveProject(): Promise<void> {
+    await this.projectService.saveProject();
   }
 
   async exportAll(): Promise<void> {
-    await this.guarded(async () => {
-      if (!this.project) {
-        return;
-      }
-      const result = await this.api.exportAll(this.project);
-      if (result.folderPath) {
-        this.setStatus(`${result.count ?? 0} table(s) exported`);
-      }
-    }, "Exporting tables", "Writing .txt files");
-  }
-
-  async importTable(): Promise<void> {
-    await this.guarded(async () => {
-      const table = this.currentTable();
-      const result = await this.api.importTable(table?.name);
-      if (result.table) {
-        this.mergeImportedTable(result.table);
-      }
-    });
+    await this.projectService.exportAll();
   }
 
   async importAll(): Promise<void> {
-    await this.guarded(async () => {
-      const result = await this.api.importAll();
-      if (result.project) {
-        this.loadProject(result.project);
-      }
-    }, "Importing tables", "Reading .txt files");
+    await this.projectService.importAll();
+    if (this.project) {
+      this.viewMode = "launcher";
+    }
   }
 
   async extractBig(): Promise<void> {
-    await this.guarded(async () => {
-      const result = await this.api.extractDatabasesFromBig();
-      if (!result.canceled) {
-        const warnings = result.warnings?.length ? ` ${result.warnings.length} warning(s).` : "";
-        this.showToast(`${result.message ?? "Extraction complete."}${warnings}`, result.warnings?.length ? "warn" : "info");
-      }
-    });
-  }
-
-  async calculateHashes(): Promise<void> {
-    await this.guarded(async () => {
-      const table = this.currentTable();
-      if (!table) {
-        return;
-      }
-      const hashIndex = table.columns.findIndex((column) => column.toLowerCase() === "hashid");
-      const stringIndex = table.columns.findIndex((column) => column.toLowerCase() === "stringid");
-      if (hashIndex < 0 || stringIndex < 0) {
-        this.showToast("This table needs hashid and stringid columns.", "warn");
-        return;
-      }
-
-      const hashes = await this.api.computeLanguageHashes(table.rows.map((row) => row[stringIndex] ?? ""));
-      hashes.forEach((hash, index) => {
-        table.rows[index][hashIndex] = String(hash);
-      });
-      table.changed = true;
-      this.syncHorizontalScrollbar();
-      this.setStatus(`Calculated ${hashes.length} hash value(s)`);
-    }, "Calculating hashes", "Updating hashid values");
-  }
-
-  selectTable(index: number): void {
-    this.currentTableIndex = index;
-    this.viewMode = "table";
-    this.page = 0;
-    this.selectedColumnIndex = 0;
-    this.selectedRows.clear();
-    this.resetHorizontalScroll();
+    await this.projectService.extractBig();
   }
 
   showLauncher(): void {
@@ -451,7 +211,6 @@ export class AppComponent implements AfterViewInit, OnInit {
       return;
     }
     this.viewMode = "table";
-    this.resetHorizontalScroll();
   }
 
   async openModulesWorkspace(module?: "players" | "teams" | "leagues" | "transfers"): Promise<void> {
@@ -473,6 +232,13 @@ export class AppComponent implements AfterViewInit, OnInit {
     this.viewMode = "playerEditor";
   }
 
+  openPlayerFromTable(event: { rowIndex: number }): void {
+    this.playerEditorRowIndex = event.rowIndex;
+    this.playerEditorIsNew = false;
+    this.playerEditorReturnMode = "table";
+    this.viewMode = "playerEditor";
+  }
+
   openTeamFromModule(event: { rowIndex: number, isNew: boolean }): void {
     this.teamEditorRowIndex = event.rowIndex;
     this.teamEditorIsNew = event.isNew;
@@ -485,97 +251,21 @@ export class AppComponent implements AfterViewInit, OnInit {
     this.viewMode = "leagueEditor";
   }
 
-  selectColumn(index: number): void {
-    this.selectedColumnIndex = index;
-  }
-
-  sortByColumn(column: number): void {
-    const table = this.currentTable();
-    if (!table) {
-      return;
-    }
-    const direction = this.sort?.column === column ? (this.sort.direction * -1) as 1 | -1 : 1;
-    this.sort = { column, direction };
-    table.rows.sort((left, right) => {
-      const a = left[column] ?? "";
-      const b = right[column] ?? "";
-      const na = Number(a);
-      const nb = Number(b);
-      const result = Number.isFinite(na) && Number.isFinite(nb) ? na - nb : a.localeCompare(b);
-      return result * direction;
-    });
-    table.changed = true;
-    this.syncHorizontalScrollbar();
-  }
-
-  updateCell(rowIndex: number, columnIndex: number, event: Event): void {
-    const table = this.currentTable();
-    const input = event.target as HTMLInputElement;
-    if (!table) {
-      return;
-    }
-    table.rows[rowIndex][columnIndex] = input.value;
-    table.changed = true;
-    this.invalidateTableCaches(table);
-    this.setStatus(`${table.name} changed`);
-  }
-
-  toggleRow(rowIndex: number, event: Event): void {
-    const checkbox = event.target as HTMLInputElement;
-    if (checkbox.checked) {
-      this.selectedRows.add(rowIndex);
-    } else {
-      this.selectedRows.delete(rowIndex);
-    }
-  }
-
-  selectGridRow(rowIndex: number, event: MouseEvent): void {
-    if (event.ctrlKey || event.metaKey) {
-      if (this.selectedRows.has(rowIndex)) {
-        this.selectedRows.delete(rowIndex);
-      } else {
-        this.selectedRows.add(rowIndex);
-      }
-      return;
-    }
-
-    this.selectedRows.clear();
-    this.selectedRows.add(rowIndex);
-    if (this.isPlayersTable) {
-      const name = this.selectedPlayerName;
-      this.setStatus(name ? `${name} selected` : `Player row ${rowIndex + 1} selected`);
-    }
-  }
-
-  openPlayerEditor(): void {
-    if (!this.canOpenPlayerEditor) {
-      this.showToast("Select one player row.", "warn");
-      return;
-    }
-    this.playerEditorRowIndex = this.selectedRowIndexes()[0];
-    this.playerEditorIsNew = false;
-    this.playerEditorReturnMode = "table";
-    this.viewMode = "playerEditor";
-  }
-
   closePlayerEditor(): void {
     this.viewMode = this.playerEditorReturnMode;
     if (this.viewMode === "modules") {
       this.modulesWorkspace?.refreshPlayerSearch();
     }
-    this.resetHorizontalScroll();
   }
 
   closeTeamEditor(): void {
     this.viewMode = "modules";
     void this.modulesWorkspace?.selectModule("teams");
-    this.resetHorizontalScroll();
   }
 
   closeLeagueEditor(): void {
     this.viewMode = "modules";
     void this.modulesWorkspace?.selectModule("leagues");
-    this.resetHorizontalScroll();
   }
 
   onPlayerEditorApplied(message: string): void {
@@ -583,219 +273,31 @@ export class AppComponent implements AfterViewInit, OnInit {
     if (this.playerEditorReturnMode === "modules") {
       this.modulesWorkspace?.refreshPlayerSearch();
     }
-    this.syncHorizontalScrollbar();
   }
 
   async onPlayerEditorAppliedAndSave(message: string): Promise<void> {
     this.onPlayerEditorApplied(message);
-    await this.saveProject("Applying and saving", "Updating player rows and writing .db file");
+    await this.saveProject();
   }
 
   onTeamEditorApplied(message: string): void {
     this.setStatus(message);
     this.modulesWorkspace?.refreshTeamSearch();
-    this.syncHorizontalScrollbar();
   }
 
   async onTeamEditorAppliedAndSave(message: string): Promise<void> {
     this.onTeamEditorApplied(message);
-    await this.saveProject("Applying and saving", "Updating team rows and writing .db file");
+    await this.saveProject();
   }
 
   onLeagueEditorApplied(message: string): void {
     this.setStatus(message);
     this.modulesWorkspace?.refreshLeagueSearch();
-    this.syncHorizontalScrollbar();
   }
 
   async onLeagueEditorAppliedAndSave(message: string): Promise<void> {
     this.onLeagueEditorApplied(message);
-    await this.saveProject("Applying and saving", "Updating league rows and writing .db file");
-  }
-
-  copyRows(): void {
-    const table = this.currentTable();
-    if (!table) {
-      return;
-    }
-    const rows = this.selectedRowIndexes().map((index) => [...table.rows[index]]);
-    if (rows.length === 0) {
-      this.showToast("Select at least one row.", "warn");
-      return;
-    }
-    this.copied = { tableName: table.name, rows };
-    this.setStatus(`${rows.length} row(s) copied`);
-  }
-
-  pasteRows(replace = false): void {
-    const table = this.currentTable();
-    if (!table || !this.copied) {
-      return;
-    }
-    if (this.copied.tableName !== table.name) {
-      this.showToast("Copied rows belong to another table.", "warn");
-      return;
-    }
-    if (replace) {
-      this.deleteRows(false);
-    }
-    table.rows.push(...this.copied.rows.map((row) => [...row]));
-    table.changed = true;
-    this.invalidateTableCaches(table);
-    this.syncHorizontalScrollbar();
-    this.setStatus(`${this.copied.rows.length} row(s) pasted`);
-  }
-
-  addRow(): void {
-    const table = this.currentTable();
-    if (!table) {
-      return;
-    }
-
-    const row = table.columns.map((_column, columnIndex) => this.defaultCellValue(table.fields[columnIndex]));
-    table.rows.push(row);
-    table.changed = true;
-    this.sort = undefined;
-    this.invalidateTableCaches(table);
-
-    const rowIndex = table.rows.length - 1;
-    this.page = Math.floor(rowIndex / this.pageSize);
-    this.selectedRows.clear();
-    this.selectedRows.add(rowIndex);
-    this.selectedColumnIndex = 0;
-    this.scrollToLastRow();
-    this.setStatus(`New row added to ${table.name}`);
-  }
-
-  deleteRows(showMessage = true): void {
-    const table = this.currentTable();
-    if (!table) {
-      return;
-    }
-    const selected = new Set(this.selectedRowIndexes());
-    if (selected.size === 0) {
-      if (showMessage) {
-        this.showToast("Select at least one row.", "warn");
-      }
-      return;
-    }
-    table.rows = table.rows.filter((_row, index) => !selected.has(index));
-    table.changed = true;
-    this.invalidateTableCaches(table);
-    this.selectedRows.clear();
-    this.syncHorizontalScrollbar();
-    if (showMessage) {
-      this.setStatus(`${selected.size} row(s) deleted`);
-    }
-  }
-
-  countRows(): void {
-    const table = this.currentTable();
-    if (table) {
-      this.showToast(`Record counter = ${table.rows.length}`);
-    }
-  }
-
-  findNext(): void {
-    const table = this.currentTable();
-    if (!table) {
-      return;
-    }
-    const term = this.searchTerm.toLowerCase();
-    const column = this.selectedColumnIndex;
-    if (!term) {
-      this.showToast("Type a search value.", "warn");
-      return;
-    }
-
-    const total = table.rows.length;
-    const current = this.selectedRows.size > 0 ? this.selectedRowIndexes()[0] : this.page * this.pageSize;
-    for (let step = 1; step <= total; step += 1) {
-      const index = (current + step) % total;
-      const value = String(table.rows[index][column] ?? "").toLowerCase();
-      const ok = this.searchExact ? value === term : value.includes(term);
-      if (ok) {
-        this.selectedRows.clear();
-        this.selectedRows.add(index);
-        this.page = Math.floor(index / this.pageSize);
-        this.syncHorizontalScrollbar();
-        return;
-      }
-    }
-    this.showToast("Not found", "warn");
-  }
-
-  previousPage(): void {
-    this.page = Math.max(0, this.page - 1);
-    this.syncHorizontalScrollbar();
-  }
-
-  nextPage(): void {
-    this.page += 1;
-    this.syncHorizontalScrollbar();
-  }
-
-  onPageSizeChange(): void {
-    this.page = 0;
-    this.syncHorizontalScrollbar();
-  }
-
-  onHorizontalScroll(): void {
-    const gridWrap = this.gridWrap?.nativeElement;
-    const horizontalScroll = this.horizontalScroll?.nativeElement;
-    if (!gridWrap || !horizontalScroll) {
-      return;
-    }
-    if (Math.abs(gridWrap.scrollLeft - horizontalScroll.scrollLeft) > 1) {
-      gridWrap.scrollLeft = horizontalScroll.scrollLeft;
-    }
-  }
-
-  onGridScroll(): void {
-    const gridWrap = this.gridWrap?.nativeElement;
-    const horizontalScroll = this.horizontalScroll?.nativeElement;
-    if (!gridWrap || !horizontalScroll) {
-      return;
-    }
-    if (Math.abs(horizontalScroll.scrollLeft - gridWrap.scrollLeft) > 1) {
-      horizontalScroll.scrollLeft = gridWrap.scrollLeft;
-    }
-  }
-
-  onGridWheel(event: WheelEvent): void {
-    const gridWrap = this.gridWrap?.nativeElement;
-    const horizontalScroll = this.horizontalScroll?.nativeElement;
-    if (!gridWrap || !horizontalScroll || !event.shiftKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
-      return;
-    }
-    gridWrap.scrollLeft += event.deltaY;
-    horizontalScroll.scrollLeft = gridWrap.scrollLeft;
-    event.preventDefault();
-  }
-
-  @HostListener("window:resize")
-  onWindowResize(): void {
-    this.syncHorizontalScrollbar();
-  }
-
-  private loadProject(project: DbProject): void {
-    this.project = project;
-    this.leagueEditor.invalidateProject(project);
-    this.nations.invalidateProject(project);
-    this.playerEditor.invalidateProject(project);
-    this.teamEditor.invalidateProject(project);
-    this.viewMode = "launcher";
-    this.currentTableIndex = 0;
-    this.page = 0;
-    this.selectedColumnIndex = 0;
-    this.selectedRows.clear();
-    this.copied = undefined;
-    this.sort = undefined;
-    if (project.warnings.length > 0) {
-      this.showToast(project.warnings[0], "warn");
-    }
-    this.setStatus(project.warnings.length > 0 ? `${project.title} loaded with ${project.warnings.length} warning(s)` : `${project.title} loaded`);
-    this.resetHorizontalScroll();
+    await this.saveProject();
   }
 
   private async checkVisualDependencyStatus(): Promise<void> {
@@ -804,89 +306,6 @@ export class AppComponent implements AfterViewInit, OnInit {
       this.visualDependencyModalVisible = !status.allCurrent;
     } catch (error) {
       console.error("[checkVisualDependencyStatus] Error fetching status:", error);
-    }
-  }
-
-  private mergeImportedTable(imported: DataTable): void {
-    const project = this.project;
-    const table = this.currentTable();
-    if (!project || !table) {
-      return;
-    }
-
-    if (imported.columns.join("\t") !== table.columns.join("\t")) {
-      this.showToast("Imported columns do not match the current table.", "warn");
-      return;
-    }
-
-    imported.name = table.name;
-    imported.fields = table.fields;
-    imported.changed = true;
-    project.tables[this.currentTableIndex] = imported;
-    this.invalidateTableCaches(imported);
-    this.syncHorizontalScrollbar();
-    this.setStatus(`${table.name} imported`);
-  }
-
-  private invalidateTableCaches(table: DataTable): void {
-    this.leagueEditor.invalidateTable(table);
-    this.nations.invalidateTable(table);
-    this.playerEditor.invalidateTable(table);
-    this.teamEditor.invalidateTable(table);
-  }
-
-  private defaultCellValue(field: FieldDescriptor | undefined): string {
-    if (!field) {
-      return "";
-    }
-    if (field.kind === "string" || field.kind === "shortCompressedString" || field.kind === "longCompressedString" || field.kind === "unknown") {
-      return "";
-    }
-    if (field.rangeHigh >= field.rangeLow) {
-      if (field.rangeLow <= 0 && field.rangeHigh >= 0) {
-        return "0";
-      }
-      return String(Math.trunc(field.rangeLow));
-    }
-    return "0";
-  }
-
-  private selectedRowIndexes(): number[] {
-    return [...this.selectedRows].sort((left, right) => left - right);
-  }
-
-  private pageBounds(table: DataTable): { start: number; end: number; total: number } {
-    const total = table.rows.length;
-    const maxPage = Math.max(0, Math.ceil(total / this.pageSize) - 1);
-    this.page = Math.min(this.page, maxPage);
-    const start = this.page * this.pageSize;
-    const end = Math.min(total, start + this.pageSize);
-    return { start, end, total };
-  }
-
-  private async guarded(action: () => Promise<void>, title?: string, detail?: string): Promise<void> {
-    let loadingStartedAt = 0;
-    try {
-      if (title) {
-        this.loadingService.show(title, detail ?? "Please wait");
-        this.changeDetector.detectChanges();
-        loadingStartedAt = performance.now();
-      }
-      await action();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.toastService.show(message, "error");
-      this.setStatus("Error");
-    } finally {
-      if (title) {
-        const elapsed = performance.now() - loadingStartedAt;
-        const remaining = Math.max(0, this.minimumLoadingDurationMs - elapsed);
-        if (remaining > 0) {
-          await new Promise<void>((resolve) => window.setTimeout(resolve, remaining));
-        }
-        this.loadingService.hide();
-        this.changeDetector.detectChanges();
-      }
     }
   }
 
@@ -900,54 +319,10 @@ export class AppComponent implements AfterViewInit, OnInit {
   }
 
   setStatus(message: string): void {
-    this.statusLine = message;
+    this.projectService.statusLine = message;
   }
 
   showToast(message: string, tone: ToastTone = "info"): void {
     this.toastService.show(message, tone);
-  }
-
-  private resetHorizontalScroll(): void {
-    requestAnimationFrame(() => {
-      if (this.gridWrap?.nativeElement) {
-        this.gridWrap.nativeElement.scrollLeft = 0;
-      }
-      if (this.horizontalScroll?.nativeElement) {
-        this.horizontalScroll.nativeElement.scrollLeft = 0;
-      }
-      this.syncHorizontalScrollbar();
-    });
-  }
-
-  private scrollToLastRow(): void {
-    requestAnimationFrame(() => {
-      if (this.gridWrap?.nativeElement) {
-        this.gridWrap.nativeElement.scrollTop = this.gridWrap.nativeElement.scrollHeight;
-        this.gridWrap.nativeElement.scrollLeft = 0;
-      }
-      if (this.horizontalScroll?.nativeElement) {
-        this.horizontalScroll.nativeElement.scrollLeft = 0;
-      }
-      this.syncHorizontalScrollbar();
-    });
-  }
-
-  private syncHorizontalScrollbar(): void {
-    requestAnimationFrame(() => {
-      const table = this.currentTable();
-      const gridWrap = this.gridWrap?.nativeElement;
-      const dataGrid = this.dataGrid?.nativeElement;
-      const horizontalScroll = this.horizontalScroll?.nativeElement;
-      const horizontalScrollInner = this.horizontalScrollInner?.nativeElement;
-      if (!table || !gridWrap || !dataGrid || !horizontalScroll || !horizontalScrollInner) {
-        return;
-      }
-
-      const scrollWidth = dataGrid.scrollWidth;
-      const clientWidth = gridWrap.clientWidth;
-      horizontalScrollInner.style.width = `${Math.max(scrollWidth, clientWidth)}px`;
-      horizontalScroll.classList.toggle("hidden", scrollWidth <= clientWidth + 1);
-      horizontalScroll.scrollLeft = gridWrap.scrollLeft;
-    });
   }
 }

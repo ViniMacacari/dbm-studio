@@ -1,0 +1,116 @@
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">DBM</div>
+      <div>
+        <h1>{{ appName }}</h1>
+        <p>{{ projectSubtitle }}</p>
+      </div>
+    </div>
+    <input class="filter-input" type="search" placeholder="Filter tables" [(ngModel)]="tableFilter" />
+    <div class="table-list">
+      <button *ngFor="let item of filteredTables(); trackBy: trackByTable" type="button" class="table-item"
+        [class.active]="item.index === currentTableIndex" (click)="selectTable(item.index)">
+        <span class="table-name">{{ item.table.name }}</span>
+        <span class="table-count">{{ item.table.rows.length }}</span>
+      </button>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <div class="toolbar">
+      <button type="button" title="Project screen" (click)="showHome.emit()">Home</button>
+      <button type="button" title="Modules" [disabled]="!hasProject" (click)="showModules.emit()">Modules</button>
+      <span class="divider"></span>
+      <button type="button" title="Open DB/XML pair" (click)="openDatabase()">DB</button>
+      <span class="divider"></span>
+      <button type="button" [disabled]="!canSaveDatabase" title="Save opened .db file"
+        (click)="saveProject()">Save</button>
+      <button type="button" [disabled]="!hasTable" (click)="exportTable()">Export</button>
+      <button type="button" [disabled]="!hasProject" title="Export all tables" (click)="exportAll()">Export+</button>
+      <button type="button" [disabled]="!hasTable" (click)="importTable()">Import</button>
+      <button type="button" title="Import all tables" (click)="importAll()">Import+</button>
+      <span class="divider"></span>
+      <button type="button" [disabled]="!hasTable" title="Add a new row" (click)="addRow()">New</button>
+      <button type="button" [disabled]="!hasTable" (click)="copyRows()">Copy</button>
+      <button type="button" [disabled]="!canPaste" (click)="pasteRows()">Paste</button>
+      <button type="button" [disabled]="!canReplace" (click)="pasteRows(true)">Replace</button>
+      <button type="button" [disabled]="!hasSelection" (click)="deleteRows()">Delete</button>
+      <button type="button" [disabled]="!hasTable" (click)="countRows()">Count</button>
+      <button *ngIf="isPlayersTable" type="button" [disabled]="!canOpenPlayerEditor" title="Edit selected player"
+        (click)="openPlayerEditor()">Edit Player</button>
+    </div>
+
+    <div class="table-workspace">
+      <div class="querybar">
+        <select [(ngModel)]="selectedColumnIndex" [disabled]="!hasTable">
+          <option *ngFor="let column of currentTable()?.columns ?? []; let i = index; trackBy: trackByColumn"
+            [ngValue]="i">
+            {{ column }}
+          </option>
+        </select>
+        <input type="search" placeholder="Search" [(ngModel)]="searchTerm" [disabled]="!hasTable"
+          (keydown.enter)="findNext()" />
+        <app-input-checkbox [(checked)]="searchExact" [disabled]="!hasTable" label="Exact match"
+          description="Match the full cell value"></app-input-checkbox>
+        <button type="button" [disabled]="!hasTable" (click)="findNext()">Find</button>
+        <span class="player-selection" *ngIf="selectedPlayerName">{{ selectedPlayerName }}</span>
+        <span class="field-info">{{ fieldInfo }}</span>
+      </div>
+
+      <section class="grid-section">
+        <ng-container *ngIf="currentTable() as table; else empty">
+          <div #gridWrap class="grid-wrap" (scroll)="onGridScroll()" (wheel)="onGridWheel($event)">
+            <table #dataGrid class="data-grid">
+              <thead>
+                <tr>
+                  <th class="row-select">#</th>
+                  <th *ngFor="let column of table.columns; let columnIndex = index; trackBy: trackByColumn">
+                    <button type="button" [title]="column" (click)="sortByColumn(columnIndex)">
+                      {{ sort?.column === columnIndex ? column + (sort?.direction === 1 ? ' up' : ' down') : column }}
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let rowIndex of visibleRowIndexes(); trackBy: trackByRowIndex"
+                  [class.row-selected]="selectedRows.has(rowIndex)" (click)="selectGridRow(rowIndex, $event)">
+                  <td class="row-select">
+                    <input type="checkbox" [checked]="selectedRows.has(rowIndex)" (click)="$event.stopPropagation()"
+                      (change)="toggleRow(rowIndex, $event)" />
+                  </td>
+                  <td *ngFor="let column of table.columns; let columnIndex = index; trackBy: trackByColumn">
+                    <input class="cell-input" [value]="table.rows[rowIndex][columnIndex] ?? ''"
+                      (change)="updateCell(rowIndex, columnIndex, $event)" (focus)="selectColumn(columnIndex)" />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div #horizontalScroll class="horizontal-scroll hidden" aria-label="Horizontal table scroll"
+            (scroll)="onHorizontalScroll()">
+            <div #horizontalScrollInner class="horizontal-scroll-inner"></div>
+          </div>
+        </ng-container>
+        <ng-template #empty>
+          <div class="empty-state">
+            <strong>No table selected.</strong>
+          </div>
+        </ng-template>
+      </section>
+
+      <div class="pager">
+        <button type="button" [disabled]="isPrevDisabled" (click)="previousPage()">Prev</button>
+        <span>{{ pageInfo }}</span>
+        <button type="button" [disabled]="isNextDisabled" (click)="nextPage()">Next</button>
+        <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">
+          <option [ngValue]="50">50</option>
+          <option [ngValue]="100">100</option>
+          <option [ngValue]="250">250</option>
+          <option [ngValue]="500">500</option>
+        </select>
+        <span id="status-line">{{ statusLine }}</span>
+      </div>
+    </div>
+  </main>
+</div>
