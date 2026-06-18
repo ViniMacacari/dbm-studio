@@ -22,6 +22,7 @@
     "@angular/platform-browser": "20.3.25",
     "fast-xml-parser": "^5.8.0",
     "fifadate": "^0.0.9",
+    "node-cache": "^5.1.2",
     "rxjs": "^7.8.2",
     "transfermarkt-parser": "^0.1.1",
     "zone.js": "^0.15.1"
@@ -30,6 +31,7 @@
     "@angular/build": "20.3.25",
     "@angular/cli": "20.3.25",
     "@angular/compiler-cli": "20.3.25",
+    "@types/jsdom": "^28.0.3",
     "@types/node": "^20.19.0",
     "electron": "^41.7.1",
     "electron-builder": "^26.15.2",
