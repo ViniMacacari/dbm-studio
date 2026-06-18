@@ -961,4 +961,23 @@ export class PlayerEditorService {
     return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   }
 
+  cancelCreatedPlayer(project: DbProject | undefined, playerId: string, rowIndex: number): void {
+    if (!project) return;
+    const players = this.findPlayersTable(project);
+    if (players && players.rows[rowIndex]) {
+      const rowPlayerId = this.read(players, rowIndex, "playerid");
+      if (rowPlayerId === playerId) {
+        players.rows.splice(rowIndex, 1);
+        this.invalidateTable(players);
+      }
+    }
+    const namesTable = this.findNamesTable(project);
+    if (namesTable) {
+      const nameRowIndex = this.findRowByPlayerId(namesTable, playerId);
+      if (nameRowIndex >= 0) {
+        namesTable.rows.splice(nameRowIndex, 1);
+        this.invalidateTable(namesTable);
+      }
+    }
+  }
 }

@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from "@angular/core";
+import { Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../../../shared/types";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
@@ -18,7 +18,7 @@ import { positionInformation } from "../../../utils/position-mapper/position-map
   templateUrl: "./player-editor-page.component.html",
   styleUrl: "./player-editor-page.component.scss"
 })
-export class PlayerEditorPageComponent implements OnChanges {
+export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
   @Input({ required: true }) project!: DbProject;
   @Input({ required: true }) rowIndex = 0;
   @Input() isNew = false;
@@ -29,6 +29,7 @@ export class PlayerEditorPageComponent implements OnChanges {
 
   draft?: PlayerEditorDraft;
   nationOptions: SearchListOption[] = [];
+  isNewApplied = false;
   positionOptions = positionInformation.map(pos => ({ label: pos.name, value: pos.id.toString() }));
   activeTab = "identity";
   lastApplied = "";
@@ -71,6 +72,7 @@ export class PlayerEditorPageComponent implements OnChanges {
     }
     try {
       const result = this.playerEditor.applyDraft(this.project, this.draft);
+      this.isNewApplied = true;
       this.lastApplied = result.message;
       this.lastAppliedTone = "info";
       if (action === "save") {
@@ -131,6 +133,12 @@ export class PlayerEditorPageComponent implements OnChanges {
       }
       this.minifaceDataUrl = "";
       this.minifaceSource = "missing";
+    }
+  }
+
+  ngOnDestroy(): void {
+    if (this.isNew && !this.isNewApplied && this.draft) {
+      this.playerEditor.cancelCreatedPlayer(this.project, this.draft.playerId, this.draft.rowIndex);
     }
   }
 }
