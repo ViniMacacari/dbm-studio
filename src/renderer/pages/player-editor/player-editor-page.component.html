@@ -60,14 +60,11 @@
         <label class="field-block" *ngFor="let field of player.identityFields; trackBy: trackByField">
           <span>{{ field.label }}</span>
           <app-search-list *ngIf="field.inputType === 'nation'; else identityInput" [options]="nationOptions"
-            [(value)]="field.value" [disabled]="field.readonly" placeholder="Search country"></app-search-list>
+            [(value)]="field.value" [disabled]="!!field.readonly" placeholder="Search country"></app-search-list>
           <ng-template #identityInput>
-            <select *ngIf="field.inputType === 'position'; else defaultIdentityInput" [(ngModel)]="field.value"
-              [disabled]="field.readonly">
-              <option *ngFor="let pos of positionOptions" [value]="pos.id">
-                {{ pos.name }}
-              </option>
-            </select>
+            <app-input-list *ngIf="field.inputType === 'position'; else defaultIdentityInput"
+              [options]="positionOptions" [(value)]="field.value" [disabled]="!!field.readonly"
+              placeholder="Select position"></app-input-list>
             <ng-template #defaultIdentityInput>
               <input [type]="field.inputType" [(ngModel)]="field.value" [readonly]="field.readonly" [min]="field.min"
                 [max]="field.max" />
@@ -84,14 +81,10 @@
         <label class="field-block" *ngFor="let field of section.fields; trackBy: trackByField">
           <span>{{ field.label }}</span>
           <app-search-list *ngIf="field.inputType === 'nation'; else sectionInput" [options]="nationOptions"
-            [(value)]="field.value" [disabled]="field.readonly" placeholder="Search country"></app-search-list>
+            [(value)]="field.value" [disabled]="!!field.readonly" placeholder="Search country"></app-search-list>
           <ng-template #sectionInput>
-            <select *ngIf="field.inputType === 'position'; else defaultSectionInput" [(ngModel)]="field.value"
-              [disabled]="field.readonly">
-              <option *ngFor="let pos of positionOptions" [value]="pos.id">
-                {{ pos.name }}
-              </option>
-            </select>
+            <app-input-list *ngIf="field.inputType === 'position'; else defaultSectionInput" [options]="positionOptions"
+              [(value)]="field.value" [disabled]="!!field.readonly" placeholder="Select position"></app-input-list>
             <ng-template #defaultSectionInput>
               <input [type]="field.inputType" [(ngModel)]="field.value" [readonly]="field.readonly" [min]="field.min"
                 [max]="field.max" />

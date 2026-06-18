@@ -4,6 +4,7 @@ import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../../../shared/types";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
 import type { SearchListOption } from "../../components/search-list/search-list.component";
+import { InputListComponent } from "../../components/input-list/input-list.component";
 import type { DbMasterApi } from "../../services/dbmaster-api";
 import { NationService } from "../../services/nation.service";
 import { PlayerEditorService } from "../../services/player-editor.service";
@@ -13,7 +14,7 @@ import { positionInformation } from "../../../utils/position-mapper/position-map
 @Component({
   selector: "app-player-editor-page",
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchListComponent],
+  imports: [CommonModule, FormsModule, SearchListComponent, InputListComponent],
   templateUrl: "./player-editor-page.component.html",
   styleUrl: "./player-editor-page.component.scss"
 })
@@ -28,7 +29,7 @@ export class PlayerEditorPageComponent implements OnChanges {
 
   draft?: PlayerEditorDraft;
   nationOptions: SearchListOption[] = [];
-  positionOptions = positionInformation.map(pos => ({ name: pos.name, id: pos.id.toString() }));
+  positionOptions = positionInformation.map(pos => ({ label: pos.name, value: pos.id.toString() }));
   activeTab = "identity";
   lastApplied = "";
   lastAppliedTone: "info" | "error" = "info";

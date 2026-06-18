@@ -1,0 +1,112 @@
+:host {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.input-list-container {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.input-list-trigger {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+}
+
+:host-context(.field-block) .input-list-trigger {
+  height: 32px;
+  background: #fbfcfa;
+  border-color: #d7dfda;
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+.input-list-trigger:focus {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+  background: white;
+}
+
+.disabled .input-list-trigger {
+  cursor: not-allowed;
+  color: var(--muted);
+  background: #eef3ef !important;
+}
+
+.trigger-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trigger-arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid #666;
+  margin-left: 8px;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.open .trigger-arrow {
+  transform: rotate(180deg);
+}
+
+.input-list-dropdown {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 250px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+}
+
+.input-list-dropdown button {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  border: 0;
+  border-radius: 0;
+  background: white;
+  text-align: left;
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+}
+
+.input-list-dropdown button:hover {
+  background: #e8efea;
+  color: var(--accent);
+}
+
+.input-list-dropdown button.active {
+  background: var(--accent);
+  color: white;
+}
