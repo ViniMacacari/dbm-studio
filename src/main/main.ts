@@ -113,7 +113,7 @@ function isWorkAreaSized(bounds: Electron.Rectangle, workArea: Electron.Rectangl
 
 function applyWindowDisplayState(state: WindowDisplayState): void {
   const window = state.window;
-  if (!window || window.isDestroyed()) {
+  if (!window || window.isDestroyed() || window.isMinimized()) {
     return;
   }
 
@@ -167,7 +167,7 @@ function trackWindowDisplayState(window: BrowserWindow): void {
   });
 
   window.on("focus", () => {
-    if (lastBlurDisplayState) {
+    if (lastBlurDisplayState && !window.isMinimized()) {
       queueWindowDisplayStateRestore(lastBlurDisplayState);
     }
   });
