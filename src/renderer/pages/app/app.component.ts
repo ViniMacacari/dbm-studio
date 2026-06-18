@@ -59,10 +59,10 @@ export class AppComponent implements OnInit {
     public readonly projectService: ProjectService,
     public readonly toastService: ToastService,
     public readonly loadingService: LoadingService
-  ) {}
+  ) { }
 
   viewMode: ViewMode = "home";
-  
+
   // Editor parameters
   playerEditorReturnMode: "table" | "modules" = "table";
   playerEditorRowIndex = 0;

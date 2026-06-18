@@ -36,7 +36,8 @@
     </div>
   </section>
 
-  <app-compdata-editor-page *ngSwitchCase="'compdata'" (showHome)="showLauncher()" (statusChanged)="setStatus($event)"></app-compdata-editor-page>
+  <app-compdata-editor-page *ngSwitchCase="'compdata'" (showHome)="showLauncher()"
+    (statusChanged)="setStatus($event)"></app-compdata-editor-page>
 
   <section class="launcher-screen" *ngSwitchCase="'launcher'">
     <header class="screen-header">
@@ -61,7 +62,8 @@
         </button>
         <button type="button" class="choice-card" [disabled]="!canUseModules" (click)="openModulesWorkspace()">
           <span class="choice-title">Modules</span>
-          <span class="choice-meta">{{ playersCount }} players / {{ teamsCount }} teams / {{ leaguesCount }} leagues</span>
+          <span class="choice-meta">{{ playersCount }} players / {{ teamsCount }} teams / {{ leaguesCount }}
+            leagues</span>
         </button>
       </div>
 
@@ -98,41 +100,35 @@
     </footer>
   </section>
 
-  <app-table-workspace *ngSwitchCase="'table'" [project]="project" 
-    (showHome)="showLauncher()" 
-    (showModules)="openModulesWorkspace()" 
-    (openPlayer)="openPlayerFromTable($event)" 
+  <app-table-workspace *ngSwitchCase="'table'" [project]="project" (showHome)="showLauncher()"
+    (showModules)="openModulesWorkspace()" (openPlayer)="openPlayerFromTable($event)"
     (statusChanged)="setStatus($event)">
   </app-table-workspace>
 
-  <app-modules-workspace *ngSwitchCase="'modules'" class="modules-screen" [project]="project" 
-    (showHome)="showLauncher()" 
-    (showTable)="openTableWorkspace()" 
-    (openPlayer)="openPlayerFromModule($event)" 
-    (openTeam)="openTeamFromModule($event)" 
-    (openLeague)="openLeagueFromModule($event)" 
-    (saveRequest)="saveProject()" 
+  <app-modules-workspace *ngSwitchCase="'modules'" class="modules-screen" [project]="project"
+    (showHome)="showLauncher()" (showTable)="openTableWorkspace()" (openPlayer)="openPlayerFromModule($event)"
+    (openTeam)="openTeamFromModule($event)" (openLeague)="openLeagueFromModule($event)" (saveRequest)="saveProject()"
     (statusChanged)="setStatus($event)">
   </app-modules-workspace>
 
   <section class="editor-screen" *ngSwitchCase="'playerEditor'">
     <app-player-editor-page *ngIf="project as loadedProject" [project]="loadedProject" [rowIndex]="playerEditorRowIndex"
-      [isNew]="playerEditorIsNew"
-      [canSaveDatabase]="canSaveDatabase" (closeEditor)="closePlayerEditor()" (applied)="onPlayerEditorApplied($event)"
+      [isNew]="playerEditorIsNew" [canSaveDatabase]="canSaveDatabase" (closeEditor)="closePlayerEditor()"
+      (applied)="onPlayerEditorApplied($event)"
       (appliedAndSave)="onPlayerEditorAppliedAndSave($event)"></app-player-editor-page>
   </section>
 
   <section class="editor-screen" *ngSwitchCase="'teamEditor'">
     <app-team-editor-page *ngIf="project as loadedProject" [project]="loadedProject" [rowIndex]="teamEditorRowIndex"
-      [isNew]="teamEditorIsNew"
-      [canSaveDatabase]="canSaveDatabase" (closeEditor)="closeTeamEditor()" (applied)="onTeamEditorApplied($event)"
+      [isNew]="teamEditorIsNew" [canSaveDatabase]="canSaveDatabase" (closeEditor)="closeTeamEditor()"
+      (applied)="onTeamEditorApplied($event)"
       (appliedAndSave)="onTeamEditorAppliedAndSave($event)"></app-team-editor-page>
   </section>
 
   <section class="editor-screen" *ngSwitchCase="'leagueEditor'">
     <app-league-editor-page *ngIf="project as loadedProject" [project]="loadedProject" [rowIndex]="leagueEditorRowIndex"
-      [isNew]="leagueEditorIsNew"
-      [canSaveDatabase]="canSaveDatabase" (closeEditor)="closeLeagueEditor()" (applied)="onLeagueEditorApplied($event)"
+      [isNew]="leagueEditorIsNew" [canSaveDatabase]="canSaveDatabase" (closeEditor)="closeLeagueEditor()"
+      (applied)="onLeagueEditorApplied($event)"
       (appliedAndSave)="onLeagueEditorAppliedAndSave($event)"></app-league-editor-page>
   </section>
 </ng-container>
@@ -152,6 +148,7 @@
     <div class="loading-progress" *ngIf="loadingService.percent !== undefined">
       <div class="loading-progress-bar" [style.width.%]="loadingService.percent"></div>
     </div>
-    <small *ngIf="loadingService.percent !== undefined">{{ loadingService.percent }}% {{ loadingService.progressLabel }}</small>
+    <small *ngIf="loadingService.percent !== undefined">{{ loadingService.percent }}% {{ loadingService.progressLabel
+      }}</small>
   </div>
 </div>
