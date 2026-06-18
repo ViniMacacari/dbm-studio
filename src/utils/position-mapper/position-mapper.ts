@@ -1,5 +1,9 @@
 export const positionInformation: { name: string, id: number }[] = [
     {
+        name: 'N/D',
+        id: -1
+    },
+    {
         name: 'GK',
         id: 0
     },
