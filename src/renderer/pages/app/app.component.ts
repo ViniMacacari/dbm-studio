@@ -63,7 +63,6 @@ export class AppComponent implements OnInit {
 
   viewMode: ViewMode = "home";
 
-  // Editor parameters
   playerEditorReturnMode: "table" | "modules" = "table";
   playerEditorRowIndex = 0;
   playerEditorIsNew = false;
@@ -72,7 +71,6 @@ export class AppComponent implements OnInit {
   leagueEditorRowIndex = 0;
   leagueEditorIsNew = false;
 
-  // Visual dependency Modal visibility state
   visualDependencyModalVisible = false;
 
   ngOnInit(): void {
