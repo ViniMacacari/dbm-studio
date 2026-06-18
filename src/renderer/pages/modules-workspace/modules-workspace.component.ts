@@ -34,6 +34,7 @@ export class ModulesWorkspaceComponent implements OnInit {
   playerSearchTerm = "";
   playerSearchResults: PlayerSearchResult[] = [];
   playerMinifaces: Record<string, { dataUrl: string; source: string }> = {};
+  teamCrests: Record<string, { dataUrl: string; source: string }> = {};
 
   // Team search state
   teamSearchTerm = "";
@@ -233,6 +234,32 @@ export class ModulesWorkspaceComponent implements OnInit {
     );
     const suffix = this.transferSearchTerm.trim() ? ` for "${this.transferSearchTerm.trim()}"` : "";
     this.statusChanged.emit(`${this.transferSearchResults.length} transfer result(s)${suffix}`);
+    void this.loadTransferImages(this.transferSearchResults);
+  }
+
+  async loadTransferImages(results: TransferSearchResult[]): Promise<void> {
+    const playerIdsToLoad = results.map(r => r.playerId).filter(id => !this.playerMinifaces[id]);
+    const teamIdsToLoad = results.map(r => r.teamId).filter(id => !this.teamCrests[id]);
+
+    const playerPromises = playerIdsToLoad.map(async (playerId) => {
+      try {
+        const res = await window.dbmaster.getPlayerMiniface(playerId);
+        this.playerMinifaces[playerId] = res;
+      } catch {
+        this.playerMinifaces[playerId] = { dataUrl: "", source: "missing" };
+      }
+    });
+
+    const teamPromises = teamIdsToLoad.map(async (teamId) => {
+      try {
+        const res = await window.dbmaster.getTeamCrest(teamId);
+        this.teamCrests[teamId] = res;
+      } catch {
+        this.teamCrests[teamId] = { dataUrl: "", source: "missing" };
+      }
+    });
+
+    await Promise.all([...playerPromises, ...teamPromises]);
   }
 
   transferDestination(player: TransferSearchResult): string {

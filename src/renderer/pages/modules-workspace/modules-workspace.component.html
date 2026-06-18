@@ -219,16 +219,26 @@
       <div class="transfer-results" *ngIf="transferSearchResults.length > 0; else noTransferResults">
         <article class="transfer-card" *ngFor="let player of transferSearchResults; trackBy: trackByTransferResult">
           <div class="transfer-player">
-            <div class="result-main">
-              <strong>{{ player.displayName }}</strong>
-              <span>ID {{ player.playerId }}</span>
+            <div class="transfer-avatar-group">
+              <div class="transfer-miniface" [class.placeholder]="playerMinifaces[player.playerId]?.source !== 'player'">
+                <img *ngIf="playerMinifaces[player.playerId]?.dataUrl as dataUrl" [src]="dataUrl" [alt]="player.displayName" />
+              </div>
+              <div class="transfer-crest" [class.placeholder]="teamCrests[player.teamId]?.source !== 'team'">
+                <img *ngIf="teamCrests[player.teamId]?.dataUrl as crestUrl" [src]="crestUrl" [alt]="player.teamName" />
+              </div>
             </div>
-            <div class="result-meta">
-              <span>{{ player.teamName }}</span>
-              <span *ngIf="player.overall">OVR {{ player.overall }}</span>
-              <span *ngIf="player.potential">POT {{ player.potential }}</span>
-              <span *ngIf="player.age !== undefined">{{ player.age }} years</span>
-              <span *ngIf="player.nationalityName">{{ player.nationalityName }}</span>
+            <div class="transfer-info">
+              <div class="result-main">
+                <strong>{{ player.displayName }}</strong>
+                <span>ID {{ player.playerId }}</span>
+              </div>
+              <div class="result-meta">
+                <span>{{ player.teamName }}</span>
+                <span *ngIf="player.overall">OVR {{ player.overall }}</span>
+                <span *ngIf="player.potential">POT {{ player.potential }}</span>
+                <span *ngIf="player.age !== undefined">{{ player.age }} years</span>
+                <span *ngIf="player.nationalityName">{{ player.nationalityName }}</span>
+              </div>
             </div>
           </div>
           <app-search-list class="transfer-destination" [options]="teamOptions"
