@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from "@angular/core";
+import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, ElementRef, HostListener } from "@angular/core";
 
 export interface InputListOption {
   value: string;
@@ -18,7 +18,6 @@ export interface InputListOption {
         (click)="toggleOpen($event)" 
         tabindex="0"
         (keydown)="onKeydown($event)"
-        (blur)="onBlur()"
       >
         <span class="trigger-value">{{ displayLabel || placeholder }}</span>
         <span class="trigger-arrow"></span>
@@ -48,6 +47,8 @@ export class InputListComponent implements OnChanges {
   displayLabel = "";
   isOpen = false;
 
+  constructor(private readonly elementRef: ElementRef) {}
+
   ngOnChanges(changes: SimpleChanges): void {
     if (changes["value"] || changes["options"]) {
       this.syncDisplayLabel();
@@ -70,10 +71,11 @@ export class InputListComponent implements OnChanges {
     }
   }
 
-  onBlur(): void {
-    setTimeout(() => {
+  @HostListener("document:click", ["$event"])
+  onDocumentClick(event: MouseEvent): void {
+    if (!this.elementRef.nativeElement.contains(event.target)) {
       this.isOpen = false;
-    }, 150);
+    }
   }
 
   selectOption(option: InputListOption, event: MouseEvent): void {
