@@ -28,7 +28,22 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
   @Output() saveRequest = new EventEmitter<void>();
   @Output() statusChanged = new EventEmitter<string>();
 
-  activeModule: "players" | "teams" | "leagues" | "transfers" = "players";
+  private _activeModule: "players" | "teams" | "leagues" | "transfers" = "players";
+  private initialized = false;
+
+  @Input()
+  get activeModule(): "players" | "teams" | "leagues" | "transfers" {
+    return this._activeModule;
+  }
+  set activeModule(val: "players" | "teams" | "leagues" | "transfers") {
+    const changed = this._activeModule !== val;
+    this._activeModule = val;
+    if (changed && this.initialized) {
+      void this.loadActiveModule();
+    }
+  }
+
+  @Output() activeModuleChange = new EventEmitter<"players" | "teams" | "leagues" | "transfers">();
 
   // Player search state
   playerSearchTerm = "";
@@ -72,6 +87,7 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
   ) {}
 
   async ngOnInit(): Promise<void> {
+    this.initialized = true;
     await this.loadActiveModule();
   }
 
@@ -153,7 +169,7 @@ export class ModulesWorkspaceComponent implements OnInit, OnDestroy {
 
   async selectModule(module: "players" | "teams" | "leagues" | "transfers"): Promise<void> {
     this.activeModule = module;
-    await this.loadActiveModule();
+    this.activeModuleChange.emit(module);
   }
 
   async loadActiveModule(): Promise<void> {

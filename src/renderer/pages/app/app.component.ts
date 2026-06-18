@@ -63,6 +63,8 @@ export class AppComponent implements OnInit {
 
   viewMode: ViewMode = "home";
 
+  activeModule: "players" | "teams" | "leagues" | "transfers" = "players";
+
   playerEditorReturnMode: "table" | "modules" = "table";
   playerEditorRowIndex = 0;
   playerEditorIsNew = false;
@@ -218,8 +220,8 @@ export class AppComponent implements OnInit {
       return;
     }
     this.viewMode = "modules";
-    if (module && this.modulesWorkspace) {
-      await this.modulesWorkspace.selectModule(module);
+    if (module) {
+      this.activeModule = module;
     }
   }
 
@@ -258,12 +260,12 @@ export class AppComponent implements OnInit {
 
   closeTeamEditor(): void {
     this.viewMode = "modules";
-    void this.modulesWorkspace?.selectModule("teams");
+    this.activeModule = "teams";
   }
 
   closeLeagueEditor(): void {
     this.viewMode = "modules";
-    void this.modulesWorkspace?.selectModule("leagues");
+    this.activeModule = "leagues";
   }
 
   onPlayerEditorApplied(message: string): void {

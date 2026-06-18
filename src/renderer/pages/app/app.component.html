@@ -106,6 +106,7 @@
   </app-table-workspace>
 
   <app-modules-workspace *ngSwitchCase="'modules'" class="modules-screen" [project]="project"
+    [(activeModule)]="activeModule"
     (showHome)="showLauncher()" (showTable)="openTableWorkspace()" (openPlayer)="openPlayerFromModule($event)"
     (openTeam)="openTeamFromModule($event)" (openLeague)="openLeagueFromModule($event)" (saveRequest)="saveProject()"
     (statusChanged)="setStatus($event)">
