@@ -35,6 +35,22 @@ export class AppConfig {
       targetDirectory: "competitions",
       stripRootDirectories: ["competitions", "competition"],
       expectedExtension: ".png"
+    },
+    {
+      id: "hairs",
+      label: "Player hairs",
+      fileName: "hairs.zip",
+      targetDirectory: "hairs",
+      stripRootDirectories: ["hair", "hairs"],
+      expectedExtension: ".png"
+    },
+    {
+      id: "beards",
+      label: "Player beards",
+      fileName: "beards.zip",
+      targetDirectory: "beards",
+      stripRootDirectories: ["beard", "beards"],
+      expectedExtension: ".png"
     }
   ];
 
