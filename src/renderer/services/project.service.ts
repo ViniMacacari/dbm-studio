@@ -65,6 +65,12 @@ export class ProjectService {
       : `${project.title} loaded`;
   }
 
+  unloadProject(): void {
+    this.project = undefined;
+    this.project$.next(undefined);
+    this.statusLine = "Ready";
+  }
+
   async openDatabase(): Promise<void> {
     await this.guarded(async () => {
       const result = await this.api.openDatabase();

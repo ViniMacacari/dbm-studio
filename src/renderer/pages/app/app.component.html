@@ -49,6 +49,7 @@
         </div>
       </div>
       <div class="screen-actions">
+        <button type="button" (click)="onCloseProjectClick()">Close</button>
         <button type="button" (click)="openDatabase()">DB</button>
         <button type="button" [disabled]="!canSaveDatabase" (click)="saveProject()">Save</button>
       </div>
@@ -135,6 +136,23 @@
 </ng-container>
 
 <app-visual-dependency-modal [(visible)]="visualDependencyModalVisible"></app-visual-dependency-modal>
+
+<div class="dependency-modal-backdrop" *ngIf="closeConfirmModalVisible">
+  <section class="dependency-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-close-title">
+    <div class="dependency-modal-header">
+      <div>
+        <span class="module-kicker">Warning</span>
+        <h2 id="confirm-close-title">Unsaved changes</h2>
+      </div>
+    </div>
+    <p>You have unsaved changes in the project. Closing now will discard these changes and they will be lost.</p>
+    <div class="dependency-actions">
+      <button type="button" (click)="cancelClose()">Cancel</button>
+      <button type="button" (click)="closeWithoutSaving()">Discard & Close</button>
+      <button type="button" class="primary-action" (click)="closeAndSave()">Save & Close</button>
+    </div>
+  </section>
+</div>
 
 <div class="toast" [class.hidden]="!toastService.visible" [class.warn]="toastService.tone === 'warn'"
   [class.error]="toastService.tone === 'error'">

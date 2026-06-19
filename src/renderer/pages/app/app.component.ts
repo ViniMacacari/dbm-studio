@@ -11,6 +11,7 @@ import { TransferService } from "../../services/transfer.service";
 import { ToastService, ToastTone } from "../../services/toast.service";
 import { LoadingService } from "../../services/loading.service";
 import { ProjectService } from "../../services/project.service";
+import { UnsavedChangesService } from "../../services/unsaved-changes.service";
 import { LeagueEditorPageComponent } from "../league-editor/league-editor-page.component";
 import { PlayerEditorPageComponent } from "../player-editor/player-editor-page.component";
 import { TeamEditorPageComponent } from "../team-editor/team-editor-page.component";
@@ -58,7 +59,8 @@ export class AppComponent implements OnInit {
     private readonly transfers: TransferService,
     public readonly projectService: ProjectService,
     public readonly toastService: ToastService,
-    public readonly loadingService: LoadingService
+    public readonly loadingService: LoadingService,
+    private readonly unsavedChanges: UnsavedChangesService
   ) { }
 
   viewMode: ViewMode = "home";
@@ -74,6 +76,7 @@ export class AppComponent implements OnInit {
   leagueEditorIsNew = false;
 
   visualDependencyModalVisible = false;
+  closeConfirmModalVisible = false;
 
   ngOnInit(): void {
     void this.checkVisualDependencyStatus();
@@ -169,6 +172,36 @@ export class AppComponent implements OnInit {
 
   async saveProject(): Promise<void> {
     await this.projectService.saveProject();
+  }
+
+  onCloseProjectClick(): void {
+    if (this.unsavedChanges.hasUnsavedChanges()) {
+      this.closeConfirmModalVisible = true;
+    } else {
+      this.performCloseProject();
+    }
+  }
+
+  cancelClose(): void {
+    this.closeConfirmModalVisible = false;
+  }
+
+  closeWithoutSaving(): void {
+    this.closeConfirmModalVisible = false;
+    this.projectService.unloadProject();
+    this.viewMode = "home";
+  }
+
+  async closeAndSave(): Promise<void> {
+    this.closeConfirmModalVisible = false;
+    await this.saveProject();
+    this.projectService.unloadProject();
+    this.viewMode = "home";
+  }
+
+  private performCloseProject(): void {
+    this.projectService.unloadProject();
+    this.viewMode = "home";
   }
 
   async exportAll(): Promise<void> {
