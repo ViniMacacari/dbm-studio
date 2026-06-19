@@ -159,6 +159,8 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
       return;
     }
 
+    this.importModalVisible = false;
+
     const setField = (column: string, val: string) => {
       let field = this.draft!.identityFields.find(f => f.column.toLowerCase() === column.toLowerCase());
       if (!field) {
