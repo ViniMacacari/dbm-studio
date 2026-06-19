@@ -10,11 +10,12 @@ import { NationService } from "../../services/nation.service";
 import { PlayerEditorService } from "../../services/player-editor.service";
 import type { PlayerEditorDraft, PlayerEditorFieldDraft } from "../../services/player-editor.service";
 import { positionInformation } from "../../../utils/position-mapper/position-mapper";
+import { VisualAssetPickerComponent } from "../../components/visual-asset-picker/visual-asset-picker.component";
 
 @Component({
   selector: "app-player-editor-page",
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchListComponent, InputListComponent],
+  imports: [CommonModule, FormsModule, SearchListComponent, InputListComponent, VisualAssetPickerComponent],
   templateUrl: "./player-editor-page.component.html",
   styleUrl: "./player-editor-page.component.scss"
 })
@@ -36,6 +37,9 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
   lastAppliedTone: "info" | "error" = "info";
   minifaceDataUrl = "";
   minifaceSource: "player" | "generic" | "missing" = "missing";
+  pickerVisible = false;
+  pickerType: "hairs" | "beards" = "hairs";
+  pickerTargetField?: PlayerEditorFieldDraft;
   private readonly api: DbMasterApi = window.dbmaster;
   private minifaceRequestId = 0;
 
@@ -133,6 +137,18 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
       }
       this.minifaceDataUrl = "";
       this.minifaceSource = "missing";
+    }
+  }
+
+  openPicker(type: "hairs" | "beards", field: PlayerEditorFieldDraft): void {
+    this.pickerType = type;
+    this.pickerTargetField = field;
+    this.pickerVisible = true;
+  }
+
+  onPickerSelected(assetId: string): void {
+    if (this.pickerTargetField) {
+      this.pickerTargetField.value = assetId;
     }
   }
 

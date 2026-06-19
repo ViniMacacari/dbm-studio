@@ -78,20 +78,32 @@
     <section class="editor-panel" *ngFor="let section of sections; trackBy: trackBySection"
       [class.hidden]="activeTab !== section.id">
       <div class="editor-grid">
-        <label class="field-block" *ngFor="let field of section.fields; trackBy: trackByField">
-          <span>{{ field.label }}</span>
-          <app-search-list *ngIf="field.inputType === 'nation'; else sectionInput" [options]="nationOptions"
-            [(value)]="field.value" [disabled]="!!field.readonly" placeholder="Search country"></app-search-list>
-          <ng-template #sectionInput>
-            <app-input-list *ngIf="field.inputType === 'position'; else defaultSectionInput" [options]="positionOptions"
-              [(value)]="field.value" [disabled]="!!field.readonly" placeholder="Select position"></app-input-list>
-            <ng-template #defaultSectionInput>
-              <input [type]="field.inputType" [(ngModel)]="field.value" [readonly]="field.readonly" [min]="field.min"
-                [max]="field.max" />
+        <ng-container *ngFor="let field of section.fields; trackBy: trackByField">
+          <label class="field-block" *ngIf="!(player.hasHighQualityHead && (field.column === 'hairtypecode' || field.column === 'facialhairtypecode'))">
+            <span>{{ field.label }}</span>
+            <app-search-list *ngIf="field.inputType === 'nation'; else sectionInput" [options]="nationOptions"
+              [(value)]="field.value" [disabled]="!!field.readonly" placeholder="Search country"></app-search-list>
+            <ng-template #sectionInput>
+              <app-input-list *ngIf="field.inputType === 'position'; else defaultSectionInput" [options]="positionOptions"
+                [(value)]="field.value" [disabled]="!!field.readonly" placeholder="Select position"></app-input-list>
+              <ng-template #defaultSectionInput>
+                <div class="input-with-action" *ngIf="field.column === 'hairtypecode' || field.column === 'facialhairtypecode'; else standardInput">
+                  <input [type]="field.inputType" [(ngModel)]="field.value" [readonly]="field.readonly" [min]="field.min"
+                    [max]="field.max" />
+                  <button type="button" class="magnifier-action-btn" title="Search visual style" 
+                    (click)="openPicker(field.column === 'hairtypecode' ? 'hairs' : 'beards', field)">
+                    <span class="magnifier-icon">🔍</span>
+                  </button>
+                </div>
+                <ng-template #standardInput>
+                  <input [type]="field.inputType" [(ngModel)]="field.value" [readonly]="field.readonly" [min]="field.min"
+                    [max]="field.max" />
+                </ng-template>
+              </ng-template>
             </ng-template>
-          </ng-template>
-          <small *ngIf="field.relation">{{ field.relation }}</small>
-        </label>
+            <small *ngIf="field.relation">{{ field.relation }}</small>
+          </label>
+        </ng-container>
       </div>
     </section>
   </div>
@@ -99,6 +111,8 @@
   <div class="editor-footer" [class.error]="lastAppliedTone === 'error'">
     <span>{{ lastApplied }}</span>
   </div>
+
+  <app-visual-asset-picker [(visible)]="pickerVisible" [type]="pickerType" [currentValue]="pickerTargetField?.value ?? ''" (selected)="onPickerSelected($event)"></app-visual-asset-picker>
 </section>
 
 <ng-template #missingPlayer>

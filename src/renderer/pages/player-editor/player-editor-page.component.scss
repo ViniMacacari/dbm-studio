@@ -42,3 +42,40 @@
     grid-row: 2;
   }
 }
+
+.input-with-action {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+}
+
+.input-with-action input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.magnifier-action-btn {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.magnifier-action-btn:hover {
+  border-color: var(--primary);
+  background: #f4fdf9;
+}
+
+.magnifier-icon {
+  font-size: 14px;
+}
+

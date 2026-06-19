@@ -1,0 +1,44 @@
+<div class="asset-picker-backdrop" *ngIf="visible">
+  <section class="asset-picker-modal" role="dialog" aria-modal="true" aria-labelledby="asset-picker-title">
+    <header class="asset-picker-header">
+      <div>
+        <span class="module-kicker">Catalog</span>
+        <h3 id="asset-picker-title">Select {{ type === 'hairs' ? 'Hair' : 'Beard' }} Style</h3>
+      </div>
+      <button type="button" class="close-x-btn" (click)="close()">&times;</button>
+    </header>
+
+    <div class="asset-picker-search-bar">
+      <input type="search" placeholder="Search by style ID..." [(ngModel)]="searchTerm" (input)="onSearchChange()" />
+    </div>
+
+    <div class="asset-picker-body">
+      <div class="asset-grid" *ngIf="filteredIds.length > 0; else noAssets">
+        <button type="button" class="asset-card" 
+          *ngFor="let id of filteredIds.slice(0, visibleCount); trackBy: trackById"
+          [class.selected]="id === currentValue"
+          (click)="selectAsset(id)">
+          <div class="asset-preview">
+            <img *ngIf="loadedThumbnails[id] && loadedThumbnails[id] !== 'loading'" [src]="loadedThumbnails[id]" [alt]="'Asset ' + id" />
+            <div class="asset-spinner" *ngIf="loadedThumbnails[id] === 'loading'"></div>
+          </div>
+          <span class="asset-id">ID {{ id }}</span>
+        </button>
+      </div>
+
+      <ng-template #noAssets>
+        <div class="empty-state">
+          <strong>No matching styles found.</strong>
+        </div>
+      </ng-template>
+
+      <div class="asset-load-more" *ngIf="filteredIds.length > visibleCount">
+        <button type="button" class="load-more-action-btn" (click)="loadMore()">Load More</button>
+      </div>
+    </div>
+
+    <div class="asset-picker-footer">
+      <button type="button" (click)="close()">Cancel</button>
+    </div>
+  </section>
+</div>
