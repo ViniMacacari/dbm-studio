@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges } from "@angular/core";
+import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../../../shared/types";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
@@ -47,8 +47,9 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
 
   constructor(
     private readonly playerEditor: PlayerEditorService,
-    private readonly nations: NationService
-  ) {}
+    private readonly nations: NationService,
+    private readonly changeDetector: ChangeDetectorRef
+  ) { }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes["project"] || changes["rowIndex"] || changes["isNew"]) {
@@ -155,99 +156,111 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
   }
 
   onPlayerImported(payload: ImportedPlayerPayload): void {
+    this.importModalVisible = false;
+
     if (!this.draft) {
       return;
     }
 
-    this.importModalVisible = false;
+    try {
+      const setField = (column: string, val: string) => {
+        let field = this.draft!.identityFields.find(f => f.column.toLowerCase() === column.toLowerCase());
+        if (!field) {
+          for (const sec of this.draft!.sections) {
+            field = sec.fields.find(f => f.column.toLowerCase() === column.toLowerCase());
+            if (field) {
+              break;
+            }
+          }
+        }
+        if (field) {
+          field.value = val;
+        }
+      };
 
-    const setField = (column: string, val: string) => {
-      let field = this.draft!.identityFields.find(f => f.column.toLowerCase() === column.toLowerCase());
-      if (!field) {
-        for (const sec of this.draft!.sections) {
-          field = sec.fields.find(f => f.column.toLowerCase() === column.toLowerCase());
-          if (field) {
-            break;
+      // 1. Names
+      const fullName = payload.profile.name ?? payload.overall.playerName ?? "";
+      const parts = fullName.trim().split(/\s+/);
+      let first = fullName;
+      let last = "";
+      if (parts.length > 1) {
+        first = parts.slice(0, -1).join(" ");
+        last = parts[parts.length - 1];
+      }
+      this.draft.names.firstname = first;
+      this.draft.names.surname = last;
+      this.draft.names.playerjerseyname = last || fullName;
+      this.draft.names.commonname = fullName;
+      this.draft.displayName = fullName;
+
+      // 2. Age / Birthdate
+      if (payload.profile.dateOfBirth) {
+        this.draft.birthDateIso = payload.profile.dateOfBirth;
+        setField("birthdate", payload.profile.dateOfBirth);
+      }
+      if (payload.profile.age !== null && payload.profile.age !== undefined) {
+        this.draft.age = payload.profile.age;
+      }
+
+      // 3. Height
+      if (payload.profile.height) {
+        setField("height", payload.profile.height.toString());
+      }
+
+      // 4. Nationality
+      if (payload.profile.citizenship && payload.profile.citizenship.length > 0) {
+        const natName = payload.profile.citizenship[0];
+        if (natName) {
+          const natId = this.findNationId(natName);
+          if (natId) {
+            setField("nationality", natId);
+            this.draft.nationalityName = natName;
           }
         }
       }
-      if (field) {
-        field.value = val;
-      }
-    };
 
-    // 1. Names
-    const fullName = payload.profile.name ?? payload.overall.playerName;
-    const parts = fullName.trim().split(/\s+/);
-    let first = fullName;
-    let last = "";
-    if (parts.length > 1) {
-      first = parts.slice(0, -1).join(" ");
-      last = parts[parts.length - 1];
-    }
-    this.draft.names.firstname = first;
-    this.draft.names.surname = last;
-    this.draft.names.playerjerseyname = last || fullName;
-    this.draft.names.commonname = fullName;
-    this.draft.displayName = fullName;
-
-    // 2. Age / Birthdate
-    if (payload.profile.dateOfBirth) {
-      this.draft.birthDateIso = payload.profile.dateOfBirth;
-      setField("birthdate", payload.profile.dateOfBirth);
-    }
-    if (payload.profile.age !== null && payload.profile.age !== undefined) {
-      this.draft.age = payload.profile.age;
-    }
-
-    // 3. Height
-    if (payload.profile.height) {
-      setField("height", payload.profile.height.toString());
-    }
-
-    // 4. Nationality
-    if (payload.profile.citizenship && payload.profile.citizenship.length > 0) {
-      const natName = payload.profile.citizenship[0];
-      const natId = this.findNationId(natName);
-      if (natId) {
-        setField("nationality", natId);
-        this.draft.nationalityName = natName;
-      }
-    }
-
-    // 5. Preferred Foot
-    if (payload.profile.foot) {
-      const f = payload.profile.foot.toLowerCase();
-      if (f.includes("left")) {
-        setField("preferredfoot", "1");
-      } else if (f.includes("right")) {
-        setField("preferredfoot", "2");
-      }
-    }
-
-    // 6. Primary Position
-    if (payload.profile.position && payload.profile.position.main) {
-      const fifaPos = transfermarktPositionToFifaPosition(payload.profile.position.main);
-      if (fifaPos) {
-        const posId = positionNameToId(fifaPos);
-        if (posId !== -1) {
-          setField("preferredposition1", posId.toString());
+      // 5. Preferred Foot
+      if (payload.profile.foot) {
+        const f = payload.profile.foot.toLowerCase();
+        if (f.includes("left")) {
+          setField("preferredfoot", "1");
+        } else if (f.includes("right")) {
+          setField("preferredfoot", "2");
         }
       }
+
+      // 6. Primary Position
+      if (payload.profile.position && payload.profile.position.main) {
+        const fifaPos = transfermarktPositionToFifaPosition(payload.profile.position.main);
+        if (fifaPos) {
+          const posId = positionNameToId(fifaPos);
+          if (posId !== -1) {
+            setField("preferredposition1", posId.toString());
+          }
+        }
+      }
+
+      // 7. Overall / Attributes
+      if (payload.overall.playerFields) {
+        Object.entries(payload.overall.playerFields).forEach(([col, val]) => {
+          if (val !== undefined && val !== null) {
+            setField(col, val.toString());
+          }
+        });
+      }
+
+      // 8. Visual Head / Miniface update
+      void this.loadMiniface(this.draft.playerId);
+
+      this.lastApplied = `Successfully imported ${fullName} from Transfermarkt.`;
+      this.lastAppliedTone = "info";
+    } catch (err) {
+      console.error("Error applying imported player data:", err);
+      this.lastApplied = `Import completed with warning: ${err instanceof Error ? err.message : String(err)}`;
+      this.lastAppliedTone = "error";
+    } finally {
+      this.changeDetector.detectChanges();
     }
-
-    // 7. Overall / Attributes
-    if (payload.overall.playerFields) {
-      Object.entries(payload.overall.playerFields).forEach(([col, val]) => {
-        setField(col, val.toString());
-      });
-    }
-
-    // 8. Visual Head / Miniface update
-    void this.loadMiniface(this.draft.playerId);
-
-    this.lastApplied = `Successfully imported ${fullName} from Transfermarkt.`;
-    this.lastAppliedTone = "info";
   }
 
   private findNationId(nationalityName: string): string | undefined {

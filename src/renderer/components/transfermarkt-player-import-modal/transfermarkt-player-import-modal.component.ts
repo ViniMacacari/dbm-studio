@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { Component, EventEmitter, Input, Output } from "@angular/core";
+import { Component, EventEmitter, Input, Output, NgZone, ChangeDetectorRef } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { PlayerProfileResponse, PlayerSearchResult } from "../../../utils/transfermarkt-services/transfermarkt";
 import { LoadingService } from "../../services/loading.service";
@@ -29,7 +29,9 @@ export class TransfermarktPlayerImportModalComponent {
 
   constructor(
     private readonly loadingService: LoadingService,
-    private readonly getPlayerOverallService: GetPlayerOverallService
+    private readonly getPlayerOverallService: GetPlayerOverallService,
+    private readonly ngZone: NgZone,
+    private readonly changeDetector: ChangeDetectorRef
   ) {}
 
   onSubmit(): void {
@@ -49,21 +51,27 @@ export class TransfermarktPlayerImportModalComponent {
     this.searching = true;
     this.error = "";
     this.results = [];
+    this.changeDetector.detectChanges();
     try {
       const response = await window.dbmaster.searchTransfermarktPlayers(query);
-      if (response.error) {
-        this.error = response.error;
-      } else {
-        this.results = response.results ?? [];
-        if (this.results.length === 0) {
-          this.error = "No players found matching your search.";
+      this.ngZone.run(() => {
+        if (response.error) {
+          this.error = response.error;
+        } else {
+          this.results = response.results ?? [];
+          if (this.results.length === 0) {
+            this.error = "No players found matching your search.";
+          }
         }
-      }
+      });
     } catch (err) {
       console.error(err);
-      this.error = err instanceof Error ? err.message : String(err);
+      this.ngZone.run(() => {
+        this.error = err instanceof Error ? err.message : String(err);
+      });
     } finally {
       this.searching = false;
+      this.changeDetector.detectChanges();
     }
   }
 
@@ -75,6 +83,7 @@ export class TransfermarktPlayerImportModalComponent {
 
   async importPlayerById(playerId: string | number): Promise<void> {
     this.error = "";
+    this.changeDetector.detectChanges();
     this.loadingService.show("Importing Player", "Fetching and calculating player overall details from Transfermarkt...");
     try {
       const [overall, profileResponse] = await Promise.all([
@@ -86,16 +95,21 @@ export class TransfermarktPlayerImportModalComponent {
         throw new Error(profileResponse.error ?? `Could not retrieve profile for player ID ${playerId}.`);
       }
 
-      this.imported.emit({
-        overall,
-        profile: profileResponse.result
+      this.ngZone.run(() => {
+        this.imported.emit({
+          overall,
+          profile: profileResponse.result!
+        });
+        this.onClose();
       });
-      this.onClose();
     } catch (err) {
       console.error(err);
-      this.error = err instanceof Error ? err.message : String(err);
+      this.ngZone.run(() => {
+        this.error = err instanceof Error ? err.message : String(err);
+      });
     } finally {
       this.loadingService.hide();
+      this.changeDetector.detectChanges();
     }
   }
 
