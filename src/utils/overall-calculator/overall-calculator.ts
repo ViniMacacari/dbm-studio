@@ -23,6 +23,9 @@ export interface OverallCalculatorConfig {
     minimumOverall: number;
     maximumRawOverall: number;
     midTierOverallBoost: number;
+    goalkeeperExperienceStartAge: number;
+    goalkeeperExperienceMaximumBoost: number;
+    goalkeeperExperienceRampYears: number;
     marketValueFloor: number;
     marketValueCeiling: number;
     primeAge: number;
@@ -38,6 +41,7 @@ export interface OverallCalculatorConfig {
     teamRelativeWeight: number;
     leagueRelativeWeight: number;
     trophyWeight: number;
+    leagueStrengthWeight: number;
     relativeValueSpread: number;
     trophyHalfLifeYears: number;
     trophySaturation: number;
@@ -51,6 +55,9 @@ export const defaultOverallCalculatorConfig: Readonly<OverallCalculatorConfig> =
     minimumOverall: 45,
     maximumRawOverall: 96,
     midTierOverallBoost: 0.08,
+    goalkeeperExperienceStartAge: 31,
+    goalkeeperExperienceMaximumBoost: 0.11,
+    goalkeeperExperienceRampYears: 3,
     marketValueFloor: 50_000,
     marketValueCeiling: 180_000_000,
     primeAge: 27,
@@ -62,10 +69,11 @@ export const defaultOverallCalculatorConfig: Readonly<OverallCalculatorConfig> =
     clubCorrectionExponent: 0.08,
     minimumContextMultiplier: 0.65,
     maximumContextMultiplier: 1.55,
-    marketWeight: 0.72,
-    teamRelativeWeight: 0.1,
-    leagueRelativeWeight: 0.08,
-    trophyWeight: 0.1,
+    marketWeight: 0.48,
+    teamRelativeWeight: 0.04,
+    leagueRelativeWeight: 0.02,
+    trophyWeight: 0.06,
+    leagueStrengthWeight: 0.4,
     relativeValueSpread: 1.15,
     trophyHalfLifeYears: 6,
     trophySaturation: 8,
@@ -91,6 +99,8 @@ export interface OverallCalculationBreakdown {
     marketScore: number;
     abilityScore: number;
     calibratedAbilityScore: number;
+    positionExperienceBoost: number;
+    leagueStrengthScore?: number;
     teamRelativeScore?: number;
     leagueRelativeScore?: number;
     trophyScore?: number;
@@ -253,10 +263,10 @@ export class OverallCalculator {
             : Math.exp(-this.config.veteranValueDiscountPerYear * (age - this.config.primeAge));
         const ageAdjustedMarketValue = marketValue / ageMarketFactor;
         const leagueMarketFactor = leagueMeanMarketValue
-            ? Math.pow(this.config.leagueReferenceMeanMarketValue / leagueMeanMarketValue, this.config.leagueCorrectionExponent)
+            ? Math.pow(leagueMeanMarketValue / this.config.leagueReferenceMeanMarketValue, this.config.leagueCorrectionExponent)
             : 1;
         const clubMarketFactor = clubMeanMarketValue
-            ? Math.pow(this.config.clubReferenceMeanMarketValue / clubMeanMarketValue, this.config.clubCorrectionExponent)
+            ? Math.pow(clubMeanMarketValue / this.config.clubReferenceMeanMarketValue, this.config.clubCorrectionExponent)
             : 1;
         const contextMultiplier = this.clamp(
             leagueMarketFactor * clubMarketFactor,
@@ -281,19 +291,25 @@ export class OverallCalculator {
         const trophyScore = weightedTrophies === undefined
             ? undefined
             : 1 - Math.exp(-weightedTrophies / this.config.trophySaturation);
+        const leagueStrengthScore = leagueMeanMarketValue
+            ? this.logNormalize(leagueMeanMarketValue, this.config.marketValueFloor, this.config.marketValueCeiling)
+            : undefined;
 
         const abilityScore = this.weightedMean([
             { value: marketScore, weight: this.config.marketWeight },
             { value: teamRelativeScore, weight: this.config.teamRelativeWeight },
             { value: leagueRelativeScore, weight: this.config.leagueRelativeWeight },
-            { value: trophyScore, weight: this.config.trophyWeight }
+            { value: trophyScore, weight: this.config.trophyWeight },
+            { value: leagueStrengthScore, weight: this.config.leagueStrengthWeight }
         ]);
         const midTierBand = 64 * abilityScore ** 3 * (1 - abilityScore) ** 3;
-        const calibratedAbilityScore = this.clamp(
+        const curveAdjustedAbilityScore = this.clamp(
             abilityScore + this.config.midTierOverallBoost * midTierBand,
             0,
             1
         );
+        const positionExperienceBoost = this.positionExperienceBoost(position, age, curveAdjustedAbilityScore);
+        const calibratedAbilityScore = this.clamp(curveAdjustedAbilityScore + positionExperienceBoost, 0, 1);
         const rawOverall = this.clampInteger(
             this.config.minimumOverall
                 + calibratedAbilityScore * (this.config.maximumRawOverall - this.config.minimumOverall),
@@ -304,9 +320,7 @@ export class OverallCalculator {
         const clubStrength = clubMeanMarketValue
             ? this.logNormalize(clubMeanMarketValue, this.config.marketValueFloor, this.config.marketValueCeiling)
             : undefined;
-        const leagueStrength = leagueMeanMarketValue
-            ? this.logNormalize(leagueMeanMarketValue, this.config.marketValueFloor, this.config.marketValueCeiling)
-            : undefined;
+        const leagueStrength = leagueStrengthScore;
         const rankingScore = this.rankingReputationScore(market?.ranking);
         const reputationScore = this.weightedMean([
             { value: rankingScore ?? marketScore, weight: this.config.reputationMarketWeight },
@@ -348,6 +362,8 @@ export class OverallCalculator {
                 marketScore: this.round(marketScore, 4),
                 abilityScore: this.round(abilityScore, 4),
                 calibratedAbilityScore: this.round(calibratedAbilityScore, 4),
+                positionExperienceBoost: this.round(positionExperienceBoost, 4),
+                leagueStrengthScore: this.optionalRound(leagueStrengthScore),
                 teamRelativeScore: this.optionalRound(teamRelativeScore),
                 leagueRelativeScore: this.optionalRound(leagueRelativeScore),
                 trophyScore: this.optionalRound(trophyScore),
@@ -412,11 +428,23 @@ export class OverallCalculator {
         if (!Number.isFinite(this.config.midTierOverallBoost) || this.config.midTierOverallBoost < 0 || this.config.midTierOverallBoost > 0.25) {
             throw new Error("Overall calculator mid-tier boost is invalid.");
         }
+        if (
+            !Number.isFinite(this.config.goalkeeperExperienceStartAge)
+            || !Number.isFinite(this.config.goalkeeperExperienceMaximumBoost)
+            || !Number.isFinite(this.config.goalkeeperExperienceRampYears)
+            || this.config.goalkeeperExperienceStartAge < 18
+            || this.config.goalkeeperExperienceMaximumBoost < 0
+            || this.config.goalkeeperExperienceMaximumBoost > 0.2
+            || this.config.goalkeeperExperienceRampYears <= 0
+        ) {
+            throw new Error("Overall calculator goalkeeper experience configuration is invalid.");
+        }
         const weights = [
             this.config.marketWeight,
             this.config.teamRelativeWeight,
             this.config.leagueRelativeWeight,
             this.config.trophyWeight,
+            this.config.leagueStrengthWeight,
             this.config.reputationMarketWeight,
             this.config.reputationTrophyWeight,
             this.config.reputationClubWeight,
@@ -436,6 +464,16 @@ export class OverallCalculator {
             return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
         }
         return undefined;
+    }
+
+    private positionExperienceBoost(position: Position, age: number, abilityScore: number): number {
+        if (position !== Position.GK || age <= this.config.goalkeeperExperienceStartAge) {
+            return 0;
+        }
+        const experienceYears = age - this.config.goalkeeperExperienceStartAge;
+        const longevity = 1 - Math.exp(-experienceYears / this.config.goalkeeperExperienceRampYears);
+        const highRatingDamping = Math.min(1, (1 - abilityScore) / 0.5);
+        return this.config.goalkeeperExperienceMaximumBoost * longevity * highRatingDamping;
     }
 
     private parseInteger(value: unknown): number | undefined {

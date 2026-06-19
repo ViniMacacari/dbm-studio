@@ -143,14 +143,15 @@ async function testAgeCorrection(): Promise<void> {
 }
 
 async function testLeagueAndClubCorrection(): Promise<void> {
-    const discountedMarket = await calculate({ age: 27, marketValue: 5_000_000, clubMeanMarketValue: 1_000_000, leagueMeanMarketValue: 1_000_000 });
-    const expensiveMarket = await calculate({ age: 27, marketValue: 5_000_000, clubMeanMarketValue: 15_000_000, leagueMeanMarketValue: 12_000_000 });
+    const weakerContext = await calculate({ age: 27, marketValue: 5_000_000, clubMeanMarketValue: 1_000_000, leagueMeanMarketValue: 1_000_000 });
+    const strongerContext = await calculate({ age: 27, marketValue: 5_000_000, clubMeanMarketValue: 15_000_000, leagueMeanMarketValue: 12_000_000 });
 
-    assert.ok(discountedMarket.breakdown.contextAdjustedMarketValue > expensiveMarket.breakdown.contextAdjustedMarketValue);
-    assert.ok(discountedMarket.breakdown.leagueMarketFactor > 1);
-    assert.ok(expensiveMarket.breakdown.leagueMarketFactor < 1);
-    assert.equal(discountedMarket.validation.team, true);
-    assert.equal(discountedMarket.validation.league, true);
+    assert.ok(strongerContext.breakdown.contextAdjustedMarketValue > weakerContext.breakdown.contextAdjustedMarketValue);
+    assert.ok(weakerContext.breakdown.leagueMarketFactor < 1);
+    assert.ok(strongerContext.breakdown.leagueMarketFactor > 1);
+    assert.ok(strongerContext.rawOverall > weakerContext.rawOverall);
+    assert.equal(weakerContext.validation.team, true);
+    assert.equal(weakerContext.validation.league, true);
 }
 
 async function testAchievementsAndReputation(): Promise<void> {
