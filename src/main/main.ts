@@ -6,6 +6,8 @@ import { computeLanguageHash, toSignedInt32 } from "../core/fifaHash";
 import { openCompdataProject, saveCompdataProject } from "../core/compdataIO";
 import { extractBig, readBigEntries } from "../core/bigArchive";
 import { VisualDependencyManager } from "./visualDependencyManager";
+import { OverallCalculator } from "../utils/overall-calculator";
+import { Fifa } from "fifarating";
 import {
   exportTable,
   importTable,
@@ -17,6 +19,7 @@ import type { CompdataOpenProgress, CompdataProject, DataTable, DbProject, Local
 
 let mainWindow: BrowserWindow | undefined;
 let visualDependencyManager: VisualDependencyManager | undefined;
+const overallCalculator = new OverallCalculator();
 let lastBlurDisplayState: WindowDisplayState | undefined;
 const windowDisplayRestoreDelays = [0, 75, 250, 750, 1500];
 const workAreaTolerancePx = 64;
@@ -653,6 +656,16 @@ ipcMain.handle("table:importAll", async (_event) => {
 
 ipcMain.handle("hash:language", (_event, values: string[]) => {
   return values.map((value) => toSignedInt32(computeLanguageHash(value)));
+});
+
+ipcMain.handle("transfermarkt:getPlayerOverall", async (_event, playerId: string | number, fifa?: string) => {
+  try {
+    const selectedFifa = Object.values(Fifa).includes(fifa as Fifa) ? fifa as Fifa : Fifa.Fifa23;
+    const result = await overallCalculator.generateFromTransfermarkt(playerId, { fifa: selectedFifa });
+    return { result };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
 });
 
 ipcMain.handle("big:list", async () => {

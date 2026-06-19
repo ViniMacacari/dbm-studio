@@ -305,7 +305,11 @@ export class OverallCalculator {
             { value: leagueStrength, weight: this.config.reputationLeagueWeight }
         ]);
         const reputation = clampInteger(1 + reputationScore * 4, 1, 5);
-        const attributes = AttributesUtils.setRawOverall(AttributesUtils.init(rawOverall), fifa, position, rawOverall);
+        const attributes = AttributesUtils.generateRawOverall(fifa, position, rawOverall);
+        const calculatedRawOverall = CalculateUtils.rawOverall(attributes, fifa, position);
+        if (calculatedRawOverall !== rawOverall) {
+            throw new Error(`fifarating generated raw overall ${calculatedRawOverall}; expected ${rawOverall}.`);
+        }
         const overall = CalculateUtils.displayOverall(attributes, fifa, position, reputation);
 
         const validationCount = Object.values(validation).filter(Boolean).length;

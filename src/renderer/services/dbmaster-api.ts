@@ -10,6 +10,7 @@ import type {
   VisualDependencyProgress
 } from "../../shared/types";
 import type { CompdataProject } from "../../shared/types";
+import type { TransfermarktOverallResult } from "../../utils/overall-calculator";
 
 export interface DbMasterApi {
   openXml(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;
@@ -28,6 +29,10 @@ export interface DbMasterApi {
   importTable(expectedName?: string): Promise<{ canceled?: boolean; table?: DataTable }>;
   importAll(): Promise<{ canceled?: boolean; project?: DbProject }>;
   computeLanguageHashes(values: string[]): Promise<number[]>;
+  getTransfermarktPlayerOverall(
+    playerId: string | number,
+    fifa?: string
+  ): Promise<{ result?: TransfermarktOverallResult; error?: string }>;
   extractDatabasesFromBig(): Promise<{ canceled?: boolean; message?: string; entries?: unknown[]; warnings?: string[] }>;
   getVisualDependenciesStatus(): Promise<VisualDependenciesStatus>;
   installVisualDependencies(): Promise<VisualDependenciesInstallResult>;

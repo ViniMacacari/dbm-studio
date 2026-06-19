@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld("dbmaster", {
   importTable: (expectedName?: string) => ipcRenderer.invoke("table:import", expectedName),
   importAll: () => ipcRenderer.invoke("table:importAll"),
   computeLanguageHashes: (values: string[]) => ipcRenderer.invoke("hash:language", values),
+  getTransfermarktPlayerOverall: (playerId: string | number, fifa?: string) =>
+    ipcRenderer.invoke("transfermarkt:getPlayerOverall", playerId, fifa),
   listBig: () => ipcRenderer.invoke("big:list"),
   extractDatabasesFromBig: () => ipcRenderer.invoke("big:extractDatabases"),
   getVisualDependenciesStatus: () => ipcRenderer.invoke("visualDependencies:getStatus"),
