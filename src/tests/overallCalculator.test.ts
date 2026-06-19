@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { Fifa, Position } from "fifarating";
 import {
     OverallCalculator,
+    type OverallCalculatorConfig,
     type OverallCalculatorTransfermarktGateway
 } from "../utils/overall-calculator/overall-calculator";
 import { transfermarktPositionToFifaPosition } from "../utils/position-mapper/position-mapper";
@@ -101,11 +102,35 @@ class MockTransfermarktGateway implements OverallCalculatorTransfermarktGateway 
     }
 }
 
-async function calculate(scenario: Scenario) {
-    return new OverallCalculator(new MockTransfermarktGateway(scenario)).generateFromTransfermarkt("1", {
+async function calculate(scenario: Scenario, config: Partial<OverallCalculatorConfig> = {}) {
+    return new OverallCalculator(new MockTransfermarktGateway(scenario), config).generateFromTransfermarkt("1", {
         fifa: Fifa.Fifa23,
         referenceDate: new Date("2026-01-01T00:00:00.000Z")
     });
+}
+
+async function testMidTierCalibration(): Promise<void> {
+    const midTierScenario: Scenario = {
+        age: 33,
+        marketValue: 1_300_000,
+        clubMeanMarketValue: 2_100_000,
+        leagueMeanMarketValue: 3_040_000,
+        trophies: 3
+    };
+    const calibrated = await calculate(midTierScenario);
+    const linear = await calculate(midTierScenario, { midTierOverallBoost: 0 });
+    assert.ok(calibrated.rawOverall >= linear.rawOverall + 3);
+
+    const eliteScenario: Scenario = {
+        age: 27,
+        marketValue: 180_000_000,
+        clubMeanMarketValue: 20_000_000,
+        leagueMeanMarketValue: 15_000_000,
+        trophies: 10
+    };
+    const calibratedElite = await calculate(eliteScenario);
+    const linearElite = await calculate(eliteScenario, { midTierOverallBoost: 0 });
+    assert.ok(calibratedElite.rawOverall - linearElite.rawOverall <= 1);
 }
 
 async function testAgeCorrection(): Promise<void> {
@@ -150,6 +175,7 @@ async function run(): Promise<void> {
     await testAgeCorrection();
     await testLeagueAndClubCorrection();
     await testAchievementsAndReputation();
+    await testMidTierCalibration();
     testPositionMapping();
     console.log("Overall calculator tests passed.");
 }

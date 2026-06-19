@@ -22,6 +22,7 @@ export interface OverallCalculatorTransfermarktGateway {
 export interface OverallCalculatorConfig {
     minimumOverall: number;
     maximumRawOverall: number;
+    midTierOverallBoost: number;
     marketValueFloor: number;
     marketValueCeiling: number;
     primeAge: number;
@@ -49,6 +50,7 @@ export interface OverallCalculatorConfig {
 export const defaultOverallCalculatorConfig: Readonly<OverallCalculatorConfig> = {
     minimumOverall: 45,
     maximumRawOverall: 96,
+    midTierOverallBoost: 0.08,
     marketValueFloor: 50_000,
     marketValueCeiling: 180_000_000,
     primeAge: 27,
@@ -87,6 +89,8 @@ export interface OverallCalculationBreakdown {
     leagueMarketFactor: number;
     clubMarketFactor: number;
     marketScore: number;
+    abilityScore: number;
+    calibratedAbilityScore: number;
     teamRelativeScore?: number;
     leagueRelativeScore?: number;
     trophyScore?: number;
@@ -213,7 +217,7 @@ export class OverallCalculator {
             }
         }
 
-        const marketValue = positiveNumber(market?.marketValue) ?? positiveNumber(profile.marketValue);
+        const marketValue = this.positiveNumber(market?.marketValue) ?? this.positiveNumber(profile.marketValue);
         validation.marketValue = marketValue !== undefined;
         if (!validation.marketValue) {
             throw new Error(`Transfermarkt player ${playerId} has no usable market value.`);
@@ -227,7 +231,7 @@ export class OverallCalculator {
 
     private calculate(context: ResolvedTransfermarktContext, options: GenerateOverallOptions): TransfermarktOverallResult {
         const { profile, club, competition, achievements, market, warnings, validation } = context;
-        const marketValue = positiveNumber(market?.marketValue) ?? positiveNumber(profile.marketValue) as number;
+        const marketValue = this.positiveNumber(market?.marketValue) ?? this.positiveNumber(profile.marketValue) as number;
         const age = profile.age as number;
         const position = options.position ?? transfermarktPositionToFifaPosition(profile.position.main);
         if (!position) {
@@ -236,13 +240,13 @@ export class OverallCalculator {
         const fifa = options.fifa ?? Fifa.Fifa23;
         const referenceDate = options.referenceDate ?? new Date();
 
-        const squadSize = positiveNumber(club?.squad.size);
-        const clubMeanMarketValue = positiveNumber(club?.currentMarketValue) && squadSize
+        const squadSize = this.positiveNumber(club?.squad.size);
+        const clubMeanMarketValue = this.positiveNumber(club?.currentMarketValue) && squadSize
             ? (club?.currentMarketValue as number) / squadSize
             : undefined;
-        const leagueMeanMarketValue = positiveNumber(competition?.totalMarketValue) && positiveNumber(competition?.players)
+        const leagueMeanMarketValue = this.positiveNumber(competition?.totalMarketValue) && this.positiveNumber(competition?.players)
                 ? (competition?.totalMarketValue as number) / (competition?.players as number)
-                : positiveNumber(competition?.meanMarketValue);
+                : this.positiveNumber(competition?.meanMarketValue);
 
         const ageMarketFactor = age <= this.config.primeAge
             ? Math.exp(this.config.youthValuePremiumPerYear * (this.config.primeAge - age))
@@ -254,22 +258,22 @@ export class OverallCalculator {
         const clubMarketFactor = clubMeanMarketValue
             ? Math.pow(this.config.clubReferenceMeanMarketValue / clubMeanMarketValue, this.config.clubCorrectionExponent)
             : 1;
-        const contextMultiplier = clamp(
+        const contextMultiplier = this.clamp(
             leagueMarketFactor * clubMarketFactor,
             this.config.minimumContextMultiplier,
             this.config.maximumContextMultiplier
         );
         const contextAdjustedMarketValue = ageAdjustedMarketValue * contextMultiplier;
-        const marketScore = logNormalize(
+        const marketScore = this.logNormalize(
             contextAdjustedMarketValue,
             this.config.marketValueFloor,
             this.config.marketValueCeiling
         );
         const teamRelativeScore = clubMeanMarketValue
-            ? relativeValueScore(ageAdjustedMarketValue, clubMeanMarketValue, this.config.relativeValueSpread)
+            ? this.relativeValueScore(ageAdjustedMarketValue, clubMeanMarketValue, this.config.relativeValueSpread)
             : undefined;
         const leagueRelativeScore = leagueMeanMarketValue
-            ? relativeValueScore(ageAdjustedMarketValue, leagueMeanMarketValue, this.config.relativeValueSpread)
+            ? this.relativeValueScore(ageAdjustedMarketValue, leagueMeanMarketValue, this.config.relativeValueSpread)
             : undefined;
         const weightedTrophies = achievements
             ? this.weightAchievements(achievements, referenceDate)
@@ -278,33 +282,39 @@ export class OverallCalculator {
             ? undefined
             : 1 - Math.exp(-weightedTrophies / this.config.trophySaturation);
 
-        const abilityScore = weightedMean([
+        const abilityScore = this.weightedMean([
             { value: marketScore, weight: this.config.marketWeight },
             { value: teamRelativeScore, weight: this.config.teamRelativeWeight },
             { value: leagueRelativeScore, weight: this.config.leagueRelativeWeight },
             { value: trophyScore, weight: this.config.trophyWeight }
         ]);
-        const rawOverall = clampInteger(
+        const midTierBand = 64 * abilityScore ** 3 * (1 - abilityScore) ** 3;
+        const calibratedAbilityScore = this.clamp(
+            abilityScore + this.config.midTierOverallBoost * midTierBand,
+            0,
+            1
+        );
+        const rawOverall = this.clampInteger(
             this.config.minimumOverall
-                + abilityScore * (this.config.maximumRawOverall - this.config.minimumOverall),
+                + calibratedAbilityScore * (this.config.maximumRawOverall - this.config.minimumOverall),
             this.config.minimumOverall,
             this.config.maximumRawOverall
         );
 
         const clubStrength = clubMeanMarketValue
-            ? logNormalize(clubMeanMarketValue, this.config.marketValueFloor, this.config.marketValueCeiling)
+            ? this.logNormalize(clubMeanMarketValue, this.config.marketValueFloor, this.config.marketValueCeiling)
             : undefined;
         const leagueStrength = leagueMeanMarketValue
-            ? logNormalize(leagueMeanMarketValue, this.config.marketValueFloor, this.config.marketValueCeiling)
+            ? this.logNormalize(leagueMeanMarketValue, this.config.marketValueFloor, this.config.marketValueCeiling)
             : undefined;
-        const rankingScore = rankingReputationScore(market?.ranking);
-        const reputationScore = weightedMean([
+        const rankingScore = this.rankingReputationScore(market?.ranking);
+        const reputationScore = this.weightedMean([
             { value: rankingScore ?? marketScore, weight: this.config.reputationMarketWeight },
             { value: trophyScore, weight: this.config.reputationTrophyWeight },
             { value: clubStrength, weight: this.config.reputationClubWeight },
             { value: leagueStrength, weight: this.config.reputationLeagueWeight }
         ]);
-        const reputation = clampInteger(1 + reputationScore * 4, 1, 5);
+        const reputation = this.clampInteger(1 + reputationScore * 4, 1, 5);
         const attributes = AttributesUtils.generateRawOverall(fifa, position, rawOverall);
         const calculatedRawOverall = CalculateUtils.rawOverall(attributes, fifa, position);
         if (calculatedRawOverall !== rawOverall) {
@@ -313,8 +323,8 @@ export class OverallCalculator {
         const overall = CalculateUtils.displayOverall(attributes, fifa, position, reputation);
 
         const validationCount = Object.values(validation).filter(Boolean).length;
-        const confidence = round(validationCount / Object.keys(validation).length, 3);
-        const leagueTier = parseInteger(club?.league.tier);
+        const confidence = this.round(validationCount / Object.keys(validation).length, 3);
+        const leagueTier = this.parseInteger(club?.league.tier);
         const achievementCount = achievements?.achievements.reduce((total, achievement) => total + achievement.count, 0) ?? 0;
 
         return {
@@ -330,18 +340,20 @@ export class OverallCalculator {
             validation,
             breakdown: {
                 marketValue,
-                ageAdjustedMarketValue: round(ageAdjustedMarketValue),
-                contextAdjustedMarketValue: round(contextAdjustedMarketValue),
-                ageMarketFactor: round(ageMarketFactor, 4),
-                leagueMarketFactor: round(leagueMarketFactor, 4),
-                clubMarketFactor: round(clubMarketFactor, 4),
-                marketScore: round(marketScore, 4),
-                teamRelativeScore: optionalRound(teamRelativeScore),
-                leagueRelativeScore: optionalRound(leagueRelativeScore),
-                trophyScore: optionalRound(trophyScore),
-                weightedTrophies: optionalRound(weightedTrophies),
-                clubMeanMarketValue: optionalRound(clubMeanMarketValue),
-                leagueMeanMarketValue: optionalRound(leagueMeanMarketValue)
+                ageAdjustedMarketValue: this.round(ageAdjustedMarketValue),
+                contextAdjustedMarketValue: this.round(contextAdjustedMarketValue),
+                ageMarketFactor: this.round(ageMarketFactor, 4),
+                leagueMarketFactor: this.round(leagueMarketFactor, 4),
+                clubMarketFactor: this.round(clubMarketFactor, 4),
+                marketScore: this.round(marketScore, 4),
+                abilityScore: this.round(abilityScore, 4),
+                calibratedAbilityScore: this.round(calibratedAbilityScore, 4),
+                teamRelativeScore: this.optionalRound(teamRelativeScore),
+                leagueRelativeScore: this.optionalRound(leagueRelativeScore),
+                trophyScore: this.optionalRound(trophyScore),
+                weightedTrophies: this.optionalRound(weightedTrophies),
+                clubMeanMarketValue: this.optionalRound(clubMeanMarketValue),
+                leagueMeanMarketValue: this.optionalRound(leagueMeanMarketValue)
             },
             context: {
                 clubId: club?.id ?? profile.club.id ?? undefined,
@@ -357,11 +369,11 @@ export class OverallCalculator {
     }
 
     private matchCompetition(search: CompetitionSearchResponse, club: ClubProfileResponse): CompetitionSearchResult | undefined {
-        const leagueId = normalize(club.league.id);
-        const leagueName = normalize(club.league.name);
-        const country = normalize(club.league.countryName);
-        return search.results.find((result) => leagueId && normalize(result.id) === leagueId)
-            ?? search.results.find((result) => normalize(result.name) === leagueName && (!country || normalize(result.country) === country));
+        const leagueId = this.normalize(club.league.id);
+        const leagueName = this.normalize(club.league.name);
+        const country = this.normalize(club.league.countryName);
+        return search.results.find((result) => leagueId && this.normalize(result.id) === leagueId)
+            ?? search.results.find((result) => this.normalize(result.name) === leagueName && (!country || this.normalize(result.country) === country));
     }
 
     private weightAchievements(achievements: PlayerAchievementsResponse, referenceDate: Date): number {
@@ -370,7 +382,7 @@ export class OverallCalculator {
                 return total + achievement.count;
             }
             const detailWeight = achievement.details.reduce((detailTotal, detail) => {
-                const seasonYear = parseSeasonYear(detail.season.id ?? detail.season.name);
+                const seasonYear = this.parseSeasonYear(detail.season.id ?? detail.season.name);
                 if (seasonYear === undefined) {
                     return detailTotal + 1;
                 }
@@ -397,6 +409,9 @@ export class OverallCalculator {
         if (this.config.maximumRawOverall <= this.config.minimumOverall || this.config.maximumRawOverall > 99) {
             throw new Error("Overall calculator rating bounds are invalid.");
         }
+        if (!Number.isFinite(this.config.midTierOverallBoost) || this.config.midTierOverallBoost < 0 || this.config.midTierOverallBoost > 0.25) {
+            throw new Error("Overall calculator mid-tier boost is invalid.");
+        }
         const weights = [
             this.config.marketWeight,
             this.config.teamRelativeWeight,
@@ -411,80 +426,80 @@ export class OverallCalculator {
             throw new Error("Overall calculator weights must be finite non-negative numbers.");
         }
     }
-}
 
-function positiveNumber(value: unknown): number | undefined {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-        return value;
-    }
-    if (typeof value === "string") {
-        const parsed = Number(value.replace(/[^\d.-]/g, ""));
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-    }
-    return undefined;
-}
-
-function parseInteger(value: unknown): number | undefined {
-    const match = String(value ?? "").match(/\d+/);
-    return match ? Number(match[0]) : undefined;
-}
-
-function parseSeasonYear(value: string | null | undefined): number | undefined {
-    const match = value?.match(/(?:19|20)\d{2}/);
-    return match ? Number(match[0]) : undefined;
-}
-
-function normalize(value: string | null | undefined): string {
-    return (value ?? "")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, " ")
-        .trim();
-}
-
-function logNormalize(value: number, floor: number, ceiling: number): number {
-    const normalized = (Math.log(Math.max(value, floor)) - Math.log(floor)) / (Math.log(ceiling) - Math.log(floor));
-    return clamp(normalized, 0, 1);
-}
-
-function relativeValueScore(value: number, reference: number, spread: number): number {
-    return 0.5 + Math.atan(Math.log(value / reference) / spread) / Math.PI;
-}
-
-function rankingReputationScore(ranking: Record<string, string> | undefined): number | undefined {
-    const ranks = Object.values(ranking ?? {})
-        .map((value) => value.match(/[\d,.]+/)?.[0].replace(/[,.]/g, ""))
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value) && value > 0);
-    if (ranks.length === 0) {
+    private positiveNumber(value: unknown): number | undefined {
+        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+            return value;
+        }
+        if (typeof value === "string") {
+            const parsed = Number(value.replace(/[^\d.-]/g, ""));
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+        }
         return undefined;
     }
-    return 1 / (1 + Math.log1p(Math.min(...ranks)) / 4);
-}
 
-function weightedMean(entries: Array<{ value: number | undefined; weight: number }>): number {
-    const available = entries.filter((entry): entry is { value: number; weight: number } => entry.value !== undefined && entry.weight > 0);
-    const totalWeight = available.reduce((total, entry) => total + entry.weight, 0);
-    if (totalWeight === 0) {
-        return 0;
+    private parseInteger(value: unknown): number | undefined {
+        const match = String(value ?? "").match(/\d+/);
+        return match ? Number(match[0]) : undefined;
     }
-    return available.reduce((total, entry) => total + entry.value * entry.weight, 0) / totalWeight;
-}
 
-function clamp(value: number, minimum: number, maximum: number): number {
-    return Math.min(Math.max(value, minimum), maximum);
-}
+    private parseSeasonYear(value: string | null | undefined): number | undefined {
+        const match = value?.match(/(?:19|20)\d{2}/);
+        return match ? Number(match[0]) : undefined;
+    }
 
-function clampInteger(value: number, minimum: number, maximum: number): number {
-    return Math.round(clamp(value, minimum, maximum));
-}
+    private normalize(value: string | null | undefined): string {
+        return (value ?? "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim();
+    }
 
-function round(value: number, digits = 0): number {
-    const factor = 10 ** digits;
-    return Math.round(value * factor) / factor;
-}
+    private logNormalize(value: number, floor: number, ceiling: number): number {
+        const normalized = (Math.log(Math.max(value, floor)) - Math.log(floor)) / (Math.log(ceiling) - Math.log(floor));
+        return this.clamp(normalized, 0, 1);
+    }
 
-function optionalRound(value: number | undefined, digits = 4): number | undefined {
-    return value === undefined ? undefined : round(value, digits);
+    private relativeValueScore(value: number, reference: number, spread: number): number {
+        return 0.5 + Math.atan(Math.log(value / reference) / spread) / Math.PI;
+    }
+
+    private rankingReputationScore(ranking: Record<string, string> | undefined): number | undefined {
+        const ranks = Object.values(ranking ?? {})
+            .map((value) => value.match(/[\d,.]+/)?.[0].replace(/[,.]/g, ""))
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value > 0);
+        if (ranks.length === 0) {
+            return undefined;
+        }
+        return 1 / (1 + Math.log1p(Math.min(...ranks)) / 4);
+    }
+
+    private weightedMean(entries: Array<{ value: number | undefined; weight: number }>): number {
+        const available = entries.filter((entry): entry is { value: number; weight: number } => entry.value !== undefined && entry.weight > 0);
+        const totalWeight = available.reduce((total, entry) => total + entry.weight, 0);
+        if (totalWeight === 0) {
+            return 0;
+        }
+        return available.reduce((total, entry) => total + entry.value * entry.weight, 0) / totalWeight;
+    }
+
+    private clamp(value: number, minimum: number, maximum: number): number {
+        return Math.min(Math.max(value, minimum), maximum);
+    }
+
+    private clampInteger(value: number, minimum: number, maximum: number): number {
+        return Math.round(this.clamp(value, minimum, maximum));
+    }
+
+    private round(value: number, digits = 0): number {
+        const factor = 10 ** digits;
+        return Math.round(value * factor) / factor;
+    }
+
+    private optionalRound(value: number | undefined, digits = 4): number | undefined {
+        return value === undefined ? undefined : this.round(value, digits);
+    }
 }

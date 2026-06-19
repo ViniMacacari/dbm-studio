@@ -42,9 +42,8 @@ const test = async () => {
 
     // console.log(AttributesUtils.generateRawOverall(fifa, position, defaultOverall));
 
-    const service = new GetPlayerOverallService()
-
-    const result = await service.getPlayerOverall(8198)
+    const result = await new OverallCalculator()
+        .generateFromTransfermarkt(248410);
 
     console.log(result)
 };
