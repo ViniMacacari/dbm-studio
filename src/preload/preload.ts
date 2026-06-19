@@ -33,5 +33,7 @@ contextBridge.exposeInMainWorld("dbmaster", {
   },
   getPlayerMiniface: (playerId: string) => ipcRenderer.invoke("visualDependencies:getMiniface", playerId),
   getTeamCrest: (teamId: string) => ipcRenderer.invoke("visualDependencies:getTeamCrest", teamId),
-  getLeagueLogo: (leagueId: string) => ipcRenderer.invoke("visualDependencies:getLeagueLogo", leagueId)
+  getLeagueLogo: (leagueId: string) => ipcRenderer.invoke("visualDependencies:getLeagueLogo", leagueId),
+  listAssets: (type: "hairs" | "beards") => ipcRenderer.invoke("visualDependencies:listAssets", type),
+  getHairBeardAsset: (type: "hairs" | "beards", assetId: string) => ipcRenderer.invoke("visualDependencies:getHairBeardAsset", type, assetId)
 });

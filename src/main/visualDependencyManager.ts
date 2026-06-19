@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, promises as fsPromises } from "node:fs";
 import { Agent as HttpAgent, get, request as requestHttp, type IncomingMessage, type RequestOptions } from "node:http";
 import { Agent as HttpsAgent, get as getSecure, request as requestSecure } from "node:https";
 import { basename, dirname, extname, join, normalize, resolve, sep } from "node:path";
@@ -390,6 +390,44 @@ export class VisualDependencyManager {
       }, null, 2),
       "utf8"
     );
+  }
+
+  listAssets(type: "hairs" | "beards"): string[] {
+    const targetPath = this.dependencyTargetPath(type);
+    if (!existsSync(targetPath)) {
+      return [];
+    }
+    try {
+      return readdirSync(targetPath)
+        .filter((file) => extname(file).toLowerCase() === ".png" && file.startsWith("hair_id_"))
+        .map((file) => {
+          const match = file.match(/^hair_id_(\d+)\.png$/i);
+          return match ? match[1] : "";
+        })
+        .filter(Boolean)
+        .sort((left, right) => Number(left) - Number(right));
+    } catch {
+      return [];
+    }
+  }
+
+  async getHairBeardAsset(type: "hairs" | "beards", assetId: string): Promise<{ dataUrl: string; found: boolean }> {
+    const normalizedId = assetId.trim().padStart(4, "0");
+    const targetPath = this.dependencyTargetPath(type);
+    const filePath = join(targetPath, `hair_id_${normalizedId}.png`);
+    if (existsSync(filePath)) {
+      try {
+        const buffer = await fsPromises.readFile(filePath);
+        return {
+          dataUrl: `data:image/png;base64,${buffer.toString("base64")}`,
+          found: true
+        };
+      } catch {}
+    }
+    return {
+      dataUrl: "",
+      found: false
+    };
   }
 }
 

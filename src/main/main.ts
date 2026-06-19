@@ -705,6 +705,14 @@ ipcMain.handle("visualDependencies:getLeagueLogo", (_event, leagueId: string) =>
   return visualDependencies().getLeagueLogo(leagueId);
 });
 
+ipcMain.handle("visualDependencies:listAssets", (_event, type: "hairs" | "beards") => {
+  return visualDependencies().listAssets(type);
+});
+
+ipcMain.handle("visualDependencies:getHairBeardAsset", async (_event, type: "hairs" | "beards", assetId: string) => {
+  return await visualDependencies().getHairBeardAsset(type, assetId);
+});
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   createWindow();
