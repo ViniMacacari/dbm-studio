@@ -7,6 +7,7 @@
   "scripts": {
     "build": "npm run build:electron && npm run build:renderer",
     "build:electron": "tsc -p tsconfig.electron.json",
+    "postbuild:electron": "node -e \"const fs = require('fs'); const path = require('path'); const p = path.join(process.cwd(), 'dist/utils/transfermarkt-services/transfermarkt.d.js'); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, 'module.exports = {};');\"",
     "build:renderer": "ng build dbmaster-renderer",
     "typecheck": "tsc -p tsconfig.electron.json --noEmit && ng build dbmaster-renderer --configuration development",
     "start": "node scripts/run-electron.mjs",
