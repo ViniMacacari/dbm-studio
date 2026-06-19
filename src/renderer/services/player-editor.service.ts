@@ -46,6 +46,7 @@ export interface PlayerEditorDraft {
   names: PlayerEditorNameDraft;
   identityFields: PlayerEditorFieldDraft[];
   sections: PlayerEditorSectionDraft[];
+  hasHighQualityHead: boolean;
 }
 
 export interface PlayerSearchResult {
@@ -373,6 +374,7 @@ export class PlayerEditorService {
     const birthdate = this.read(players, rowIndex, "birthdate");
     const birthDateIso = fifaDateCodeToIso(birthdate);
     const nationalityName = this.nations.resolveNation(project, this.read(players, rowIndex, "nationality"));
+    const hasHighQualityHead = this.read(players, rowIndex, "hashighqualityhead") === "1";
 
     return {
       playerId,
@@ -397,7 +399,8 @@ export class PlayerEditorService {
           title: section.title,
           fields: this.makeFields(players, rowIndex, section.fields, isNew)
         }))
-        .filter((section) => section.fields.length > 0)
+        .filter((section) => section.fields.length > 0),
+      hasHighQualityHead
     };
   }
 

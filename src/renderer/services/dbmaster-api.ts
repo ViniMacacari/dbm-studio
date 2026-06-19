@@ -35,6 +35,8 @@ export interface DbMasterApi {
   getPlayerMiniface(playerId: string): Promise<MinifaceImageResult>;
   getTeamCrest(teamId: string): Promise<TeamCrestImageResult>;
   getLeagueLogo(leagueId: string): Promise<LeagueLogoImageResult>;
+  listAssets(type: "hairs" | "beards"): Promise<string[]>;
+  getHairBeardAsset(type: "hairs" | "beards", assetId: string): Promise<{ dataUrl: string; found: boolean }>;
 }
 
 declare global {
