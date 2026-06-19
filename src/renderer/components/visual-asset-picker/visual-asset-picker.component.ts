@@ -27,33 +27,47 @@ export class VisualAssetPickerComponent implements OnChanges {
   loadedThumbnails: Record<string, string> = {};
   private currentSessionId = 0;
 
+  get normalizedCurrentValue(): string {
+    return this.currentValue ? String(this.currentValue).trim().padStart(4, "0") : "";
+  }
+
+  get visibleIds(): string[] {
+    return this.filteredIds.slice(0, this.visibleCount);
+  }
+
   constructor(private readonly changeDetector: ChangeDetectorRef) {}
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes["visible"] && this.visible) {
-      this.resetPicker();
-    }
-    if (changes["type"] && this.visible) {
-      this.resetPicker();
+    const visibleChanged = changes["visible"] && this.visible;
+    const typeChanged = changes["type"] && this.visible;
+    if (visibleChanged || typeChanged) {
+      void this.resetPicker();
     }
   }
 
   private async resetPicker(): Promise<void> {
+    const sessionId = ++this.currentSessionId;
     this.searchTerm = "";
     this.visibleCount = 48;
     this.loadedThumbnails = {};
     try {
-      this.allIds = await this.api.listAssets(this.type);
+      const ids = await this.api.listAssets(this.type);
+      if (sessionId !== this.currentSessionId) {
+        return;
+      }
+      this.allIds = ids;
       this.filteredIds = [...this.allIds];
-      if (this.currentValue) {
+      if (this.normalizedCurrentValue) {
         this.scrollToSelected();
       } else {
         void this.loadThumbnailsForVisible();
       }
     } catch (err) {
       console.error("Error listing assets:", err);
-      this.allIds = [];
-      this.filteredIds = [];
+      if (sessionId === this.currentSessionId) {
+        this.allIds = [];
+        this.filteredIds = [];
+      }
     }
   }
 
@@ -75,8 +89,8 @@ export class VisualAssetPickerComponent implements OnChanges {
 
   private async loadThumbnailsForVisible(): Promise<void> {
     const sessionId = ++this.currentSessionId;
-    const visibleIds = this.filteredIds.slice(0, this.visibleCount);
-    const idsToLoad = visibleIds.filter(id => !this.loadedThumbnails[id]);
+    const currentVisibleIds = this.visibleIds;
+    const idsToLoad = currentVisibleIds.filter(id => !this.loadedThumbnails[id]);
     
     if (idsToLoad.length === 0) {
       return;
@@ -114,10 +128,10 @@ export class VisualAssetPickerComponent implements OnChanges {
   }
 
   private scrollToSelected(): void {
-    if (!this.currentValue) {
+    if (!this.normalizedCurrentValue) {
       return;
     }
-    const selectedIndex = this.filteredIds.indexOf(this.currentValue);
+    const selectedIndex = this.filteredIds.indexOf(this.normalizedCurrentValue);
     if (selectedIndex >= 0) {
       if (selectedIndex >= this.visibleCount) {
         this.visibleCount = Math.ceil((selectedIndex + 1) / 12) * 12;
@@ -132,6 +146,8 @@ export class VisualAssetPickerComponent implements OnChanges {
           (selectedEl as HTMLElement).focus();
         }
       }, 150);
+    } else {
+      void this.loadThumbnailsForVisible();
     }
   }
 

@@ -12,14 +12,21 @@
       <input type="search" placeholder="Search by style ID..." [(ngModel)]="searchTerm" (input)="onSearchChange()" />
     </div>
 
+    <div class="asset-picker-notice">
+      <span class="notice-icon">⚠️</span>
+      <p class="notice-text">
+        These IDs are based on <strong>EA FC 26</strong>. If you are editing a player for another FIFA/FC edition,
+        some style IDs might not exist or could differ in-game.
+      </p>
+    </div>
+
     <div class="asset-picker-body">
       <div class="asset-grid" *ngIf="filteredIds.length > 0; else noAssets">
-        <button type="button" class="asset-card" 
-          *ngFor="let id of filteredIds.slice(0, visibleCount); trackBy: trackById"
-          [class.selected]="id === currentValue"
-          (click)="selectAsset(id)">
+        <button type="button" class="asset-card" *ngFor="let id of visibleIds; trackBy: trackById"
+          [class.selected]="id === normalizedCurrentValue" (click)="selectAsset(id)">
           <div class="asset-preview">
-            <img *ngIf="loadedThumbnails[id] && loadedThumbnails[id] !== 'loading'" [src]="loadedThumbnails[id]" [alt]="'Asset ' + id" />
+            <img *ngIf="loadedThumbnails[id] && loadedThumbnails[id] !== 'loading'" [src]="loadedThumbnails[id]"
+              [alt]="'Asset ' + id" />
             <div class="asset-spinner" *ngIf="loadedThumbnails[id] === 'loading'"></div>
           </div>
           <span class="asset-id">ID {{ id }}</span>

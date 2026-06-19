@@ -84,6 +84,34 @@
   background: #fbfdfc;
 }
 
+.asset-picker-notice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 14px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 8px;
+  margin: 12px 20px 0;
+  
+  .notice-icon {
+    font-size: 15px;
+    line-height: 1.3;
+  }
+  
+  .notice-text {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #b45309;
+    
+    strong {
+      font-weight: 600;
+      color: #92400e;
+    }
+  }
+}
+
 .asset-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
