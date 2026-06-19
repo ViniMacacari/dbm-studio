@@ -464,7 +464,7 @@
 .player-results {
   display: grid;
   gap: 8px;
-  max-width: 980px;
+  max-width: none;
 }
 
 .player-result {
@@ -472,7 +472,7 @@
   min-height: 64px;
   height: auto;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr);
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 12px;
   text-align: left;
@@ -482,7 +482,7 @@
 }
 
 .player-result.has-miniface {
-  grid-template-columns: auto minmax(220px, 1fr) minmax(260px, 1.2fr);
+  grid-template-columns: auto 1fr auto;
 }
 
 .result-miniface {
@@ -516,12 +516,20 @@
   background: #f8fbf9;
 }
 
-.result-main,
+.result-main {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .result-meta {
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
 }
 
@@ -555,7 +563,7 @@
 .transfer-results {
   display: grid;
   gap: 8px;
-  max-width: 1180px;
+  max-width: none;
 }
 
 .transfer-card {
@@ -614,6 +622,10 @@
   min-width: 0;
   display: grid;
   gap: 7px;
+
+  .result-meta {
+    justify-content: flex-start;
+  }
 }
 
 .transfer-card .apply-button {
@@ -1214,6 +1226,10 @@ td.row-select {
   .player-result,
   .transfer-card {
     grid-template-columns: 1fr;
+  }
+
+  .result-meta {
+    justify-content: flex-start;
   }
 
   .shell {
