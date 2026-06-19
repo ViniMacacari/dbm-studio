@@ -21,6 +21,7 @@ interface LanguageTableLayout {
 }
 
 const languageHashTable = makeLanguageHashTable();
+const maxLanguageTableRows = 0xffff;
 
 @Injectable({ providedIn: "root" })
 export class LocalizationService {
@@ -70,13 +71,21 @@ export class LocalizationService {
       const value = field.value.trim() || field.fallbackValue;
       const hash = toSignedInt32(computeLanguageHash(field.key));
       const existing = this.findString(layouts, field.key);
-      const layout = existing?.layout ?? this.targetLayout(layouts, field.key);
-      const rowIndex = existing?.rowIndex ?? this.createLanguageRow(layout, hash);
-      layout.table.rows[rowIndex][layout.stringIdColumn] = field.key;
-      layout.table.rows[rowIndex][layout.sourceTextColumn] = value;
-      layout.table.rows[rowIndex][layout.hashIdColumn] = String(hash);
-      layout.table.changed = true;
-      changedTables.add(layout.table.name);
+      if (existing) {
+        existing.layout.table.rows[existing.rowIndex][existing.layout.stringIdColumn] = field.key;
+        existing.layout.table.rows[existing.rowIndex][existing.layout.sourceTextColumn] = value;
+        existing.layout.table.rows[existing.rowIndex][existing.layout.hashIdColumn] = String(hash);
+        existing.layout.table.changed = true;
+        changedTables.add(existing.layout.table.name);
+        continue;
+      }
+
+      const target = this.targetLayout(layouts, hash);
+      const row = target.table.columns.map((_column, columnIndex) => this.defaultValueForField(target.table.fields[columnIndex]));
+      row[target.stringIdColumn] = field.key;
+      row[target.sourceTextColumn] = value;
+      row[target.hashIdColumn] = String(hash);
+      this.insertLanguageRow(layouts, target, row, changedTables);
     }
 
     return changedTables.size > 0 ? { changedTables: [...changedTables] } : undefined;
@@ -133,24 +142,57 @@ export class LocalizationService {
     return undefined;
   }
 
-  private targetLayout(layouts: LanguageTableLayout[], key: string): LanguageTableLayout {
-    const hash = toSignedInt32(computeLanguageHash(key));
-    const targetName = hash < 0 ? "languagestrings1" : "languagestrings2";
-    return layouts.find((layout) => layout.table.name.toLowerCase() === targetName) ?? layouts[0];
+  private targetLayout(layouts: LanguageTableLayout[], hash: number): LanguageTableLayout {
+    for (const layout of layouts) {
+      const lastRow = layout.table.rows[layout.table.rows.length - 1];
+      const lastHash = lastRow ? Number(lastRow[layout.hashIdColumn]) : Number.POSITIVE_INFINITY;
+      if (!Number.isFinite(lastHash) || hash <= lastHash) {
+        return layout;
+      }
+    }
+    return layouts[layouts.length - 1];
   }
 
-  private createLanguageRow(layout: LanguageTableLayout, hash: number): number {
-    const row = layout.table.columns.map((_column, columnIndex) => this.defaultValueForField(layout.table.fields[columnIndex]));
+  private insertSortedRow(layout: LanguageTableLayout, row: string[]): void {
+    const hash = Number(row[layout.hashIdColumn]);
     const insertIndex = layout.table.rows.findIndex((candidate) => {
       const candidateHash = Number(candidate[layout.hashIdColumn]);
       return Number.isFinite(candidateHash) && candidateHash > hash;
     });
     if (insertIndex < 0) {
       layout.table.rows.push(row);
-      return layout.table.rows.length - 1;
+      return;
     }
     layout.table.rows.splice(insertIndex, 0, row);
-    return insertIndex;
+  }
+
+  private insertLanguageRow(
+    layouts: LanguageTableLayout[],
+    target: LanguageTableLayout,
+    row: string[],
+    changedTables: Set<string>
+  ): void {
+    const totalRows = layouts.reduce((total, layout) => total + layout.table.rows.length, 0);
+    if (totalRows >= layouts.length * maxLanguageTableRows) {
+      throw new Error("The localization database has no room for another language string record.");
+    }
+
+    let layoutIndex = layouts.indexOf(target);
+    this.insertSortedRow(target, row);
+    target.table.changed = true;
+    changedTables.add(target.table.name);
+
+    while (layouts[layoutIndex].table.rows.length > maxLanguageTableRows) {
+      const overflow = layouts[layoutIndex].table.rows.pop();
+      const next = layouts[layoutIndex + 1];
+      if (!overflow || !next) {
+        throw new Error("The localization database has no room for another language string record.");
+      }
+      this.insertSortedRow(next, overflow);
+      next.table.changed = true;
+      changedTables.add(next.table.name);
+      layoutIndex += 1;
+    }
   }
 
   private languageTables(project?: DbProject): LanguageTableLayout[] {

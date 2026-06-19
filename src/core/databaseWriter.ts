@@ -19,6 +19,7 @@ interface TableWriteLayout {
   compressedStringLengthOffset: number;
   compressedStringLength: number;
   recordsCount: number;
+  validRecordsCount: number;
   recordSize: number;
   fields: WritableField[];
   recordsOffset: number;
@@ -173,6 +174,7 @@ function parseWritableLayouts(dbBuffer: Buffer, descriptors: TableDescriptor[]):
     const recordsCount = dbBuffer.readUInt16LE(tableCursor);
     tableCursor += 2;
     const validRecordsCountOffset = tableCursor;
+    const validRecordsCount = dbBuffer.readUInt16LE(tableCursor);
     tableCursor += 2;
     tableCursor += 4;
     const fieldsCount = dbBuffer.readUInt8(tableCursor);
@@ -221,6 +223,7 @@ function parseWritableLayouts(dbBuffer: Buffer, descriptors: TableDescriptor[]):
       compressedStringLengthOffset,
       compressedStringLength,
       recordsCount,
+      validRecordsCount,
       recordSize,
       fields,
       recordsOffset,
@@ -350,24 +353,297 @@ function isCompressedStringField(field: WritableField): boolean {
   return field.dbFieldType === 13 || field.dbFieldType === 14;
 }
 
-function encodeCompressedString(value: string, longString: boolean, context: string): Buffer {
+interface HuffmanBuildNode {
+  frequency: number;
+  minimumByte: number;
+  byte?: number;
+  left?: HuffmanBuildNode;
+  right?: HuffmanBuildNode;
+}
+
+interface HuffmanCodec {
+  tree: Buffer;
+  codes: Array<number[] | undefined>;
+  raw: boolean;
+}
+
+function compressedStringBytes(value: string, longString: boolean, context: string): Buffer {
   const bytes = Buffer.from(value.replace(/\\n/g, "\n"), "utf8");
   if (longString) {
     if (bytes.length > 0xffff) {
       throw new Error(`${context}: compressed string is longer than 65535 bytes.`);
     }
-    const output = Buffer.alloc(2 + bytes.length);
-    output.writeUInt16BE(bytes.length, 0);
-    bytes.copy(output, 2);
-    return output;
+    return bytes;
   }
 
   if (bytes.length > 0xff) {
     throw new Error(`${context}: compressed string is longer than 255 bytes.`);
   }
-  const output = Buffer.alloc(1 + bytes.length);
-  output.writeUInt8(bytes.length, 0);
-  bytes.copy(output, 1);
+  return bytes;
+}
+
+function buildHuffmanCodec(values: Buffer[]): HuffmanCodec {
+  const frequencies = new Array<number>(256).fill(0);
+  for (const value of values) {
+    for (const byte of value) {
+      frequencies[byte] += 1;
+    }
+  }
+
+  let nodes: HuffmanBuildNode[] = frequencies
+    .map((frequency, byte): HuffmanBuildNode | undefined => frequency > 0 ? { frequency, minimumByte: byte, byte } : undefined)
+    .filter((node): node is HuffmanBuildNode => Boolean(node));
+  if (nodes.length === 0) {
+    return { tree: Buffer.alloc(0), codes: [], raw: false };
+  }
+
+  if (nodes.length === 1) {
+    const onlyByte = nodes[0].byte as number;
+    const codes: Array<number[] | undefined> = [];
+    codes[onlyByte] = [0];
+    return {
+      tree: Buffer.from([0, onlyByte, 0, onlyByte]),
+      codes,
+      raw: false
+    };
+  }
+
+  while (nodes.length > 1) {
+    nodes.sort((left, right) => left.frequency - right.frequency || left.minimumByte - right.minimumByte);
+    const left = nodes.shift() as HuffmanBuildNode;
+    const right = nodes.shift() as HuffmanBuildNode;
+    nodes.push({
+      frequency: left.frequency + right.frequency,
+      minimumByte: Math.min(left.minimumByte, right.minimumByte),
+      left,
+      right
+    });
+  }
+
+  const root = nodes[0];
+  const internalNodes: HuffmanBuildNode[] = [root];
+  for (let index = 0; index < internalNodes.length; index += 1) {
+    const node = internalNodes[index];
+    if (node.left?.byte === undefined) {
+      internalNodes.push(node.left as HuffmanBuildNode);
+    }
+    if (node.right?.byte === undefined) {
+      internalNodes.push(node.right as HuffmanBuildNode);
+    }
+  }
+  if (internalNodes.length > 255) {
+    throw new Error("Compressed string Huffman tree has more than 255 internal nodes.");
+  }
+
+  const nodeIndexes = new Map(internalNodes.map((node, index) => [node, index]));
+  const tree = Buffer.alloc(internalNodes.length * 4);
+  for (let index = 0; index < internalNodes.length; index += 1) {
+    const children = [internalNodes[index].left, internalNodes[index].right];
+    for (let direction = 0; direction < 2; direction += 1) {
+      const child = children[direction] as HuffmanBuildNode;
+      const treeOffset = index * 4 + direction * 2;
+      if (child.byte !== undefined) {
+        tree[treeOffset] = 0;
+        tree[treeOffset + 1] = child.byte;
+      } else {
+        tree[treeOffset] = nodeIndexes.get(child) as number;
+      }
+    }
+  }
+
+  const codes: Array<number[] | undefined> = [];
+  const visit = (node: HuffmanBuildNode, code: number[]): void => {
+    if (node.byte !== undefined) {
+      codes[node.byte] = code;
+      return;
+    }
+    visit(node.left as HuffmanBuildNode, [...code, 0]);
+    visit(node.right as HuffmanBuildNode, [...code, 1]);
+  };
+  visit(root, []);
+  return { tree, codes, raw: false };
+}
+
+function readExistingHuffmanCodec(dbBuffer: Buffer, layout: TableWriteLayout): HuffmanCodec | undefined {
+  if (layout.compressedStringLength <= 0) {
+    return undefined;
+  }
+
+  const blockOffset = layout.recordsOffset + layout.recordsCount * layout.recordSize;
+  const blockEnd = blockOffset + layout.compressedStringLength;
+  if (blockOffset < 0 || blockEnd > dbBuffer.length) {
+    return undefined;
+  }
+
+  let treeSize = Number.MAX_SAFE_INTEGER;
+  const readableRecords = Math.min(layout.recordsCount, layout.validRecordsCount);
+  for (let rowIndex = 0; rowIndex < readableRecords; rowIndex += 1) {
+    const recordOffset = layout.recordsOffset + rowIndex * layout.recordSize;
+    const record = dbBuffer.subarray(recordOffset, recordOffset + layout.recordSize);
+    for (const field of layout.fields) {
+      if (!isCompressedStringField(field)) {
+        continue;
+      }
+      const byteOffset = field.bitOffset >> 3;
+      if (byteOffset + 4 > record.length) {
+        continue;
+      }
+      const stringOffset = record.readUInt32LE(byteOffset);
+      if (stringOffset < treeSize) {
+        treeSize = stringOffset;
+      }
+    }
+  }
+
+  if (treeSize === Number.MAX_SAFE_INTEGER || treeSize > layout.compressedStringLength || treeSize % 4 !== 0) {
+    return undefined;
+  }
+  if (treeSize === 0) {
+    return { tree: Buffer.alloc(0), codes: [], raw: true };
+  }
+
+  const tree = Buffer.from(dbBuffer.subarray(blockOffset, blockOffset + treeSize));
+  const nodeCount = tree.length / 4;
+  const codes: Array<number[] | undefined> = [];
+  const visiting = new Set<number>();
+  const visited = new Set<number>();
+  const visit = (nodeIndex: number, prefix: number[]): boolean => {
+    if (nodeIndex < 0 || nodeIndex >= nodeCount || visiting.has(nodeIndex)) {
+      return false;
+    }
+    if (visited.has(nodeIndex)) {
+      return true;
+    }
+    visiting.add(nodeIndex);
+    for (let direction = 0; direction < 2; direction += 1) {
+      const offset = nodeIndex * 4 + direction * 2;
+      const childIndex = tree[offset];
+      const code = [...prefix, direction];
+      if (childIndex === 0) {
+        const byte = tree[offset + 1];
+        const existing = codes[byte];
+        if (existing && existing.join("") !== code.join("")) {
+          return false;
+        }
+        codes[byte] = code;
+      } else if (!visit(childIndex, code)) {
+        return false;
+      }
+    }
+    visiting.delete(nodeIndex);
+    visited.add(nodeIndex);
+    return true;
+  };
+
+  return visit(0, []) ? { tree, codes, raw: false } : undefined;
+}
+
+function codecSupports(codec: HuffmanCodec, values: Buffer[]): boolean {
+  if (codec.raw) {
+    return true;
+  }
+  return values.every((value) => [...value].every((byte) => Boolean(codec.codes[byte])));
+}
+
+function extendHuffmanCodec(codec: HuffmanCodec, values: Buffer[]): HuffmanCodec | undefined {
+  if (codec.raw || codecSupports(codec, values)) {
+    return codec;
+  }
+
+  const frequencies = new Array<number>(256).fill(0);
+  for (const value of values) {
+    for (const byte of value) {
+      frequencies[byte] += 1;
+    }
+  }
+  const missingBytes = frequencies
+    .map((frequency, byte) => ({ frequency, byte }))
+    .filter(({ frequency, byte }) => frequency > 0 && !codec.codes[byte])
+    .map(({ byte }) => byte);
+
+  let tree = Buffer.from(codec.tree);
+  const codes = codec.codes.map((code) => code ? [...code] : undefined);
+  for (const missingByte of missingBytes) {
+    const anchorByte = codes
+      .map((code, byte) => ({ code, byte }))
+      .filter((entry): entry is { code: number[]; byte: number } => Boolean(entry.code))
+      .sort((left, right) => frequencies[left.byte] - frequencies[right.byte] || left.byte - right.byte)[0]?.byte;
+    const anchorCode = anchorByte === undefined ? undefined : codes[anchorByte];
+    const newNodeIndex = tree.length / 4;
+    if (anchorByte === undefined || !anchorCode || newNodeIndex <= 0 || newNodeIndex >= 255) {
+      return undefined;
+    }
+
+    let nodeIndex = 0;
+    let leafOffset = -1;
+    for (let codeIndex = 0; codeIndex < anchorCode.length; codeIndex += 1) {
+      const direction = anchorCode[codeIndex];
+      const offset = nodeIndex * 4 + direction * 2;
+      const childIndex = tree[offset];
+      if (codeIndex === anchorCode.length - 1) {
+        if (childIndex !== 0 || tree[offset + 1] !== anchorByte) {
+          return undefined;
+        }
+        leafOffset = offset;
+      } else {
+        if (childIndex === 0) {
+          return undefined;
+        }
+        nodeIndex = childIndex;
+      }
+    }
+    if (leafOffset < 0) {
+      return undefined;
+    }
+
+    const extendedTree = Buffer.concat([tree, Buffer.from([0, anchorByte, 0, missingByte])]);
+    extendedTree[leafOffset] = newNodeIndex;
+    extendedTree[leafOffset + 1] = 0;
+    tree = extendedTree;
+    codes[anchorByte] = [...anchorCode, 0];
+    codes[missingByte] = [...anchorCode, 1];
+  }
+
+  return { tree, codes, raw: false };
+}
+
+function encodeCompressedString(bytes: Buffer, longString: boolean, codec: HuffmanCodec, context: string): Buffer {
+  const prefixLength = longString ? 2 : 1;
+  if (codec.raw) {
+    const output = Buffer.alloc(prefixLength + bytes.length);
+    if (longString) {
+      output.writeUInt16BE(bytes.length, 0);
+    } else {
+      output.writeUInt8(bytes.length, 0);
+    }
+    bytes.copy(output, prefixLength);
+    return output;
+  }
+
+  let bitLength = 0;
+  for (const byte of bytes) {
+    const code = codec.codes[byte];
+    if (!code) {
+      throw new Error(`${context}: byte ${byte} is missing from the compressed string Huffman tree.`);
+    }
+    bitLength += code.length;
+  }
+
+  const output = Buffer.alloc(prefixLength + Math.ceil(bitLength / 8));
+  if (longString) {
+    output.writeUInt16BE(bytes.length, 0);
+  } else {
+    output.writeUInt8(bytes.length, 0);
+  }
+  let bitIndex = 0;
+  for (const byte of bytes) {
+    for (const bit of codec.codes[byte] as number[]) {
+      if (bit === 1) {
+        output[prefixLength + (bitIndex >> 3)] |= 1 << (7 - (bitIndex & 7));
+      }
+      bitIndex += 1;
+    }
+  }
   return output;
 }
 
@@ -378,19 +654,36 @@ function writeCompressedStringOffset(record: Buffer, field: WritableField, offse
   writeUnsignedBitsLE(record, field.bitOffset, 32, BigInt(offset), context);
 }
 
-function buildCompressedTableBuffer(dbBuffer: Buffer, layout: TableWriteLayout, table: DataTable): Buffer {
-  // Silently overflow the 16-bit counter for tables larger than 65535 records,
-  // matching the original DB Master C# logic which casts to (ushort).
-  // The EA game engine likely calculates the actual row count using the 32-bit table size.
+function buildCompressedTableBuffer(dbBuffer: Buffer, layout: TableWriteLayout, table: DataTable, warnings: string[]): Buffer {
+  if (table.rows.length > 0xffff) {
+    throw new Error(`${layout.name}: DB table row count exceeds the 16-bit record counter.`);
+  }
 
   const header = Buffer.from(dbBuffer.subarray(layout.tableStart, layout.recordsOffset));
   header.writeUInt32LE(0, layout.compressedStringLengthOffset - layout.tableStart);
-  header.writeUInt16LE(table.rows.length & 0xffff, layout.recordsCountOffset - layout.tableStart);
-  header.writeUInt16LE(table.rows.length & 0xffff, layout.validRecordsCountOffset - layout.tableStart);
+  header.writeUInt16LE(table.rows.length, layout.recordsCountOffset - layout.tableStart);
+  header.writeUInt16LE(table.rows.length, layout.validRecordsCountOffset - layout.tableStart);
+
+  const stringBytes = table.rows.map((row, rowIndex) => layout.fields.map((field, columnIndex) => {
+    if (!isCompressedStringField(field)) {
+      return undefined;
+    }
+    const context = `${layout.name} row ${rowIndex + 1}, ${field.name}`;
+    return compressedStringBytes(row[columnIndex] ?? "", field.dbFieldType === 14, context);
+  }));
+  const flattenedStringBytes = stringBytes.flat().filter((value): value is Buffer => Boolean(value));
+  const existingCodec = readExistingHuffmanCodec(dbBuffer, layout);
+  const extendedCodec = existingCodec ? extendHuffmanCodec(existingCodec, flattenedStringBytes) : undefined;
+  const codec = extendedCodec ?? buildHuffmanCodec(flattenedStringBytes);
+  if (existingCodec && extendedCodec && extendedCodec !== existingCodec) {
+    warnings.push(`${layout.name}: extended Huffman tree for new characters.`);
+  } else if (existingCodec && !extendedCodec) {
+    warnings.push(`${layout.name}: rebuilt Huffman tree because the original tree could not be extended.`);
+  }
 
   const records: Buffer[] = [];
-  const compressedParts: Buffer[] = [];
-  let compressedLength = 0;
+  const compressedParts: Buffer[] = [codec.tree];
+  let compressedLength = codec.tree.length;
 
   for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex += 1) {
     const record = Buffer.alloc(layout.recordSize);
@@ -401,7 +694,12 @@ function buildCompressedTableBuffer(dbBuffer: Buffer, layout: TableWriteLayout, 
       const value = row[columnIndex] ?? "";
       if (isCompressedStringField(field)) {
         const offset = compressedLength;
-        const encoded = encodeCompressedString(value, field.dbFieldType === 14, context);
+        const encoded = encodeCompressedString(
+          stringBytes[rowIndex][columnIndex] as Buffer,
+          field.dbFieldType === 14,
+          codec,
+          context
+        );
         compressedParts.push(encoded);
         compressedLength += encoded.length;
         writeCompressedStringOffset(record, field, offset, context);
@@ -445,7 +743,9 @@ function expandDatabaseForChangedRows(
     if (!table || table.rows.length <= layout.capacity) {
       continue;
     }
-    // Silently overflow 16-bit counter, as the original C# DB Master does.
+    if (table.rows.length > 0xffff) {
+      throw new Error(`${layout.name}: DB table row count exceeds the 16-bit record counter.`);
+    }
     if (layout.hasCompressedStrings) {
       continue;
     }
@@ -529,7 +829,7 @@ function rebuildCompressedChangedTables(
       compressedStringLengthOffset: layout.compressedStringLengthOffset + shift,
       recordsOffset: layout.recordsOffset + shift
     };
-    const replacement = buildCompressedTableBuffer(output, shiftedLayout, table);
+    const replacement = buildCompressedTableBuffer(output, shiftedLayout, table, warnings);
     const oldLength = shiftedLayout.tableEnd - shiftedLayout.tableStart;
     const delta = replacement.length - oldLength;
     output = Buffer.concat([
@@ -539,7 +839,7 @@ function rebuildCompressedChangedTables(
     ]);
     replacements.push({ tableStart: layout.tableStart, delta });
     tableNames.add(layout.name);
-    warnings.push(`${layout.name}: rebuilt compressed string block (${delta >= 0 ? "+" : ""}${delta} bytes).`);
+    warnings.push(`${layout.name}: updated compressed string block (${delta >= 0 ? "+" : ""}${delta} bytes).`);
   }
 
   const totalDelta = replacements.reduce((total, replacement) => total + replacement.delta, 0);
