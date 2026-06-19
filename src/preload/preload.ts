@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld("dbmaster", {
   computeLanguageHashes: (values: string[]) => ipcRenderer.invoke("hash:language", values),
   getTransfermarktPlayerOverall: (playerId: string | number, fifa?: string) =>
     ipcRenderer.invoke("transfermarkt:getPlayerOverall", playerId, fifa),
+  searchTransfermarktPlayers: (query: string) =>
+    ipcRenderer.invoke("transfermarkt:searchPlayers", query),
+  getTransfermarktPlayerProfile: (playerId: string | number) =>
+    ipcRenderer.invoke("transfermarkt:getPlayerProfile", playerId),
   listBig: () => ipcRenderer.invoke("big:list"),
   extractDatabasesFromBig: () => ipcRenderer.invoke("big:extractDatabases"),
   getVisualDependenciesStatus: () => ipcRenderer.invoke("visualDependencies:getStatus"),

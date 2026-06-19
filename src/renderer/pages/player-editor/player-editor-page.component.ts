@@ -9,13 +9,14 @@ import type { DbMasterApi } from "../../services/dbmaster-api";
 import { NationService } from "../../services/nation.service";
 import { PlayerEditorService } from "../../services/player-editor.service";
 import type { PlayerEditorDraft, PlayerEditorFieldDraft } from "../../services/player-editor.service";
-import { positionInformation } from "../../../utils/position-mapper/position-mapper";
+import { positionInformation, positionNameToId, transfermarktPositionToFifaPosition } from "../../../utils/position-mapper/position-mapper";
 import { VisualAssetPickerComponent } from "../../components/visual-asset-picker/visual-asset-picker.component";
+import { TransfermarktPlayerImportModalComponent, type ImportedPlayerPayload } from "../../components/transfermarkt-player-import-modal/transfermarkt-player-import-modal.component";
 
 @Component({
   selector: "app-player-editor-page",
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchListComponent, InputListComponent, VisualAssetPickerComponent],
+  imports: [CommonModule, FormsModule, SearchListComponent, InputListComponent, VisualAssetPickerComponent, TransfermarktPlayerImportModalComponent],
   templateUrl: "./player-editor-page.component.html",
   styleUrl: "./player-editor-page.component.scss"
 })
@@ -40,6 +41,7 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
   pickerVisible = false;
   pickerType: "hairs" | "beards" = "hairs";
   pickerTargetField?: PlayerEditorFieldDraft;
+  importModalVisible = false;
   private readonly api: DbMasterApi = window.dbmaster;
   private minifaceRequestId = 0;
 
@@ -150,6 +152,113 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
     if (this.pickerTargetField) {
       this.pickerTargetField.value = assetId;
     }
+  }
+
+  onPlayerImported(payload: ImportedPlayerPayload): void {
+    if (!this.draft) {
+      return;
+    }
+
+    const setField = (column: string, val: string) => {
+      let field = this.draft!.identityFields.find(f => f.column.toLowerCase() === column.toLowerCase());
+      if (!field) {
+        for (const sec of this.draft!.sections) {
+          field = sec.fields.find(f => f.column.toLowerCase() === column.toLowerCase());
+          if (field) {
+            break;
+          }
+        }
+      }
+      if (field) {
+        field.value = val;
+      }
+    };
+
+    // 1. Names
+    const fullName = payload.profile.name ?? payload.overall.playerName;
+    const parts = fullName.trim().split(/\s+/);
+    let first = fullName;
+    let last = "";
+    if (parts.length > 1) {
+      first = parts.slice(0, -1).join(" ");
+      last = parts[parts.length - 1];
+    }
+    this.draft.names.firstname = first;
+    this.draft.names.surname = last;
+    this.draft.names.playerjerseyname = last || fullName;
+    this.draft.names.commonname = fullName;
+    this.draft.displayName = fullName;
+
+    // 2. Age / Birthdate
+    if (payload.profile.dateOfBirth) {
+      this.draft.birthDateIso = payload.profile.dateOfBirth;
+      setField("birthdate", payload.profile.dateOfBirth);
+    }
+    if (payload.profile.age !== null && payload.profile.age !== undefined) {
+      this.draft.age = payload.profile.age;
+    }
+
+    // 3. Height
+    if (payload.profile.height) {
+      setField("height", payload.profile.height.toString());
+    }
+
+    // 4. Nationality
+    if (payload.profile.citizenship && payload.profile.citizenship.length > 0) {
+      const natName = payload.profile.citizenship[0];
+      const natId = this.findNationId(natName);
+      if (natId) {
+        setField("nationality", natId);
+        this.draft.nationalityName = natName;
+      }
+    }
+
+    // 5. Preferred Foot
+    if (payload.profile.foot) {
+      const f = payload.profile.foot.toLowerCase();
+      if (f.includes("left")) {
+        setField("preferredfoot", "1");
+      } else if (f.includes("right")) {
+        setField("preferredfoot", "2");
+      }
+    }
+
+    // 6. Primary Position
+    if (payload.profile.position && payload.profile.position.main) {
+      const fifaPos = transfermarktPositionToFifaPosition(payload.profile.position.main);
+      if (fifaPos) {
+        const posId = positionNameToId(fifaPos);
+        if (posId !== -1) {
+          setField("preferredposition1", posId.toString());
+        }
+      }
+    }
+
+    // 7. Overall / Attributes
+    if (payload.overall.playerFields) {
+      Object.entries(payload.overall.playerFields).forEach(([col, val]) => {
+        setField(col, val.toString());
+      });
+    }
+
+    // 8. Visual Head / Miniface update
+    void this.loadMiniface(this.draft.playerId);
+
+    this.lastApplied = `Successfully imported ${fullName} from Transfermarkt.`;
+    this.lastAppliedTone = "info";
+  }
+
+  private findNationId(nationalityName: string): string | undefined {
+    const normalizedSearch = nationalityName.toLowerCase().trim();
+    let match = this.nationOptions.find(opt => opt.label.toLowerCase().startsWith(normalizedSearch));
+    if (match) {
+      return match.value;
+    }
+    match = this.nationOptions.find(opt => {
+      const countryPart = opt.label.split(" (")[0].toLowerCase().trim();
+      return countryPart === normalizedSearch || countryPart.includes(normalizedSearch) || normalizedSearch.includes(countryPart);
+    });
+    return match?.value;
   }
 
   ngOnDestroy(): void {

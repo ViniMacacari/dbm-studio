@@ -1,0 +1,72 @@
+<div class="import-modal-backdrop" *ngIf="visible" (click)="onClose()">
+  <section class="import-modal" role="dialog" aria-modal="true" aria-labelledby="import-modal-title" (click)="$event.stopPropagation()">
+    <div class="import-modal-header">
+      <div>
+        <span class="module-kicker">Transfermarkt Integration</span>
+        <h2 id="import-modal-title">Import Real Player</h2>
+      </div>
+      <button type="button" class="close-x-btn" aria-label="Close" (click)="onClose()">&times;</button>
+    </div>
+
+    <form (submit)="onSubmit(); $event.preventDefault()" class="import-search-bar">
+      <input
+        type="text"
+        placeholder="Enter player name (e.g. Lionel Messi) or Transfermarkt ID (e.g. 28003)"
+        [(ngModel)]="query"
+        name="query"
+        [disabled]="searching"
+        autoFocus
+      />
+      <button type="submit" [disabled]="searching || !query.trim()">Search</button>
+    </form>
+
+    <div class="import-results-container">
+      <!-- Loading State -->
+      <div class="import-loading-state" *ngIf="searching">
+        <div class="import-spinner"></div>
+        <span>Searching players on Transfermarkt...</span>
+      </div>
+
+      <!-- Error / Empty State -->
+      <div class="import-empty-state" *ngIf="!searching && error">
+        <span>{{ error }}</span>
+      </div>
+
+      <!-- Initial State -->
+      <div class="import-empty-state" *ngIf="!searching && !error && results.length === 0">
+        <span>Search by player name or Transfermarkt ID to import real data.</span>
+      </div>
+
+      <!-- Results List -->
+      <div class="import-results-list" *ngIf="!searching && results.length > 0">
+        <button
+          type="button"
+          class="import-result-item"
+          *ngFor="let player of results"
+          (click)="selectPlayer(player)"
+        >
+          <div class="item-left">
+            <span class="item-name">{{ player.name }}</span>
+            <div class="item-details">
+              <span *ngIf="player.position">{{ player.position }}</span>
+              <span *ngIf="player.age !== null && player.age !== undefined">{{ player.age }} years</span>
+              <span *ngIf="player.nationalities && player.nationalities.length > 0">
+                {{ player.nationalities.join(', ') }}
+              </span>
+            </div>
+          </div>
+          <div class="item-right">
+            <span class="item-club" *ngIf="player.club && player.club.name">{{ player.club.name }}</span>
+            <span class="item-value" *ngIf="player.marketValue">
+              €{{ player.marketValue >= 1000000 ? (player.marketValue / 1000000 | number:'1.0-2') + 'M' : (player.marketValue / 1000 | number:'1.0-0') + 'K' }}
+            </span>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <div class="import-modal-footer">
+      <button type="button" [disabled]="searching" (click)="onClose()">Cancel</button>
+    </div>
+  </section>
+</div>

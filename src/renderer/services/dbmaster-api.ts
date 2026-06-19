@@ -11,6 +11,7 @@ import type {
 } from "../../shared/types";
 import type { CompdataProject } from "../../shared/types";
 import type { TransfermarktOverallResult } from "../../utils/overall-calculator";
+import type { PlayerProfileResponse, PlayerSearchResult } from "../../utils/transfermarkt-services/transfermarkt";
 
 export interface DbMasterApi {
   openXml(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;
@@ -33,6 +34,12 @@ export interface DbMasterApi {
     playerId: string | number,
     fifa?: string
   ): Promise<{ result?: TransfermarktOverallResult; error?: string }>;
+  searchTransfermarktPlayers(
+    query: string
+  ): Promise<{ results?: PlayerSearchResult[]; error?: string }>;
+  getTransfermarktPlayerProfile(
+    playerId: string | number
+  ): Promise<{ result?: PlayerProfileResponse; error?: string }>;
   extractDatabasesFromBig(): Promise<{ canceled?: boolean; message?: string; entries?: unknown[]; warnings?: string[] }>;
   getVisualDependenciesStatus(): Promise<VisualDependenciesStatus>;
   installVisualDependencies(): Promise<VisualDependenciesInstallResult>;

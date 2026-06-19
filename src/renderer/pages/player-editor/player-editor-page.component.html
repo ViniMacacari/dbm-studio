@@ -16,6 +16,7 @@
       </div>
     </div>
     <div class="editor-actions">
+      <button type="button" class="secondary-apply-button" *ngIf="isNew" (click)="importModalVisible = true">Import Real Player</button>
       <button type="button" class="apply-button" (click)="apply()">Apply</button>
       <button type="button" class="secondary-apply-button" (click)="applyAndBack()">Apply and Back</button>
       <button type="button" class="secondary-apply-button" [disabled]="!canSaveDatabase" (click)="applyAndSave()">Apply
@@ -113,6 +114,11 @@
   </div>
 
   <app-visual-asset-picker [(visible)]="pickerVisible" [type]="pickerType" [currentValue]="pickerTargetField?.value ?? ''" (selected)="onPickerSelected($event)"></app-visual-asset-picker>
+  <app-transfermarkt-player-import-modal
+    [visible]="importModalVisible"
+    (close)="importModalVisible = false"
+    (imported)="onPlayerImported($event)"
+  ></app-transfermarkt-player-import-modal>
 </section>
 
 <ng-template #missingPlayer>

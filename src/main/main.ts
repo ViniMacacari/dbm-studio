@@ -8,6 +8,7 @@ import { extractBig, readBigEntries } from "../core/bigArchive";
 import { VisualDependencyManager } from "./visualDependencyManager";
 import { OverallCalculator } from "../utils/overall-calculator";
 import { Fifa } from "fifarating";
+import { CommonTransfermarktParser } from "../utils/transfermarkt-services/transfermarkt-parser";
 import {
   exportTable,
   importTable,
@@ -662,6 +663,29 @@ ipcMain.handle("transfermarkt:getPlayerOverall", async (_event, playerId: string
   try {
     const selectedFifa = Object.values(Fifa).includes(fifa as Fifa) ? fifa as Fifa : Fifa.Fifa23;
     const result = await overallCalculator.generateFromTransfermarkt(playerId, { fifa: selectedFifa });
+    return { result };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle("transfermarkt:searchPlayers", async (_event, query: string) => {
+  try {
+    const parser = new CommonTransfermarktParser();
+    const results = await parser.getPlayers({ name: query });
+    return { results };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle("transfermarkt:getPlayerProfile", async (_event, playerId: string | number) => {
+  try {
+    const parser = new CommonTransfermarktParser();
+    const result = await parser.getPlayers({ id: playerId });
+    if (Array.isArray(result)) {
+      throw new Error(`Expected profile for ID ${playerId}, but received search results.`);
+    }
     return { result };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
