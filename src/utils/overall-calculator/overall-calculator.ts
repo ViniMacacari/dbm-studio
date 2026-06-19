@@ -1,0 +1,486 @@
+import { AttributesUtils, CalculateUtils, Fifa, Position, type FifaRatingAttributes } from "fifarating";
+import { transfermarktPositionToFifaPosition } from "../position-mapper/position-mapper";
+import { CommonTransfermarktParser } from "../transfermarkt-services/transfermarkt-parser";
+import type {
+    ClubProfileResponse,
+    CompetitionSearchResponse,
+    CompetitionSearchResult,
+    PlayerAchievementsResponse,
+    PlayerMarketValueResponse,
+    PlayerProfileResponse,
+    PlayerSearchResult
+} from "../transfermarkt-services/transfermarkt";
+
+export interface OverallCalculatorTransfermarktGateway {
+    getPlayers(filter: { name?: string; id?: string | number }): Promise<PlayerProfileResponse | PlayerSearchResult[]>;
+    getPlayerAchievements(playerId: string | number): Promise<PlayerAchievementsResponse>;
+    getPlayerMarketValue(playerId: string | number): Promise<PlayerMarketValueResponse>;
+    getClubProfile(clubId: string | number): Promise<ClubProfileResponse>;
+    searchCompetitions(query: string, pageNumber?: number): Promise<CompetitionSearchResponse>;
+}
+
+export interface OverallCalculatorConfig {
+    minimumOverall: number;
+    maximumRawOverall: number;
+    marketValueFloor: number;
+    marketValueCeiling: number;
+    primeAge: number;
+    youthValuePremiumPerYear: number;
+    veteranValueDiscountPerYear: number;
+    leagueReferenceMeanMarketValue: number;
+    clubReferenceMeanMarketValue: number;
+    leagueCorrectionExponent: number;
+    clubCorrectionExponent: number;
+    minimumContextMultiplier: number;
+    maximumContextMultiplier: number;
+    marketWeight: number;
+    teamRelativeWeight: number;
+    leagueRelativeWeight: number;
+    trophyWeight: number;
+    relativeValueSpread: number;
+    trophyHalfLifeYears: number;
+    trophySaturation: number;
+    reputationMarketWeight: number;
+    reputationTrophyWeight: number;
+    reputationClubWeight: number;
+    reputationLeagueWeight: number;
+}
+
+export const defaultOverallCalculatorConfig: Readonly<OverallCalculatorConfig> = {
+    minimumOverall: 45,
+    maximumRawOverall: 96,
+    marketValueFloor: 50_000,
+    marketValueCeiling: 180_000_000,
+    primeAge: 27,
+    youthValuePremiumPerYear: 0.05,
+    veteranValueDiscountPerYear: 0.1,
+    leagueReferenceMeanMarketValue: 5_000_000,
+    clubReferenceMeanMarketValue: 4_000_000,
+    leagueCorrectionExponent: 0.16,
+    clubCorrectionExponent: 0.08,
+    minimumContextMultiplier: 0.65,
+    maximumContextMultiplier: 1.55,
+    marketWeight: 0.72,
+    teamRelativeWeight: 0.1,
+    leagueRelativeWeight: 0.08,
+    trophyWeight: 0.1,
+    relativeValueSpread: 1.15,
+    trophyHalfLifeYears: 6,
+    trophySaturation: 8,
+    reputationMarketWeight: 0.4,
+    reputationTrophyWeight: 0.25,
+    reputationClubWeight: 0.18,
+    reputationLeagueWeight: 0.17
+};
+
+export interface GenerateOverallOptions {
+    fifa?: Fifa;
+    position?: Position;
+    referenceDate?: Date;
+}
+
+export interface OverallCalculationBreakdown {
+    marketValue: number;
+    ageAdjustedMarketValue: number;
+    contextAdjustedMarketValue: number;
+    ageMarketFactor: number;
+    leagueMarketFactor: number;
+    clubMarketFactor: number;
+    marketScore: number;
+    teamRelativeScore?: number;
+    leagueRelativeScore?: number;
+    trophyScore?: number;
+    weightedTrophies?: number;
+    clubMeanMarketValue?: number;
+    leagueMeanMarketValue?: number;
+}
+
+export interface OverallCalculationValidation {
+    player: boolean;
+    marketValue: boolean;
+    age: boolean;
+    team: boolean;
+    league: boolean;
+    trophies: boolean;
+}
+
+export interface TransfermarktOverallResult {
+    playerId: string;
+    playerName: string;
+    rawOverall: number;
+    overall: number;
+    reputation: number;
+    position: Position;
+    fifa: Fifa;
+    attributes: FifaRatingAttributes;
+    confidence: number;
+    validation: OverallCalculationValidation;
+    breakdown: OverallCalculationBreakdown;
+    context: {
+        clubId?: string;
+        clubName?: string;
+        leagueId?: string;
+        leagueName?: string;
+        leagueCountry?: string;
+        leagueTier?: number;
+        achievements: number;
+    };
+    warnings: string[];
+}
+
+interface ResolvedTransfermarktContext {
+    playerId: string;
+    profile: PlayerProfileResponse;
+    market?: PlayerMarketValueResponse;
+    achievements?: PlayerAchievementsResponse;
+    club?: ClubProfileResponse;
+    competition?: CompetitionSearchResult;
+    warnings: string[];
+    validation: OverallCalculationValidation;
+}
+
+export class OverallCalculator {
+    readonly config: OverallCalculatorConfig;
+
+    constructor(
+        private readonly transfermarkt: OverallCalculatorTransfermarktGateway = new CommonTransfermarktParser(),
+        config: Partial<OverallCalculatorConfig> = {}
+    ) {
+        this.config = { ...defaultOverallCalculatorConfig, ...config };
+        this.validateConfig();
+    }
+
+    async generateFromTransfermarkt(
+        playerId: string | number,
+        options: GenerateOverallOptions = {}
+    ): Promise<TransfermarktOverallResult> {
+        const id = String(playerId).trim();
+        if (!/^\d+$/.test(id) || Number(id) <= 0) {
+            throw new Error(`Invalid Transfermarkt player id "${playerId}".`);
+        }
+
+        const context = await this.resolveTransfermarktContext(id);
+        return this.calculate(context, options);
+    }
+
+    private async resolveTransfermarktContext(playerId: string): Promise<ResolvedTransfermarktContext> {
+        const warnings: string[] = [];
+        const playerResponse = await this.transfermarkt.getPlayers({ id: playerId });
+        if (Array.isArray(playerResponse)) {
+            throw new Error(`Transfermarkt returned search results instead of player ${playerId}.`);
+        }
+        const profile = playerResponse;
+        const validation: OverallCalculationValidation = {
+            player: profile.id === null || profile.id === playerId,
+            marketValue: false,
+            age: profile.age !== null && Number.isFinite(profile.age),
+            team: false,
+            league: false,
+            trophies: false
+        };
+        if (!validation.player) {
+            warnings.push(`Transfermarkt returned player ${profile.id ?? "unknown"} for requested id ${playerId}.`);
+        }
+
+        const [market, achievements] = await Promise.all([
+            this.optional(() => this.transfermarkt.getPlayerMarketValue(playerId), "market value history", warnings),
+            this.optional(() => this.transfermarkt.getPlayerAchievements(playerId), "achievements", warnings)
+        ]);
+        validation.trophies = Boolean(achievements);
+
+        let club: ClubProfileResponse | undefined;
+        let competition: CompetitionSearchResult | undefined;
+        if (profile.club.id) {
+            club = await this.optional(() => this.transfermarkt.getClubProfile(profile.club.id as string), "club profile", warnings);
+            validation.team = Boolean(club && club.id === profile.club.id);
+            if (club && !validation.team) {
+                warnings.push(`Transfermarkt club ${club.id} does not match player club ${profile.club.id}.`);
+            }
+        } else {
+            warnings.push("Player has no current Transfermarkt club; team and league adjustments were omitted.");
+        }
+
+        if (club?.league.name) {
+            const search = await this.optional(
+                () => this.transfermarkt.searchCompetitions(club?.league.name as string),
+                "league profile",
+                warnings
+            );
+            competition = search ? this.matchCompetition(search, club) : undefined;
+            validation.league = Boolean(competition);
+            if (!competition) {
+                warnings.push(`Could not validate league ${club.league.name}.`);
+            }
+        }
+
+        const marketValue = positiveNumber(market?.marketValue) ?? positiveNumber(profile.marketValue);
+        validation.marketValue = marketValue !== undefined;
+        if (!validation.marketValue) {
+            throw new Error(`Transfermarkt player ${playerId} has no usable market value.`);
+        }
+        if (!validation.age) {
+            throw new Error(`Transfermarkt player ${playerId} has no usable age.`);
+        }
+
+        return { playerId, profile, market, achievements, club, competition, warnings, validation };
+    }
+
+    private calculate(context: ResolvedTransfermarktContext, options: GenerateOverallOptions): TransfermarktOverallResult {
+        const { profile, club, competition, achievements, market, warnings, validation } = context;
+        const marketValue = positiveNumber(market?.marketValue) ?? positiveNumber(profile.marketValue) as number;
+        const age = profile.age as number;
+        const position = options.position ?? transfermarktPositionToFifaPosition(profile.position.main);
+        if (!position) {
+            throw new Error(`Unsupported Transfermarkt position "${profile.position.main ?? "unknown"}".`);
+        }
+        const fifa = options.fifa ?? Fifa.Fifa23;
+        const referenceDate = options.referenceDate ?? new Date();
+
+        const squadSize = positiveNumber(club?.squad.size);
+        const clubMeanMarketValue = positiveNumber(club?.currentMarketValue) && squadSize
+            ? (club?.currentMarketValue as number) / squadSize
+            : undefined;
+        const leagueMeanMarketValue = positiveNumber(competition?.totalMarketValue) && positiveNumber(competition?.players)
+                ? (competition?.totalMarketValue as number) / (competition?.players as number)
+                : positiveNumber(competition?.meanMarketValue);
+
+        const ageMarketFactor = age <= this.config.primeAge
+            ? Math.exp(this.config.youthValuePremiumPerYear * (this.config.primeAge - age))
+            : Math.exp(-this.config.veteranValueDiscountPerYear * (age - this.config.primeAge));
+        const ageAdjustedMarketValue = marketValue / ageMarketFactor;
+        const leagueMarketFactor = leagueMeanMarketValue
+            ? Math.pow(this.config.leagueReferenceMeanMarketValue / leagueMeanMarketValue, this.config.leagueCorrectionExponent)
+            : 1;
+        const clubMarketFactor = clubMeanMarketValue
+            ? Math.pow(this.config.clubReferenceMeanMarketValue / clubMeanMarketValue, this.config.clubCorrectionExponent)
+            : 1;
+        const contextMultiplier = clamp(
+            leagueMarketFactor * clubMarketFactor,
+            this.config.minimumContextMultiplier,
+            this.config.maximumContextMultiplier
+        );
+        const contextAdjustedMarketValue = ageAdjustedMarketValue * contextMultiplier;
+        const marketScore = logNormalize(
+            contextAdjustedMarketValue,
+            this.config.marketValueFloor,
+            this.config.marketValueCeiling
+        );
+        const teamRelativeScore = clubMeanMarketValue
+            ? relativeValueScore(ageAdjustedMarketValue, clubMeanMarketValue, this.config.relativeValueSpread)
+            : undefined;
+        const leagueRelativeScore = leagueMeanMarketValue
+            ? relativeValueScore(ageAdjustedMarketValue, leagueMeanMarketValue, this.config.relativeValueSpread)
+            : undefined;
+        const weightedTrophies = achievements
+            ? this.weightAchievements(achievements, referenceDate)
+            : undefined;
+        const trophyScore = weightedTrophies === undefined
+            ? undefined
+            : 1 - Math.exp(-weightedTrophies / this.config.trophySaturation);
+
+        const abilityScore = weightedMean([
+            { value: marketScore, weight: this.config.marketWeight },
+            { value: teamRelativeScore, weight: this.config.teamRelativeWeight },
+            { value: leagueRelativeScore, weight: this.config.leagueRelativeWeight },
+            { value: trophyScore, weight: this.config.trophyWeight }
+        ]);
+        const rawOverall = clampInteger(
+            this.config.minimumOverall
+                + abilityScore * (this.config.maximumRawOverall - this.config.minimumOverall),
+            this.config.minimumOverall,
+            this.config.maximumRawOverall
+        );
+
+        const clubStrength = clubMeanMarketValue
+            ? logNormalize(clubMeanMarketValue, this.config.marketValueFloor, this.config.marketValueCeiling)
+            : undefined;
+        const leagueStrength = leagueMeanMarketValue
+            ? logNormalize(leagueMeanMarketValue, this.config.marketValueFloor, this.config.marketValueCeiling)
+            : undefined;
+        const rankingScore = rankingReputationScore(market?.ranking);
+        const reputationScore = weightedMean([
+            { value: rankingScore ?? marketScore, weight: this.config.reputationMarketWeight },
+            { value: trophyScore, weight: this.config.reputationTrophyWeight },
+            { value: clubStrength, weight: this.config.reputationClubWeight },
+            { value: leagueStrength, weight: this.config.reputationLeagueWeight }
+        ]);
+        const reputation = clampInteger(1 + reputationScore * 4, 1, 5);
+        const attributes = AttributesUtils.setRawOverall(AttributesUtils.init(rawOverall), fifa, position, rawOverall);
+        const overall = CalculateUtils.displayOverall(attributes, fifa, position, reputation);
+
+        const validationCount = Object.values(validation).filter(Boolean).length;
+        const confidence = round(validationCount / Object.keys(validation).length, 3);
+        const leagueTier = parseInteger(club?.league.tier);
+        const achievementCount = achievements?.achievements.reduce((total, achievement) => total + achievement.count, 0) ?? 0;
+
+        return {
+            playerId: context.playerId,
+            playerName: profile.name ?? profile.fullName ?? context.playerId,
+            rawOverall,
+            overall,
+            reputation,
+            position,
+            fifa,
+            attributes,
+            confidence,
+            validation,
+            breakdown: {
+                marketValue,
+                ageAdjustedMarketValue: round(ageAdjustedMarketValue),
+                contextAdjustedMarketValue: round(contextAdjustedMarketValue),
+                ageMarketFactor: round(ageMarketFactor, 4),
+                leagueMarketFactor: round(leagueMarketFactor, 4),
+                clubMarketFactor: round(clubMarketFactor, 4),
+                marketScore: round(marketScore, 4),
+                teamRelativeScore: optionalRound(teamRelativeScore),
+                leagueRelativeScore: optionalRound(leagueRelativeScore),
+                trophyScore: optionalRound(trophyScore),
+                weightedTrophies: optionalRound(weightedTrophies),
+                clubMeanMarketValue: optionalRound(clubMeanMarketValue),
+                leagueMeanMarketValue: optionalRound(leagueMeanMarketValue)
+            },
+            context: {
+                clubId: club?.id ?? profile.club.id ?? undefined,
+                clubName: club?.name ?? profile.club.name ?? undefined,
+                leagueId: club?.league.id ?? competition?.id ?? undefined,
+                leagueName: club?.league.name ?? competition?.name ?? undefined,
+                leagueCountry: club?.league.countryName ?? competition?.country ?? undefined,
+                leagueTier,
+                achievements: achievementCount
+            },
+            warnings
+        };
+    }
+
+    private matchCompetition(search: CompetitionSearchResponse, club: ClubProfileResponse): CompetitionSearchResult | undefined {
+        const leagueId = normalize(club.league.id);
+        const leagueName = normalize(club.league.name);
+        const country = normalize(club.league.countryName);
+        return search.results.find((result) => leagueId && normalize(result.id) === leagueId)
+            ?? search.results.find((result) => normalize(result.name) === leagueName && (!country || normalize(result.country) === country));
+    }
+
+    private weightAchievements(achievements: PlayerAchievementsResponse, referenceDate: Date): number {
+        return achievements.achievements.reduce((total, achievement) => {
+            if (achievement.details.length === 0) {
+                return total + achievement.count;
+            }
+            const detailWeight = achievement.details.reduce((detailTotal, detail) => {
+                const seasonYear = parseSeasonYear(detail.season.id ?? detail.season.name);
+                if (seasonYear === undefined) {
+                    return detailTotal + 1;
+                }
+                const ageYears = Math.max(0, referenceDate.getUTCFullYear() - seasonYear);
+                return detailTotal + Math.pow(0.5, ageYears / this.config.trophyHalfLifeYears);
+            }, 0);
+            return total + detailWeight;
+        }, 0);
+    }
+
+    private async optional<T>(operation: () => Promise<T>, label: string, warnings: string[]): Promise<T | undefined> {
+        try {
+            return await operation();
+        } catch (error) {
+            warnings.push(`Could not load Transfermarkt ${label}: ${error instanceof Error ? error.message : String(error)}`);
+            return undefined;
+        }
+    }
+
+    private validateConfig(): void {
+        if (this.config.marketValueFloor <= 0 || this.config.marketValueCeiling <= this.config.marketValueFloor) {
+            throw new Error("Overall calculator market-value bounds are invalid.");
+        }
+        if (this.config.maximumRawOverall <= this.config.minimumOverall || this.config.maximumRawOverall > 99) {
+            throw new Error("Overall calculator rating bounds are invalid.");
+        }
+        const weights = [
+            this.config.marketWeight,
+            this.config.teamRelativeWeight,
+            this.config.leagueRelativeWeight,
+            this.config.trophyWeight,
+            this.config.reputationMarketWeight,
+            this.config.reputationTrophyWeight,
+            this.config.reputationClubWeight,
+            this.config.reputationLeagueWeight
+        ];
+        if (weights.some((weight) => !Number.isFinite(weight) || weight < 0)) {
+            throw new Error("Overall calculator weights must be finite non-negative numbers.");
+        }
+    }
+}
+
+function positiveNumber(value: unknown): number | undefined {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+        return value;
+    }
+    if (typeof value === "string") {
+        const parsed = Number(value.replace(/[^\d.-]/g, ""));
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+    }
+    return undefined;
+}
+
+function parseInteger(value: unknown): number | undefined {
+    const match = String(value ?? "").match(/\d+/);
+    return match ? Number(match[0]) : undefined;
+}
+
+function parseSeasonYear(value: string | null | undefined): number | undefined {
+    const match = value?.match(/(?:19|20)\d{2}/);
+    return match ? Number(match[0]) : undefined;
+}
+
+function normalize(value: string | null | undefined): string {
+    return (value ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+}
+
+function logNormalize(value: number, floor: number, ceiling: number): number {
+    const normalized = (Math.log(Math.max(value, floor)) - Math.log(floor)) / (Math.log(ceiling) - Math.log(floor));
+    return clamp(normalized, 0, 1);
+}
+
+function relativeValueScore(value: number, reference: number, spread: number): number {
+    return 0.5 + Math.atan(Math.log(value / reference) / spread) / Math.PI;
+}
+
+function rankingReputationScore(ranking: Record<string, string> | undefined): number | undefined {
+    const ranks = Object.values(ranking ?? {})
+        .map((value) => value.match(/[\d,.]+/)?.[0].replace(/[,.]/g, ""))
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0);
+    if (ranks.length === 0) {
+        return undefined;
+    }
+    return 1 / (1 + Math.log1p(Math.min(...ranks)) / 4);
+}
+
+function weightedMean(entries: Array<{ value: number | undefined; weight: number }>): number {
+    const available = entries.filter((entry): entry is { value: number; weight: number } => entry.value !== undefined && entry.weight > 0);
+    const totalWeight = available.reduce((total, entry) => total + entry.weight, 0);
+    if (totalWeight === 0) {
+        return 0;
+    }
+    return available.reduce((total, entry) => total + entry.value * entry.weight, 0) / totalWeight;
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+    return Math.min(Math.max(value, minimum), maximum);
+}
+
+function clampInteger(value: number, minimum: number, maximum: number): number {
+    return Math.round(clamp(value, minimum, maximum));
+}
+
+function round(value: number, digits = 0): number {
+    const factor = 10 ** digits;
+    return Math.round(value * factor) / factor;
+}
+
+function optionalRound(value: number | undefined, digits = 4): number | undefined {
+    return value === undefined ? undefined : round(value, digits);
+}

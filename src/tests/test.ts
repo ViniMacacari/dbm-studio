@@ -1,15 +1,25 @@
+import { OverallCalculator } from "../utils/overall-calculator";
 import { CommonTransfermarktParser } from "../utils/transfermarkt-services/transfermarkt-parser";
 import { AttributesUtils, CalculateUtils, ConfigUtils, Fifa, Position } from 'fifarating';
 
 const test = async () => {
-    // console.log("=== Testing CommonTransfermarktParser Wrapper Methods ===");
-    // const parser = new CommonTransfermarktParser();
+    const player = 8198
 
-    // const result = await parser.getPlayers({
-    //     id: 68290
-    // })
+    const result = await new OverallCalculator()
+        .generateFromTransfermarkt(player);
 
-    // console.log(result)
+    console.log(result.overall);
+    console.log(result.reputation);
+    console.log(result.breakdown);
+
+    console.log("=== Testing CommonTransfermarktParser Wrapper Methods ===");
+    const parser = new CommonTransfermarktParser();
+
+    const result1 = await parser.getPlayers({
+        id: player
+    })
+
+    console.log(result1)
 
     const fifa = Fifa.Fifa12;
     const position = Position.GK;
@@ -30,7 +40,6 @@ const test = async () => {
     console.log(AttributesUtils.setRawOverall(AttributesUtils.init(defaultOverall), fifa, position, defaultOverall + 5));
 
     console.log(AttributesUtils.generateRawOverall(fifa, position, defaultOverall));
-
 };
 
 test().catch(err => {
