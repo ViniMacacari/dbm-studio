@@ -12,6 +12,7 @@
     "src/core/**/*.ts",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
-    "src/shared/**/*.ts"
+    "src/shared/**/*.ts",
+    "src/utils/**/*.ts"
   ]
 }
