@@ -133,6 +133,39 @@ async function testMidTierCalibration(): Promise<void> {
     assert.ok(calibratedElite.rawOverall - linearElite.rawOverall <= 1);
 }
 
+async function testGoalkeeperLongevity(): Promise<void> {
+    const veteran = await calculate({
+        age: 36,
+        marketValue: 400_000,
+        clubMeanMarketValue: 2_100_000,
+        leagueMeanMarketValue: 3_040_000,
+        trophies: 7,
+        position: "Goalkeeper"
+    });
+    const veteranWithoutPositionAdjustment = await calculate({
+        age: 36,
+        marketValue: 400_000,
+        clubMeanMarketValue: 2_100_000,
+        leagueMeanMarketValue: 3_040_000,
+        trophies: 7,
+        position: "Goalkeeper"
+    }, { goalkeeperExperienceMaximumBoost: 0 });
+    assert.ok(veteran.overall >= 76);
+    assert.ok(veteran.rawOverall >= veteranWithoutPositionAdjustment.rawOverall + 4);
+    assert.ok(veteran.breakdown.positionExperienceBoost > 0);
+
+    const younger = await calculate({
+        age: 29,
+        marketValue: 1_500_000,
+        clubMeanMarketValue: 2_100_000,
+        leagueMeanMarketValue: 3_040_000,
+        position: "Goalkeeper"
+    });
+    assert.equal(younger.breakdown.positionExperienceBoost, 0);
+    assert.ok(younger.breakdown.positionAbilityAdjustment < 0);
+    assert.ok(younger.overall <= 72);
+}
+
 async function testAgeCorrection(): Promise<void> {
     const young = await calculate({ age: 20, marketValue: 10_000_000, clubMeanMarketValue: 4_000_000, leagueMeanMarketValue: 5_000_000 });
     const veteran = await calculate({ age: 33, marketValue: 5_000_000, clubMeanMarketValue: 4_000_000, leagueMeanMarketValue: 5_000_000 });
@@ -177,6 +210,7 @@ async function run(): Promise<void> {
     await testLeagueAndClubCorrection();
     await testAchievementsAndReputation();
     await testMidTierCalibration();
+    await testGoalkeeperLongevity();
     testPositionMapping();
     console.log("Overall calculator tests passed.");
 }

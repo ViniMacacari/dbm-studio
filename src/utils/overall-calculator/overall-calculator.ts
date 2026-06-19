@@ -24,6 +24,7 @@ export interface OverallCalculatorConfig {
     maximumRawOverall: number;
     midTierOverallBoost: number;
     goalkeeperExperienceStartAge: number;
+    goalkeeperBaseAbilityAdjustment: number;
     goalkeeperExperienceMaximumBoost: number;
     goalkeeperExperienceRampYears: number;
     marketValueFloor: number;
@@ -56,7 +57,8 @@ export const defaultOverallCalculatorConfig: Readonly<OverallCalculatorConfig> =
     maximumRawOverall: 96,
     midTierOverallBoost: 0.08,
     goalkeeperExperienceStartAge: 31,
-    goalkeeperExperienceMaximumBoost: 0.11,
+    goalkeeperBaseAbilityAdjustment: -0.02,
+    goalkeeperExperienceMaximumBoost: 0.135,
     goalkeeperExperienceRampYears: 3,
     marketValueFloor: 50_000,
     marketValueCeiling: 180_000_000,
@@ -100,6 +102,7 @@ export interface OverallCalculationBreakdown {
     abilityScore: number;
     calibratedAbilityScore: number;
     positionExperienceBoost: number;
+    positionAbilityAdjustment: number;
     leagueStrengthScore?: number;
     teamRelativeScore?: number;
     leagueRelativeScore?: number;
@@ -309,7 +312,9 @@ export class OverallCalculator {
             1
         );
         const positionExperienceBoost = this.positionExperienceBoost(position, age, curveAdjustedAbilityScore);
-        const calibratedAbilityScore = this.clamp(curveAdjustedAbilityScore + positionExperienceBoost, 0, 1);
+        const positionAbilityAdjustment = (position === Position.GK ? this.config.goalkeeperBaseAbilityAdjustment : 0)
+            + positionExperienceBoost;
+        const calibratedAbilityScore = this.clamp(curveAdjustedAbilityScore + positionAbilityAdjustment, 0, 1);
         const rawOverall = this.clampInteger(
             this.config.minimumOverall
                 + calibratedAbilityScore * (this.config.maximumRawOverall - this.config.minimumOverall),
@@ -363,6 +368,7 @@ export class OverallCalculator {
                 abilityScore: this.round(abilityScore, 4),
                 calibratedAbilityScore: this.round(calibratedAbilityScore, 4),
                 positionExperienceBoost: this.round(positionExperienceBoost, 4),
+                positionAbilityAdjustment: this.round(positionAbilityAdjustment, 4),
                 leagueStrengthScore: this.optionalRound(leagueStrengthScore),
                 teamRelativeScore: this.optionalRound(teamRelativeScore),
                 leagueRelativeScore: this.optionalRound(leagueRelativeScore),
@@ -430,9 +436,12 @@ export class OverallCalculator {
         }
         if (
             !Number.isFinite(this.config.goalkeeperExperienceStartAge)
+            || !Number.isFinite(this.config.goalkeeperBaseAbilityAdjustment)
             || !Number.isFinite(this.config.goalkeeperExperienceMaximumBoost)
             || !Number.isFinite(this.config.goalkeeperExperienceRampYears)
             || this.config.goalkeeperExperienceStartAge < 18
+            || this.config.goalkeeperBaseAbilityAdjustment < -0.1
+            || this.config.goalkeeperBaseAbilityAdjustment > 0.1
             || this.config.goalkeeperExperienceMaximumBoost < 0
             || this.config.goalkeeperExperienceMaximumBoost > 0.2
             || this.config.goalkeeperExperienceRampYears <= 0

@@ -43,7 +43,7 @@ const test = async () => {
     // console.log(AttributesUtils.generateRawOverall(fifa, position, defaultOverall));
 
     const result = await new OverallCalculator()
-        .generateFromTransfermarkt(68097);
+        .generateFromTransfermarkt(943837);
 
     console.log(result)
 };
