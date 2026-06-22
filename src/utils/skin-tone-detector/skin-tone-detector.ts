@@ -37,6 +37,11 @@ type SkinPixel = RGB & {
     weight: number;
 };
 
+type LuminanceBand = {
+    lower: number;
+    upper: number;
+};
+
 export class SkinToneDetector {
     async getTone(tones: SkinToneOption[], imageUrl: string): Promise<SkinToneResult> {
         this.validateTones(tones);
@@ -166,31 +171,37 @@ export class SkinToneDetector {
         const ny = y / height;
 
         const forehead =
-            nx >= 0.38 &&
-            nx <= 0.62 &&
-            ny >= 0.18 &&
+            nx >= 0.37 &&
+            nx <= 0.63 &&
+            ny >= 0.17 &&
             ny <= 0.32;
 
         const leftCheek =
-            nx >= 0.24 &&
+            nx >= 0.23 &&
             nx <= 0.42 &&
-            ny >= 0.36 &&
+            ny >= 0.35 &&
             ny <= 0.56;
 
         const rightCheek =
             nx >= 0.58 &&
-            nx <= 0.76 &&
-            ny >= 0.36 &&
+            nx <= 0.77 &&
+            ny >= 0.35 &&
             ny <= 0.56;
 
         const nose =
             nx >= 0.43 &&
             nx <= 0.57 &&
-            ny >= 0.32 &&
-            ny <= 0.54;
+            ny >= 0.31 &&
+            ny <= 0.53;
+
+        const lowerBeardAndMouthArea = ny >= 0.57;
+
+        if (lowerBeardAndMouthArea) {
+            return 0;
+        }
 
         if (leftCheek || rightCheek) {
-            return 2.5;
+            return 2.7;
         }
 
         if (nose) {
@@ -198,7 +209,7 @@ export class SkinToneDetector {
         }
 
         if (forehead) {
-            return 1.2;
+            return 1.1;
         }
 
         return 0;
@@ -206,6 +217,10 @@ export class SkinToneDetector {
 
     private isLikelySkin(r: number, g: number, b: number): boolean {
         if (this.isAlmostWhite(r, g, b)) {
+            return false;
+        }
+
+        if (this.isAlmostBlack(r, g, b)) {
             return false;
         }
 
@@ -219,28 +234,28 @@ export class SkinToneDetector {
         const max = Math.max(r, g, b);
         const min = Math.min(r, g, b);
 
-        const hasColorDifference = max - min >= 10;
+        const hasColorDifference = max - min >= 8;
 
         const hsvRule =
-            (hsv.h <= 55 || hsv.h >= 340) &&
-            hsv.s >= 0.10 &&
-            hsv.s <= 0.78 &&
-            hsv.v >= 0.16 &&
+            (hsv.h <= 58 || hsv.h >= 340) &&
+            hsv.s >= 0.08 &&
+            hsv.s <= 0.82 &&
+            hsv.v >= 0.12 &&
             hsv.v <= 0.98;
 
         const ycbcrRule =
-            ycbcr.cb >= 72 &&
-            ycbcr.cb <= 150 &&
-            ycbcr.cr >= 122 &&
-            ycbcr.cr <= 195;
+            ycbcr.cb >= 70 &&
+            ycbcr.cb <= 154 &&
+            ycbcr.cr >= 118 &&
+            ycbcr.cr <= 198;
 
         const rgbRule =
-            r >= 35 &&
-            g >= 25 &&
-            b >= 18 &&
-            r >= g * 0.72 &&
-            r >= b * 1.04 &&
-            g >= b * 0.72 &&
+            r >= 28 &&
+            g >= 20 &&
+            b >= 14 &&
+            r >= g * 0.68 &&
+            r >= b * 1.02 &&
+            g >= b * 0.68 &&
             hasColorDifference;
 
         return hsvRule && ycbcrRule && rgbRule;
@@ -251,8 +266,10 @@ export class SkinToneDetector {
             .map(pixel => pixel.luminance)
             .sort((a, b) => a - b);
 
-        const lowerLimit = this.quantile(luminances, 0.55);
-        const upperLimit = this.quantile(luminances, 0.96);
+        const band = this.chooseLuminanceBand(luminances);
+
+        const lowerLimit = this.quantile(luminances, band.lower);
+        const upperLimit = this.quantile(luminances, band.upper);
 
         let selectedPixels = pixels.filter(pixel => {
             return pixel.luminance >= lowerLimit && pixel.luminance <= upperLimit;
@@ -262,12 +279,93 @@ export class SkinToneDetector {
             selectedPixels = pixels;
         }
 
+        selectedPixels = this.removeColorOutliers(selectedPixels);
+
+        if (selectedPixels.length < 40) {
+            selectedPixels = pixels;
+        }
+
+        return this.weightedAverage(selectedPixels);
+    }
+
+    private chooseLuminanceBand(luminances: number[]): LuminanceBand {
+        const q10 = this.quantile(luminances, 0.10);
+        const q50 = this.quantile(luminances, 0.50);
+        const q90 = this.quantile(luminances, 0.90);
+
+        const spread = q90 - q10;
+
+        if (q90 <= 165) {
+            return {
+                lower: 0.00,
+                upper: 0.55,
+            };
+        }
+
+        if (q50 <= 132 && spread >= 55) {
+            return {
+                lower: 0.05,
+                upper: 0.60,
+            };
+        }
+
+        if (q90 >= 172 && q50 >= 135) {
+            return {
+                lower: 0.55,
+                upper: 0.96,
+            };
+        }
+
+        if (q50 >= 150) {
+            return {
+                lower: 0.45,
+                upper: 0.92,
+            };
+        }
+
+        return {
+            lower: 0.18,
+            upper: 0.72,
+        };
+    }
+
+    private removeColorOutliers(pixels: SkinPixel[]): SkinPixel[] {
+        if (pixels.length < 80) {
+            return pixels;
+        }
+
+        const sortedByR = pixels.map(pixel => pixel.r).sort((a, b) => a - b);
+        const sortedByG = pixels.map(pixel => pixel.g).sort((a, b) => a - b);
+        const sortedByB = pixels.map(pixel => pixel.b).sort((a, b) => a - b);
+
+        const minR = this.quantile(sortedByR, 0.05);
+        const maxR = this.quantile(sortedByR, 0.95);
+
+        const minG = this.quantile(sortedByG, 0.05);
+        const maxG = this.quantile(sortedByG, 0.95);
+
+        const minB = this.quantile(sortedByB, 0.05);
+        const maxB = this.quantile(sortedByB, 0.95);
+
+        return pixels.filter(pixel => {
+            return (
+                pixel.r >= minR &&
+                pixel.r <= maxR &&
+                pixel.g >= minG &&
+                pixel.g <= maxG &&
+                pixel.b >= minB &&
+                pixel.b <= maxB
+            );
+        });
+    }
+
+    private weightedAverage(pixels: SkinPixel[]): RGBWithSamples {
         let totalR = 0;
         let totalG = 0;
         let totalB = 0;
         let totalWeight = 0;
 
-        for (const pixel of selectedPixels) {
+        for (const pixel of pixels) {
             totalR += pixel.r * pixel.weight;
             totalG += pixel.g * pixel.weight;
             totalB += pixel.b * pixel.weight;
@@ -282,7 +380,7 @@ export class SkinToneDetector {
             r: Math.round(totalR / totalWeight),
             g: Math.round(totalG / totalWeight),
             b: Math.round(totalB / totalWeight),
-            sampledPixels: selectedPixels.length,
+            sampledPixels: pixels.length,
         };
     }
 
@@ -294,7 +392,7 @@ export class SkinToneDetector {
     ): RGBWithSamples {
         const startX = Math.floor(width * 0.34);
         const endX = Math.floor(width * 0.66);
-        const startY = Math.floor(height * 0.25);
+        const startY = Math.floor(height * 0.24);
         const endY = Math.floor(height * 0.52);
 
         const pixels: SkinPixel[] = [];
@@ -307,7 +405,7 @@ export class SkinToneDetector {
                 const g = data[index + 1];
                 const b = data[index + 2];
 
-                if (this.isAlmostWhite(r, g, b)) {
+                if (this.isAlmostWhite(r, g, b) || this.isAlmostBlack(r, g, b)) {
                     continue;
                 }
 
@@ -388,11 +486,15 @@ export class SkinToneDetector {
         return r >= 235 && g >= 235 && b >= 235;
     }
 
+    private isAlmostBlack(r: number, g: number, b: number): boolean {
+        return r <= 18 && g <= 18 && b <= 18;
+    }
+
     private isAlmostGray(r: number, g: number, b: number): boolean {
         const max = Math.max(r, g, b);
         const min = Math.min(r, g, b);
 
-        return max - min <= 7;
+        return max - min <= 6;
     }
 
     private rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
