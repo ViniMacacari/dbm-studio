@@ -182,10 +182,13 @@ export class TeamFormationEditorService {
   }
 
   syncSquadPlayers(project: DbProject, state: TeamFormationEditorState, linkedPlayers: TeamPlayerLinkDraft[]): void {
+    const playersTable = this.findTable(project, "players");
     const playerCatalog: Record<string, FormationPlayerInfo> = {};
     for (const link of linkedPlayers) {
       const summary = this.players.resolvePlayerSummaryById(project, link.playerId);
-      const preferredPositionId = this.optionalNumber(link.position);
+      const prefPos1 = playersTable && summary ? this.read(playersTable, summary.rowIndex, "preferredposition1") : undefined;
+      const preferredStr = prefPos1 && prefPos1 !== "-1" ? prefPos1 : link.position;
+      const preferredPositionId = this.optionalNumber(preferredStr);
       playerCatalog[link.playerId] = {
         playerId: link.playerId,
         playerName: link.displayName || summary?.displayName || `Player ${link.playerId}`,
