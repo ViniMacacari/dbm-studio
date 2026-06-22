@@ -31,6 +31,7 @@
       {{ section.title }}
     </button>
     <button type="button" [class.active]="activeTab === 'players'" (click)="setTab('players')">Players</button>
+    <button type="button" [class.active]="activeTab === 'formations'" (click)="setTab('formations')">Formations</button>
     <button type="button" [class.active]="activeTab === 'countries'" (click)="setTab('countries')">Countries</button>
     <button type="button" [class.active]="activeTab === 'rivals'" (click)="setTab('rivals')">Rivals</button>
     <button type="button" [class.active]="activeTab === 'stadiums'" (click)="setTab('stadiums')">Stadiums</button>
@@ -144,6 +145,105 @@
       <ng-template #noTeamPlayers>
         <div class="empty-state module-empty">
           <strong>No players linked.</strong>
+        </div>
+      </ng-template>
+    </section>
+
+    <section class="editor-panel formation-editor-panel" [class.hidden]="activeTab !== 'formations'">
+      <ng-container *ngIf="team.formation as formation; else noFormationData">
+        <div class="formation-toolbar">
+          <label class="field-block formation-select-field">
+            <span>Formation</span>
+            <app-input-list [value]="formation.selectedFormationId" [options]="formationOptions"
+              placeholder="Select formation" (valueChange)="changeFormation($event)"></app-input-list>
+          </label>
+          <div class="formation-instructions">
+            <strong>{{ formation.selectedFormation.formationName }}</strong>
+            <span>Click one player and then another to swap them. Formation positions remain fixed.</span>
+          </div>
+          <button type="button" class="secondary-apply-button" [disabled]="!formation.dirty"
+            (click)="revertFormation()">Revert</button>
+        </div>
+
+        <div class="formation-workspace">
+          <div class="formation-pitch" aria-label="Starting eleven formation">
+            <div class="pitch-center-line"></div>
+            <div class="pitch-center-circle"></div>
+            <div class="pitch-box pitch-box-top"></div>
+            <div class="pitch-box pitch-box-bottom"></div>
+
+            <button type="button" class="formation-player-marker"
+              *ngFor="let player of formation.startingXI; trackBy: trackByFormationSlot"
+              [class.selected]="isFormationSlotSelected(player)"
+              [style.left.%]="pitchLeft(player)" [style.top.%]="pitchTop(player)"
+              (click)="selectFormationSlot(player)">
+              <span class="formation-player-image" [class.placeholder]="playerMinifaces[player.playerId]?.source !== 'player'">
+                <img *ngIf="playerMinifaces[player.playerId]?.dataUrl as dataUrl" [src]="dataUrl"
+                  [alt]="player.playerName" />
+              </span>
+              <span class="formation-player-copy">
+                <strong>{{ player.playerName }}</strong>
+                <small>{{ player.positionName || 'N/D' }}<ng-container *ngIf="player.overall !== undefined"> · OVR {{ player.overall }}</ng-container></small>
+              </span>
+            </button>
+          </div>
+
+          <aside class="formation-squad-panel">
+            <input class="formation-player-search" type="search" [(ngModel)]="formationPlayerSearch"
+              placeholder="Search player or position" />
+
+            <section class="formation-squad-section">
+              <h3>Bench</h3>
+              <button type="button" class="formation-squad-player"
+                *ngFor="let player of filteredFormationBench; trackBy: trackByFormationSlot"
+                [class.selected]="isFormationSlotSelected(player)" (click)="selectFormationSlot(player)">
+                <span class="formation-squad-image" [class.placeholder]="playerMinifaces[player.playerId]?.source !== 'player'">
+                  <img *ngIf="playerMinifaces[player.playerId]?.dataUrl as dataUrl" [src]="dataUrl"
+                    [alt]="player.playerName" />
+                </span>
+                <span><strong>{{ player.playerName }}</strong><small>{{ player.positionName || 'N/D' }} · Slot {{ player.slot }}</small></span>
+                <b *ngIf="player.overall !== undefined">{{ player.overall }}</b>
+              </button>
+              <p *ngIf="filteredFormationBench.length === 0">No matching bench players.</p>
+            </section>
+
+            <section class="formation-squad-section">
+              <h3>Reserves</h3>
+              <button type="button" class="formation-squad-player"
+                *ngFor="let player of filteredFormationReserves; trackBy: trackByFormationSlot"
+                [class.selected]="isFormationSlotSelected(player)" (click)="selectFormationSlot(player)">
+                <span class="formation-squad-image" [class.placeholder]="playerMinifaces[player.playerId]?.source !== 'player'">
+                  <img *ngIf="playerMinifaces[player.playerId]?.dataUrl as dataUrl" [src]="dataUrl"
+                    [alt]="player.playerName" />
+                </span>
+                <span><strong>{{ player.playerName }}</strong><small>{{ player.positionName || 'N/D' }} · Slot {{ player.slot }}</small></span>
+                <b *ngIf="player.overall !== undefined">{{ player.overall }}</b>
+              </button>
+              <p *ngIf="filteredFormationReserves.length === 0">No matching reserve players.</p>
+            </section>
+
+            <section class="formation-squad-section">
+              <h3>Other squad players</h3>
+              <button type="button" class="formation-squad-player"
+                *ngFor="let player of filteredOtherSquadPlayers; trackBy: trackByFormationSlot"
+                [class.selected]="isFormationSlotSelected(player)" (click)="selectFormationSlot(player)">
+                <span class="formation-squad-image" [class.placeholder]="playerMinifaces[player.playerId]?.source !== 'player'">
+                  <img *ngIf="playerMinifaces[player.playerId]?.dataUrl as dataUrl" [src]="dataUrl"
+                    [alt]="player.playerName" />
+                </span>
+                <span><strong>{{ player.playerName }}</strong><small>{{ player.positionName || 'N/D' }}</small></span>
+                <b *ngIf="player.overall !== undefined">{{ player.overall }}</b>
+              </button>
+              <p *ngIf="filteredOtherSquadPlayers.length === 0">No matching unassigned players.</p>
+            </section>
+          </aside>
+        </div>
+      </ng-container>
+
+      <ng-template #noFormationData>
+        <div class="empty-state module-empty">
+          <strong>Formation data is unavailable for this team.</strong>
+          <span>The editor requires default_teamsheets, default_mentalities, defaultteamdata and formations rows.</span>
         </div>
       </ng-template>
     </section>
