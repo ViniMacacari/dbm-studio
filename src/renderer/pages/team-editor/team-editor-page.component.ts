@@ -3,6 +3,8 @@ import { Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleCha
 import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../../../shared/types";
 import { InputColorComponent } from "../../components/input-color/input-color.component";
+import { InputListComponent } from "../../components/input-list/input-list.component";
+import type { InputListOption } from "../../components/input-list/input-list.component";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
 import type { DbMasterApi } from "../../services/dbmaster-api";
 import type { LocalizationFieldDraft } from "../../services/localization.service";
@@ -19,11 +21,13 @@ import type {
   TeamStadiumLinkDraft
 } from "../../services/team-editor.service";
 import type { TeamPlayerLinkDraft } from "../../services/transfer.service";
+import { TeamFormationEditorService } from "../../services/team-formation-editor.service";
+import type { TeamSheetSlot } from "../../services/team-formation-editor.service";
 
 @Component({
   selector: "app-team-editor-page",
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchListComponent, InputColorComponent],
+  imports: [CommonModule, FormsModule, SearchListComponent, InputColorComponent, InputListComponent],
   templateUrl: "./team-editor-page.component.html",
   styleUrl: "./team-editor-page.component.scss"
 })
@@ -43,12 +47,17 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
   crestDataUrl = "";
   crestSource: "team" | "missing" = "missing";
   playerMinifaces: Record<string, { dataUrl: string; source: "player" | "generic" | "missing" | "loading" }> = {};
+  formationPlayerSearch = "";
+  selectedFormationSlot?: TeamSheetSlot;
   private readonly api: DbMasterApi = window.dbmaster;
   private crestRequestId = 0;
   private minifaceLoadGeneration = 0;
   private readonly playerImageBatchSize = 20;
 
-  constructor(private readonly teamEditor: TeamEditorService) {}
+  constructor(
+    private readonly teamEditor: TeamEditorService,
+    private readonly formationEditor: TeamFormationEditorService
+  ) {}
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes["project"] || changes["rowIndex"]) {
@@ -62,6 +71,25 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
 
   get sections() {
     return this.draft?.sections ?? [];
+  }
+
+  get formationOptions(): InputListOption[] {
+    return this.draft?.formation?.templates.map((template) => ({
+      value: template.formationId,
+      label: `${template.formationName} (ID ${template.formationId})`
+    })) ?? [];
+  }
+
+  get filteredFormationBench(): TeamSheetSlot[] {
+    return this.filterFormationSlots(this.draft?.formation?.bench ?? []);
+  }
+
+  get filteredFormationReserves(): TeamSheetSlot[] {
+    return this.filterFormationSlots(this.draft?.formation?.reserves ?? []);
+  }
+
+  get filteredOtherSquadPlayers(): TeamSheetSlot[] {
+    return this.filterFormationSlots(this.draft?.formation?.otherSquadPlayers ?? []);
   }
 
   apply(): void {
@@ -104,6 +132,77 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
     this.activeTab = tab;
   }
 
+  changeFormation(formationId: string): void {
+    if (!this.draft?.formation) {
+      return;
+    }
+    try {
+      this.formationEditor.changeFormation(this.draft.formation, formationId);
+      this.selectedFormationSlot = undefined;
+      this.lastApplied = `Formation preview changed to ${this.draft.formation.selectedFormation.formationName}. Apply to commit.`;
+      this.lastAppliedTone = "info";
+    } catch (error) {
+      this.lastApplied = error instanceof Error ? error.message : String(error);
+      this.lastAppliedTone = "error";
+    }
+  }
+
+  selectFormationSlot(slot: TeamSheetSlot): void {
+    if (!this.draft?.formation) {
+      return;
+    }
+    if (!this.selectedFormationSlot) {
+      this.selectedFormationSlot = slot;
+      return;
+    }
+    if (this.formationSlotKey(this.selectedFormationSlot) === this.formationSlotKey(slot)) {
+      this.selectedFormationSlot = undefined;
+      return;
+    }
+
+    const sourceName = this.selectedFormationSlot.playerName;
+    const targetName = slot.playerName;
+    try {
+      this.formationEditor.swapPlayers(this.draft.formation, this.selectedFormationSlot, slot);
+      this.lastApplied = `${sourceName} and ${targetName} swapped in the formation preview. Apply to commit.`;
+      this.lastAppliedTone = "info";
+      this.selectedFormationSlot = undefined;
+    } catch (error) {
+      this.lastApplied = error instanceof Error ? error.message : String(error);
+      this.lastAppliedTone = "error";
+    }
+  }
+
+  revertFormation(): void {
+    if (!this.draft) {
+      return;
+    }
+    const formation = this.formationEditor.loadTeamFormation(this.project, this.draft.teamId, this.draft.playerLinks);
+    if (formation) {
+      this.draft.formation = formation;
+      this.selectedFormationSlot = undefined;
+      this.formationPlayerSearch = "";
+      this.lastApplied = "Formation changes reverted.";
+      this.lastAppliedTone = "info";
+    }
+  }
+
+  formationSlotKey(slot: TeamSheetSlot): string {
+    return slot.slot >= 0 ? `${slot.type}:${slot.slot}` : `${slot.type}:${slot.playerId}`;
+  }
+
+  isFormationSlotSelected(slot: TeamSheetSlot): boolean {
+    return Boolean(this.selectedFormationSlot && this.formationSlotKey(this.selectedFormationSlot) === this.formationSlotKey(slot));
+  }
+
+  pitchLeft(slot: TeamSheetSlot): number {
+    return this.clampOffset(slot.offsetX) * 100;
+  }
+
+  pitchTop(slot: TeamSheetSlot): number {
+    return (1 - this.clampOffset(slot.offsetY)) * 100;
+  }
+
   addPlayer(): void {
     if (!this.draft) {
       return;
@@ -111,7 +210,7 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
 
     try {
       const playerId = this.draft.playerToAdd;
-      this.lastApplied = this.teamEditor.addPlayerToDraft(this.draft, playerId);
+      this.lastApplied = this.teamEditor.addPlayerToDraft(this.project, this.draft, playerId);
       this.lastAppliedTone = "info";
       void this.loadPlayerMinifaces([playerId]);
     } catch (error) {
@@ -125,7 +224,7 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
       return;
     }
     this.runDraftAction(() => {
-      this.teamEditor.removePlayerFromDraft(this.draft!, playerId);
+      this.teamEditor.removePlayerFromDraft(this.project, this.draft!, playerId);
       return "Player removed from roster draft";
     });
   }
@@ -230,6 +329,10 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
     return field.key;
   }
 
+  trackByFormationSlot(_index: number, slot: TeamSheetSlot): string {
+    return slot.slot >= 0 ? `${slot.type}:${slot.slot}` : `${slot.type}:${slot.playerId}`;
+  }
+
   private runDraftAction(action: () => string): void {
     try {
       this.lastApplied = action();
@@ -245,6 +348,8 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
     if (resetTab) {
       this.minifaceLoadGeneration += 1;
       this.playerMinifaces = {};
+      this.selectedFormationSlot = undefined;
+      this.formationPlayerSearch = "";
     }
     if (this.draft) {
       void this.loadCrest(this.draft.teamId);
@@ -276,6 +381,24 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
       this.crestDataUrl = "";
       this.crestSource = "missing";
     }
+  }
+
+  private filterFormationSlots(slots: TeamSheetSlot[]): TeamSheetSlot[] {
+    const query = this.normalizeSearch(this.formationPlayerSearch);
+    if (!query) {
+      return slots;
+    }
+    return slots.filter((slot) =>
+      this.normalizeSearch(`${slot.playerName} ${slot.positionName ?? ""} ${slot.preferredPositionName ?? ""}`).includes(query)
+    );
+  }
+
+  private normalizeSearch(value: string): string {
+    return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  }
+
+  private clampOffset(value: number | undefined): number {
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value as number)) : 0.5;
   }
 
   private async loadPlayerMinifaces(playerIds: string[]): Promise<void> {
