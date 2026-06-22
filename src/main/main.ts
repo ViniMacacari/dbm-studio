@@ -9,6 +9,7 @@ import { VisualDependencyManager } from "./visualDependencyManager";
 import { OverallCalculator } from "../utils/overall-calculator";
 import { Fifa } from "fifarating";
 import { CommonTransfermarktParser } from "../utils/transfermarkt-services/transfermarkt-parser";
+import { SkinToneDetector } from "../utils/skin-tone-detector/skin-tone-detector";
 import {
   exportTable,
   importTable,
@@ -21,6 +22,7 @@ import type { CompdataOpenProgress, CompdataProject, DataTable, DbProject, Local
 let mainWindow: BrowserWindow | undefined;
 let visualDependencyManager: VisualDependencyManager | undefined;
 const overallCalculator = new OverallCalculator();
+const skinToneDetector = new SkinToneDetector();
 let lastBlurDisplayState: WindowDisplayState | undefined;
 const windowDisplayRestoreDelays = [0, 75, 250, 750, 1500];
 const workAreaTolerancePx = 64;
@@ -686,6 +688,15 @@ ipcMain.handle("transfermarkt:getPlayerProfile", async (_event, playerId: string
     if (Array.isArray(result)) {
       throw new Error(`Expected profile for ID ${playerId}, but received search results.`);
     }
+    return { result };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle("skinTone:detect", async (_event, imageUrl: string) => {
+  try {
+    const result = await skinToneDetector.getTone(visualDependencies().getSkinToneOptions(), imageUrl);
     return { result };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };

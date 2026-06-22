@@ -1,49 +1,55 @@
 import { OverallCalculator } from "../utils/overall-calculator";
-import { GetPlayerOverallService } from "../renderer/services/transfermarkt-services/get-player-overall/get-player-overall.service";
-import { CommonTransfermarktParser } from "../utils/transfermarkt-services/transfermarkt-parser";
-import { AttributesUtils, CalculateUtils, ConfigUtils, Fifa, Position } from 'fifarating';
+import { SkinToneDetector } from "../utils/skin-tone-detector/skin-tone-detector";
 
 const test = async () => {
-    // const player = 8198
+    const json = [
+        {
+            "type": 1,
+            "hex": "#e2bab3"
+        },
+        {
+            "type": 2,
+            "hex": "#c79e92"
+        },
+        {
+            "type": 3,
+            "hex": "#c49e8f"
+        },
+        {
+            "type": 4,
+            "hex": "#a47561"
+        },
+        {
+            "type": 5,
+            "hex": "#8f5d49"
+        },
+        {
+            "type": 6,
+            "hex": "#835540"
+        },
+        {
+            "type": 7,
+            "hex": "#916b5a"
+        },
+        {
+            "type": 8,
+            "hex": "#735648"
+        },
+        {
+            "type": 9,
+            "hex": "#594135"
+        },
+        {
+            "type": 10,
+            "hex": "#463127"
+        }
+    ]
 
-    // const result = await new OverallCalculator()
-    //     .generateFromTransfermarkt(player);
+    const url = 'https://img.a.transfermarkt.technology/portrait/header/515208-1723486899.png?lm=1'
 
-    // console.log(result.overall);
-    // console.log(result.reputation);
-    // console.log(result.breakdown);
+    const service = new SkinToneDetector()
 
-    // console.log("=== Testing CommonTransfermarktParser Wrapper Methods ===");
-    // const parser = new CommonTransfermarktParser();
-
-    // const result1 = await parser.getPlayers({
-    //     id: player
-    // })
-
-    // console.log(result1)
-
-    // const fifa = Fifa.Fifa12;
-    // const position = Position.GK;
-    // const defaultOverall = 75;
-    // const reputation = 5;
-    // const attributes = AttributesUtils.init(defaultOverall);
-
-    // console.log(ConfigUtils.fifa(fifa));
-
-    // console.log(ConfigUtils.fifaPosition(fifa, position));
-
-    // console.log(CalculateUtils.rawOverall(attributes, fifa, position));
-
-    // console.log(CalculateUtils.displayOverall(attributes, fifa, position, reputation));
-
-    // console.log(AttributesUtils.init(defaultOverall));
-
-    // console.log(AttributesUtils.setRawOverall(AttributesUtils.init(defaultOverall), fifa, position, defaultOverall + 5));
-
-    // console.log(AttributesUtils.generateRawOverall(fifa, position, defaultOverall));
-
-    const result = await new OverallCalculator()
-        .generateFromTransfermarkt(1029227);
+    const result = await service.getTone(json, url)
 
     console.log(result)
 };
