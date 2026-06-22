@@ -85,14 +85,17 @@
             <app-search-list *ngIf="field.inputType === 'nation'; else sectionInput" [options]="nationOptions"
               [(value)]="field.value" [disabled]="!!field.readonly" placeholder="Search country"></app-search-list>
             <ng-template #sectionInput>
-              <app-input-list *ngIf="field.inputType === 'position'; else defaultSectionInput" [options]="positionOptions"
-                [(value)]="field.value" [disabled]="!!field.readonly" placeholder="Select position"></app-input-list>
+              <app-input-list *ngIf="field.inputType === 'position' || field.column === 'bodytypecode'; else defaultSectionInput"
+                [options]="field.column === 'bodytypecode' ? bodyTypeOptions : positionOptions"
+                [(value)]="field.value" [disabled]="!!field.readonly"
+                [placeholder]="field.column === 'bodytypecode' ? 'Select body type' : 'Select position'">
+              </app-input-list>
               <ng-template #defaultSectionInput>
-                <div class="input-with-action" *ngIf="field.column === 'hairtypecode' || field.column === 'facialhairtypecode'; else standardInput">
+                <div class="input-with-action" *ngIf="field.column === 'hairtypecode' || field.column === 'facialhairtypecode' || field.column === 'skintonecode'; else standardInput">
                   <input [type]="field.inputType" [(ngModel)]="field.value" [readonly]="field.readonly" [min]="field.min"
                     [max]="field.max" />
-                  <button type="button" class="magnifier-action-btn" title="Search visual style" 
-                    (click)="openPicker(field.column === 'hairtypecode' ? 'hairs' : 'beards', field)">
+                  <button type="button" class="magnifier-action-btn" title="Select visual asset"
+                    (click)="openPicker(field.column === 'hairtypecode' ? 'hairs' : field.column === 'facialhairtypecode' ? 'beards' : 'skin-tones', field)">
                     <span class="magnifier-icon">🔍</span>
                   </button>
                 </div>

@@ -3,20 +3,20 @@
     <header class="asset-picker-header">
       <div>
         <span class="module-kicker">Catalog</span>
-        <h3 id="asset-picker-title">Select {{ type === 'hairs' ? 'Hair' : 'Beard' }} Style</h3>
+        <h3 id="asset-picker-title">Select {{ assetLabel }}</h3>
       </div>
       <button type="button" class="close-x-btn" (click)="close()">&times;</button>
     </header>
 
     <div class="asset-picker-search-bar">
-      <input type="search" placeholder="Search by style ID..." [(ngModel)]="searchTerm" (input)="onSearchChange()" />
+      <input type="search" placeholder="Search by asset ID..." [(ngModel)]="searchTerm" (input)="onSearchChange()" />
     </div>
 
     <div class="asset-picker-notice">
       <span class="notice-icon">⚠️</span>
       <p class="notice-text">
         These IDs are based on <strong>EA FC 26</strong>. If you are editing a player for another FIFA/FC edition,
-        some style IDs might not exist or could differ in-game.
+        some asset IDs might not exist or could differ in-game.
       </p>
     </div>
 
