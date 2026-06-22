@@ -1,17 +1,40 @@
 export const positionInformation: { name: string; id: number }[] = [
     { name: 'N/D', id: -1 },
+
     { name: 'GK', id: 0 },
-    { name: 'CB', id: 5 },
+    { name: 'SW', id: 1 },
+
+    { name: 'RWB', id: 2 },
     { name: 'RB', id: 3 },
+    { name: 'RCB', id: 4 },
+    { name: 'CB', id: 5 },
+    { name: 'LCB', id: 6 },
     { name: 'LB', id: 7 },
-    { name: 'CM', id: 14 },
+    { name: 'LWB', id: 8 },
+
+    { name: 'RDM', id: 9 },
     { name: 'CDM', id: 10 },
-    { name: 'CAM', id: 18 },
-    { name: 'LM', id: 16 },
+    { name: 'LDM', id: 11 },
+
     { name: 'RM', id: 12 },
-    { name: 'LW', id: 27 },
+    { name: 'RCM', id: 13 },
+    { name: 'CM', id: 14 },
+    { name: 'LCM', id: 15 },
+    { name: 'LM', id: 16 },
+
+    { name: 'RAM', id: 17 },
+    { name: 'CAM', id: 18 },
+    { name: 'LAM', id: 19 },
+
+    { name: 'RF', id: 20 },
+    { name: 'CF', id: 21 },
+    { name: 'LF', id: 22 },
+
     { name: 'RW', id: 23 },
-    { name: 'ST', id: 25 }
+    { name: 'RS', id: 24 },
+    { name: 'ST', id: 25 },
+    { name: 'LS', id: 26 },
+    { name: 'LW', id: 27 }
 ];
 
 export function positionIdToName(id: number): string {
