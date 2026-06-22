@@ -66,13 +66,6 @@ DBM Studio builds upon that idea by combining traditional spreadsheet editing wi
 ## Credits
 
 * **Vinícius Macacari** — Creator and Developer
-* **Rinaldo** — Creator of DB Master and inspiration for this project
-
-## Technology Stack
-
-* Electron
-* Angular
-* TypeScript
 
 ## Status
 
