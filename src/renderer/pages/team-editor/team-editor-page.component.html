@@ -103,9 +103,15 @@
 
       <div class="league-team-list" *ngIf="team.playerLinks.length > 0; else noTeamPlayers">
         <div class="league-team-row team-player-row" *ngFor="let player of team.playerLinks; trackBy: trackByTeamPlayer">
-          <div class="league-team-main">
-            <strong>{{ player.displayName }}</strong>
-            <span>ID {{ player.playerId }}</span>
+          <div class="team-player-main">
+            <div class="team-player-miniface" [class.placeholder]="playerMinifaces[player.playerId]?.source !== 'player'">
+              <img *ngIf="playerMinifaces[player.playerId]?.dataUrl as dataUrl" [src]="dataUrl"
+                [alt]="player.displayName" />
+            </div>
+            <div class="league-team-main">
+              <strong>{{ player.displayName }}</strong>
+              <span>ID {{ player.playerId }}</span>
+            </div>
           </div>
           <label class="inline-field">
             <span>Jersey</span>

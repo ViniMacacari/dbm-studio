@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from "@angular/core";
+import { Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../../../shared/types";
 import { InputColorComponent } from "../../components/input-color/input-color.component";
@@ -27,7 +27,7 @@ import type { TeamPlayerLinkDraft } from "../../services/transfer.service";
   templateUrl: "./team-editor-page.component.html",
   styleUrl: "./team-editor-page.component.scss"
 })
-export class TeamEditorPageComponent implements OnChanges {
+export class TeamEditorPageComponent implements OnChanges, OnDestroy {
   @Input({ required: true }) project!: DbProject;
   @Input({ required: true }) rowIndex = 0;
   @Input() isNew = false;
@@ -42,8 +42,11 @@ export class TeamEditorPageComponent implements OnChanges {
   lastAppliedTone: "info" | "error" = "info";
   crestDataUrl = "";
   crestSource: "team" | "missing" = "missing";
+  playerMinifaces: Record<string, { dataUrl: string; source: "player" | "generic" | "missing" | "loading" }> = {};
   private readonly api: DbMasterApi = window.dbmaster;
   private crestRequestId = 0;
+  private minifaceLoadGeneration = 0;
+  private readonly playerImageBatchSize = 20;
 
   constructor(private readonly teamEditor: TeamEditorService) {}
 
@@ -51,6 +54,10 @@ export class TeamEditorPageComponent implements OnChanges {
     if (changes["project"] || changes["rowIndex"]) {
       this.loadDraft();
     }
+  }
+
+  ngOnDestroy(): void {
+    this.minifaceLoadGeneration += 1;
   }
 
   get sections() {
@@ -103,8 +110,10 @@ export class TeamEditorPageComponent implements OnChanges {
     }
 
     try {
-      this.lastApplied = this.teamEditor.addPlayerToDraft(this.draft, this.draft.playerToAdd);
+      const playerId = this.draft.playerToAdd;
+      this.lastApplied = this.teamEditor.addPlayerToDraft(this.draft, playerId);
       this.lastAppliedTone = "info";
+      void this.loadPlayerMinifaces([playerId]);
     } catch (error) {
       this.lastApplied = error instanceof Error ? error.message : String(error);
       this.lastAppliedTone = "error";
@@ -233,8 +242,13 @@ export class TeamEditorPageComponent implements OnChanges {
 
   private loadDraft(resetTab = true): void {
     this.draft = this.project ? this.teamEditor.createDraft(this.project, this.rowIndex, this.isNew) : undefined;
+    if (resetTab) {
+      this.minifaceLoadGeneration += 1;
+      this.playerMinifaces = {};
+    }
     if (this.draft) {
       void this.loadCrest(this.draft.teamId);
+      void this.loadPlayerMinifaces(this.draft.playerLinks.map((player) => player.playerId));
     } else {
       this.crestDataUrl = "";
       this.crestSource = "missing";
@@ -261,6 +275,41 @@ export class TeamEditorPageComponent implements OnChanges {
       }
       this.crestDataUrl = "";
       this.crestSource = "missing";
+    }
+  }
+
+  private async loadPlayerMinifaces(playerIds: string[]): Promise<void> {
+    const generation = this.minifaceLoadGeneration;
+    const idsToLoad = [...new Set(playerIds)].filter((playerId) => playerId && !this.playerMinifaces[playerId]);
+
+    for (let start = 0; start < idsToLoad.length; start += this.playerImageBatchSize) {
+      if (generation !== this.minifaceLoadGeneration) {
+        return;
+      }
+
+      const batch = idsToLoad.slice(start, start + this.playerImageBatchSize);
+      for (const playerId of batch) {
+        this.playerMinifaces[playerId] = { dataUrl: "", source: "loading" };
+      }
+
+      const results = await Promise.all(batch.map(async (playerId) => {
+        try {
+          return await this.api.getPlayerMiniface(playerId);
+        } catch {
+          return { playerId, dataUrl: "", source: "missing" as const };
+        }
+      }));
+
+      if (generation !== this.minifaceLoadGeneration) {
+        return;
+      }
+      for (const result of results) {
+        this.playerMinifaces[result.playerId] = result;
+      }
+
+      if (start + this.playerImageBatchSize < idsToLoad.length) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
     }
   }
 }

@@ -59,6 +59,39 @@
   white-space: normal;
 }
 
+.team-player-row {
+  grid-template-columns: minmax(230px, 1fr) repeat(6, minmax(74px, 90px)) auto;
+}
+
+.team-player-main {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.team-player-miniface {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #eef3ef;
+}
+
+.team-player-miniface img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.team-player-miniface.placeholder img {
+  object-fit: contain;
+}
+
 .country-link-row {
   grid-template-columns: minmax(180px, 1fr) minmax(100px, 130px) minmax(260px, 360px) auto;
 }
@@ -167,7 +200,8 @@
 
   .country-link-row,
   .rival-link-row,
-  .stadium-link-row {
+  .stadium-link-row,
+  .team-player-row {
     grid-template-columns: 1fr;
   }
 
