@@ -30,9 +30,17 @@ type Lab = {
     b: number;
 };
 
+type SkinPixel = RGB & {
+    x: number;
+    y: number;
+    luminance: number;
+    weight: number;
+};
+
 export class SkinToneDetector {
     async getTone(tones: SkinToneOption[], imageUrl: string): Promise<SkinToneResult> {
         this.validateTones(tones);
+        this.validateImageUrl(imageUrl);
 
         const imageBuffer = await this.downloadImage(imageUrl);
         const detectedColor = await this.extractSkinAverageColor(imageBuffer);
@@ -48,8 +56,25 @@ export class SkinToneDetector {
         };
     }
 
+    private validateImageUrl(url: string): void {
+        if (!url || !url.trim()) {
+            throw new Error('URL da imagem não informada.');
+        }
+
+        try {
+            new URL(url);
+        } catch {
+            throw new Error(`URL da imagem inválida: "${url}"`);
+        }
+    }
+
     private async downloadImage(url: string): Promise<Buffer> {
-        const response = await fetch(url);
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0',
+                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            },
+        });
 
         if (!response.ok) {
             throw new Error(`Erro ao baixar imagem: ${response.status} ${response.statusText}`);
@@ -64,27 +89,49 @@ export class SkinToneDetector {
         const { data, info } = await sharp(imageBuffer)
             .rotate()
             .resize({
-                width: 320,
-                height: 320,
+                width: 420,
+                height: 520,
                 fit: 'inside',
                 withoutEnlargement: true,
+            })
+            .flatten({
+                background: {
+                    r: 255,
+                    g: 255,
+                    b: 255,
+                },
             })
             .removeAlpha()
             .toColorspace('srgb')
             .raw()
             .toBuffer({ resolveWithObject: true });
 
-        const channels = info.channels;
+        const pixels = this.collectSkinPixels(data, info.width, info.height, info.channels);
 
-        let totalR = 0;
-        let totalG = 0;
-        let totalB = 0;
-        let totalWeight = 0;
-        let sampledPixels = 0;
+        if (pixels.length >= 80) {
+            return this.calculateRobustSkinAverage(pixels);
+        }
 
-        for (let y = 0; y < info.height; y++) {
-            for (let x = 0; x < info.width; x++) {
-                const index = (y * info.width + x) * channels;
+        return this.extractFallbackAverageColor(data, info.width, info.height, info.channels);
+    }
+
+    private collectSkinPixels(
+        data: Buffer,
+        width: number,
+        height: number,
+        channels: number,
+    ): SkinPixel[] {
+        const pixels: SkinPixel[] = [];
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const regionWeight = this.getFaceRegionWeight(x, y, width, height);
+
+                if (regionWeight <= 0) {
+                    continue;
+                }
+
+                const index = (y * width + x) * channels;
 
                 const r = data[index];
                 const g = data[index + 1];
@@ -94,25 +141,148 @@ export class SkinToneDetector {
                     continue;
                 }
 
-                const weight = this.getRegionWeight(x, y, info.width, info.height);
-
-                totalR += r * weight;
-                totalG += g * weight;
-                totalB += b * weight;
-                totalWeight += weight;
-                sampledPixels++;
+                pixels.push({
+                    x,
+                    y,
+                    r,
+                    g,
+                    b,
+                    luminance: this.getLuminance(r, g, b),
+                    weight: regionWeight,
+                });
             }
         }
 
-        if (sampledPixels < 30 || totalWeight === 0) {
-            return this.extractFallbackAverageColor(data, info.width, info.height, channels);
+        return pixels;
+    }
+
+    private getFaceRegionWeight(
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+    ): number {
+        const nx = x / width;
+        const ny = y / height;
+
+        const forehead =
+            nx >= 0.38 &&
+            nx <= 0.62 &&
+            ny >= 0.18 &&
+            ny <= 0.32;
+
+        const leftCheek =
+            nx >= 0.24 &&
+            nx <= 0.42 &&
+            ny >= 0.36 &&
+            ny <= 0.56;
+
+        const rightCheek =
+            nx >= 0.58 &&
+            nx <= 0.76 &&
+            ny >= 0.36 &&
+            ny <= 0.56;
+
+        const nose =
+            nx >= 0.43 &&
+            nx <= 0.57 &&
+            ny >= 0.32 &&
+            ny <= 0.54;
+
+        if (leftCheek || rightCheek) {
+            return 2.5;
+        }
+
+        if (nose) {
+            return 1.6;
+        }
+
+        if (forehead) {
+            return 1.2;
+        }
+
+        return 0;
+    }
+
+    private isLikelySkin(r: number, g: number, b: number): boolean {
+        if (this.isAlmostWhite(r, g, b)) {
+            return false;
+        }
+
+        if (this.isAlmostGray(r, g, b)) {
+            return false;
+        }
+
+        const hsv = this.rgbToHsv(r, g, b);
+        const ycbcr = this.rgbToYCbCr(r, g, b);
+
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+
+        const hasColorDifference = max - min >= 10;
+
+        const hsvRule =
+            (hsv.h <= 55 || hsv.h >= 340) &&
+            hsv.s >= 0.10 &&
+            hsv.s <= 0.78 &&
+            hsv.v >= 0.16 &&
+            hsv.v <= 0.98;
+
+        const ycbcrRule =
+            ycbcr.cb >= 72 &&
+            ycbcr.cb <= 150 &&
+            ycbcr.cr >= 122 &&
+            ycbcr.cr <= 195;
+
+        const rgbRule =
+            r >= 35 &&
+            g >= 25 &&
+            b >= 18 &&
+            r >= g * 0.72 &&
+            r >= b * 1.04 &&
+            g >= b * 0.72 &&
+            hasColorDifference;
+
+        return hsvRule && ycbcrRule && rgbRule;
+    }
+
+    private calculateRobustSkinAverage(pixels: SkinPixel[]): RGBWithSamples {
+        const luminances = pixels
+            .map(pixel => pixel.luminance)
+            .sort((a, b) => a - b);
+
+        const lowerLimit = this.quantile(luminances, 0.55);
+        const upperLimit = this.quantile(luminances, 0.96);
+
+        let selectedPixels = pixels.filter(pixel => {
+            return pixel.luminance >= lowerLimit && pixel.luminance <= upperLimit;
+        });
+
+        if (selectedPixels.length < 40) {
+            selectedPixels = pixels;
+        }
+
+        let totalR = 0;
+        let totalG = 0;
+        let totalB = 0;
+        let totalWeight = 0;
+
+        for (const pixel of selectedPixels) {
+            totalR += pixel.r * pixel.weight;
+            totalG += pixel.g * pixel.weight;
+            totalB += pixel.b * pixel.weight;
+            totalWeight += pixel.weight;
+        }
+
+        if (totalWeight === 0) {
+            throw new Error('Não foi possível calcular a cor média da pele.');
         }
 
         return {
             r: Math.round(totalR / totalWeight),
             g: Math.round(totalG / totalWeight),
             b: Math.round(totalB / totalWeight),
-            sampledPixels,
+            sampledPixels: selectedPixels.length,
         };
     }
 
@@ -122,104 +292,42 @@ export class SkinToneDetector {
         height: number,
         channels: number,
     ): RGBWithSamples {
-        const startX = Math.floor(width * 0.3);
-        const endX = Math.floor(width * 0.7);
-        const startY = Math.floor(height * 0.15);
-        const endY = Math.floor(height * 0.65);
+        const startX = Math.floor(width * 0.34);
+        const endX = Math.floor(width * 0.66);
+        const startY = Math.floor(height * 0.25);
+        const endY = Math.floor(height * 0.52);
 
-        let totalR = 0;
-        let totalG = 0;
-        let totalB = 0;
-        let count = 0;
+        const pixels: SkinPixel[] = [];
 
         for (let y = startY; y < endY; y++) {
             for (let x = startX; x < endX; x++) {
                 const index = (y * width + x) * channels;
 
-                totalR += data[index];
-                totalG += data[index + 1];
-                totalB += data[index + 2];
-                count++;
+                const r = data[index];
+                const g = data[index + 1];
+                const b = data[index + 2];
+
+                if (this.isAlmostWhite(r, g, b)) {
+                    continue;
+                }
+
+                pixels.push({
+                    x,
+                    y,
+                    r,
+                    g,
+                    b,
+                    luminance: this.getLuminance(r, g, b),
+                    weight: 1,
+                });
             }
         }
 
-        if (count === 0) {
+        if (pixels.length === 0) {
             throw new Error('Não foi possível extrair cor da imagem.');
         }
 
-        return {
-            r: Math.round(totalR / count),
-            g: Math.round(totalG / count),
-            b: Math.round(totalB / count),
-            sampledPixels: count,
-        };
-    }
-
-    private isLikelySkin(r: number, g: number, b: number): boolean {
-        const hsv = this.rgbToHsv(r, g, b);
-        const ycbcr = this.rgbToYCbCr(r, g, b);
-
-        const max = Math.max(r, g, b);
-        const min = Math.min(r, g, b);
-
-        const rgbRule =
-            r > 25 &&
-            g > 20 &&
-            b > 15 &&
-            max - min > 8 &&
-            r > b * 1.03 &&
-            r >= g * 0.70;
-
-        const hsvRule =
-            (
-                hsv.h <= 55 ||
-                hsv.h >= 340
-            ) &&
-            hsv.s >= 0.10 &&
-            hsv.s <= 0.85 &&
-            hsv.v >= 0.10 &&
-            hsv.v <= 0.98;
-
-        const ycbcrRule =
-            ycbcr.cb >= 70 &&
-            ycbcr.cb <= 155 &&
-            ycbcr.cr >= 120 &&
-            ycbcr.cr <= 195;
-
-        return (
-            hsvRule && ycbcrRule
-        ) || (
-                rgbRule && ycbcrRule
-            ) || (
-                rgbRule && hsvRule
-            );
-    }
-
-    private getRegionWeight(x: number, y: number, width: number, height: number): number {
-        const nx = x / width;
-        const ny = y / height;
-
-        const centerFaceArea =
-            nx >= 0.28 &&
-            nx <= 0.72 &&
-            ny >= 0.12 &&
-            ny <= 0.62;
-
-        const upperBodyArea =
-            nx >= 0.18 &&
-            nx <= 0.82 &&
-            ny >= 0.05 &&
-            ny <= 0.85;
-
-        if (centerFaceArea) {
-            return 2.5;
-        }
-
-        if (upperBodyArea) {
-            return 1.2;
-        }
-
-        return 0.35;
+        return this.calculateRobustSkinAverage(pixels);
     }
 
     private findNearestTone(
@@ -252,6 +360,39 @@ export class SkinToneDetector {
         const confidence = Math.max(0, Math.min(1, 1 - distance / 45));
 
         return Number(confidence.toFixed(2));
+    }
+
+    private getLuminance(r: number, g: number, b: number): number {
+        return 0.299 * r + 0.587 * g + 0.114 * b;
+    }
+
+    private quantile(values: number[], q: number): number {
+        if (values.length === 0) {
+            return 0;
+        }
+
+        const position = (values.length - 1) * q;
+        const base = Math.floor(position);
+        const rest = position - base;
+
+        const nextValue = values[base + 1];
+
+        if (nextValue !== undefined) {
+            return values[base] + rest * (nextValue - values[base]);
+        }
+
+        return values[base];
+    }
+
+    private isAlmostWhite(r: number, g: number, b: number): boolean {
+        return r >= 235 && g >= 235 && b >= 235;
+    }
+
+    private isAlmostGray(r: number, g: number, b: number): boolean {
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+
+        return max - min <= 7;
     }
 
     private rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
@@ -298,9 +439,17 @@ export class SkinToneDetector {
         let g = rgb.g / 255;
         let b = rgb.b / 255;
 
-        r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
-        g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
-        b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
+        r = r > 0.04045
+            ? Math.pow((r + 0.055) / 1.055, 2.4)
+            : r / 12.92;
+
+        g = g > 0.04045
+            ? Math.pow((g + 0.055) / 1.055, 2.4)
+            : g / 12.92;
+
+        b = b > 0.04045
+            ? Math.pow((b + 0.055) / 1.055, 2.4)
+            : b / 12.92;
 
         const x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
         const y = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 1.00000;
