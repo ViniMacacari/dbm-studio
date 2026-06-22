@@ -10,6 +10,7 @@ import type {
   LeagueLogoImageResult,
   MinifaceImageResult,
   TeamCrestImageResult,
+  VisualAssetType,
   VisualDependenciesInstallResult,
   VisualDependenciesStatus,
   VisualDependencyProgress,
@@ -392,17 +393,21 @@ export class VisualDependencyManager {
     );
   }
 
-  listAssets(type: "hairs" | "beards"): string[] {
+  listAssets(type: VisualAssetType): string[] {
     const targetPath = this.dependencyTargetPath(type);
     if (!existsSync(targetPath)) {
       return [];
     }
     try {
+      const filePattern = type === "skin-tones" ? /^skin-(\d+)\.png$/i : /^hair_id_(\d+)\.png$/i;
       return readdirSync(targetPath)
-        .filter((file) => extname(file).toLowerCase() === ".png" && file.startsWith("hair_id_"))
+        .filter((file) => extname(file).toLowerCase() === ".png")
         .map((file) => {
-          const match = file.match(/^hair_id_(\d+)\.png$/i);
-          return match ? match[1] : "";
+          const match = file.match(filePattern);
+          if (!match) {
+            return "";
+          }
+          return type === "skin-tones" ? String(Number(match[1])) : match[1];
         })
         .filter(Boolean)
         .sort((left, right) => Number(left) - Number(right));
@@ -411,10 +416,12 @@ export class VisualDependencyManager {
     }
   }
 
-  async getHairBeardAsset(type: "hairs" | "beards", assetId: string): Promise<{ dataUrl: string; found: boolean }> {
-    const normalizedId = assetId.trim().padStart(4, "0");
+  async getVisualAsset(type: VisualAssetType, assetId: string): Promise<{ dataUrl: string; found: boolean }> {
+    const rawId = assetId.trim();
+    const normalizedId = type === "skin-tones" ? rawId.padStart(2, "0") : rawId.padStart(4, "0");
     const targetPath = this.dependencyTargetPath(type);
-    const filePath = join(targetPath, `hair_id_${normalizedId}.png`);
+    const fileName = type === "skin-tones" ? `skin-${normalizedId}.png` : `hair_id_${normalizedId}.png`;
+    const filePath = join(targetPath, fileName);
     if (existsSync(filePath)) {
       try {
         const buffer = await fsPromises.readFile(filePath);

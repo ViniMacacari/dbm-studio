@@ -374,7 +374,7 @@ export class PlayerEditorService {
     const birthdate = this.read(players, rowIndex, "birthdate");
     const birthDateIso = fifaDateCodeToIso(birthdate);
     const nationalityName = this.nations.resolveNation(project, this.read(players, rowIndex, "nationality"));
-    const hasHighQualityHead = this.read(players, rowIndex, "hashighqualityhead") === "1";
+    const hasHighQualityHead = !isNew && this.read(players, rowIndex, "hashighqualityhead") === "1";
 
     return {
       playerId,
@@ -447,6 +447,7 @@ export class PlayerEditorService {
       ["playerjerseynameid", "0"],
       ["iscustomized", "1"],
       ["usercaneditname", "1"],
+      ["hashighqualityhead", "0"],
       ["overallrating", "60"],
       ["potential", "60"],
       ["height", "180"],

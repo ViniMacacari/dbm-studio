@@ -7,6 +7,7 @@ import type {
   TeamCrestImageResult,
   VisualDependenciesInstallResult,
   VisualDependenciesStatus,
+  VisualAssetType,
   VisualDependencyProgress
 } from "../../shared/types";
 import type { CompdataProject } from "../../shared/types";
@@ -47,8 +48,8 @@ export interface DbMasterApi {
   getPlayerMiniface(playerId: string): Promise<MinifaceImageResult>;
   getTeamCrest(teamId: string): Promise<TeamCrestImageResult>;
   getLeagueLogo(leagueId: string): Promise<LeagueLogoImageResult>;
-  listAssets(type: "hairs" | "beards"): Promise<string[]>;
-  getHairBeardAsset(type: "hairs" | "beards", assetId: string): Promise<{ dataUrl: string; found: boolean }>;
+  listAssets(type: VisualAssetType): Promise<string[]>;
+  getVisualAsset(type: VisualAssetType, assetId: string): Promise<{ dataUrl: string; found: boolean }>;
 }
 
 declare global {

@@ -83,7 +83,10 @@ export class TransfermarktPlayerImportModalComponent {
 
   async importPlayerById(playerId: string | number): Promise<void> {
     this.error = "";
-    this.changeDetector.detectChanges();
+    // Close the search modal before showing the global loading overlay. The
+    // search backdrop has a higher z-index and would otherwise cover it while
+    // the Transfermarkt requests are running.
+    this.onClose();
     this.loadingService.show("Importing Player", "Fetching and calculating player overall details from Transfermarkt...");
     try {
       const [overall, profileResponse] = await Promise.all([
@@ -100,7 +103,6 @@ export class TransfermarktPlayerImportModalComponent {
           overall,
           profile: profileResponse.result!
         });
-        this.onClose();
       });
     } catch (err) {
       console.error(err);

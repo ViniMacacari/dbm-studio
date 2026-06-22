@@ -2,9 +2,11 @@ import { CommonModule } from "@angular/common";
 import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { DbProject } from "../../../shared/types";
+import type { VisualAssetType } from "../../../shared/types";
 import { SearchListComponent } from "../../components/search-list/search-list.component";
 import type { SearchListOption } from "../../components/search-list/search-list.component";
 import { InputListComponent } from "../../components/input-list/input-list.component";
+import type { InputListOption } from "../../components/input-list/input-list.component";
 import type { DbMasterApi } from "../../services/dbmaster-api";
 import { NationService } from "../../services/nation.service";
 import { PlayerEditorService } from "../../services/player-editor.service";
@@ -33,13 +35,32 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
   nationOptions: SearchListOption[] = [];
   isNewApplied = false;
   positionOptions = positionInformation.map(pos => ({ label: pos.name, value: pos.id.toString() }));
+  readonly bodyTypeOptions: InputListOption[] = [
+    { label: "Lean Normal", value: "1" },
+    { label: "Average Normal", value: "2" },
+    { label: "Stocky Normal", value: "3" },
+    { label: "Lean Tall", value: "4" },
+    { label: "Average Tall", value: "5" },
+    { label: "Stocky Tall", value: "6" },
+    { label: "Lean Short", value: "7" },
+    { label: "Average Short", value: "8" },
+    { label: "Stocky Short", value: "9" },
+    { label: "Messi", value: "10" },
+    { label: "Peter Crouch", value: "11" },
+    { label: "Akinfenwa", value: "12" },
+    { label: "Courtois", value: "13" },
+    { label: "Neymar", value: "14" },
+    { label: "Shaqiri", value: "15" },
+    { label: "C. Ronaldo", value: "16" },
+    { label: "Leroux (female footballer)", value: "18" }
+  ];
   activeTab = "identity";
   lastApplied = "";
   lastAppliedTone: "info" | "error" = "info";
   minifaceDataUrl = "";
   minifaceSource: "player" | "generic" | "missing" = "missing";
   pickerVisible = false;
-  pickerType: "hairs" | "beards" = "hairs";
+  pickerType: VisualAssetType = "hairs";
   pickerTargetField?: PlayerEditorFieldDraft;
   importModalVisible = false;
   private readonly api: DbMasterApi = window.dbmaster;
@@ -143,7 +164,7 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
     }
   }
 
-  openPicker(type: "hairs" | "beards", field: PlayerEditorFieldDraft): void {
+  openPicker(type: VisualAssetType, field: PlayerEditorFieldDraft): void {
     this.pickerType = type;
     this.pickerTargetField = field;
     this.pickerVisible = true;

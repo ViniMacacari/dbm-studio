@@ -1,6 +1,7 @@
 import { CommonModule } from "@angular/common";
 import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, ViewEncapsulation } from "@angular/core";
 import { FormsModule } from "@angular/forms";
+import type { VisualAssetType } from "../../../shared/types";
 import type { DbMasterApi } from "../../services/dbmaster-api";
 
 @Component({
@@ -13,7 +14,7 @@ import type { DbMasterApi } from "../../services/dbmaster-api";
 })
 export class VisualAssetPickerComponent implements OnChanges {
   @Input() visible = false;
-  @Input() type: "hairs" | "beards" = "hairs";
+  @Input() type: VisualAssetType = "hairs";
   @Input() currentValue = "";
   @Output() visibleChange = new EventEmitter<boolean>();
   @Output() selected = new EventEmitter<string>();
@@ -28,7 +29,22 @@ export class VisualAssetPickerComponent implements OnChanges {
   private currentSessionId = 0;
 
   get normalizedCurrentValue(): string {
-    return this.currentValue ? String(this.currentValue).trim().padStart(4, "0") : "";
+    const value = String(this.currentValue ?? "").trim();
+    if (!value) {
+      return "";
+    }
+    if (this.type === "skin-tones") {
+      const numericValue = Number(value);
+      return Number.isInteger(numericValue) ? String(numericValue) : value;
+    }
+    return value.padStart(4, "0");
+  }
+
+  get assetLabel(): string {
+    if (this.type === "skin-tones") {
+      return "Skin Tone";
+    }
+    return this.type === "hairs" ? "Hair Style" : "Beard Style";
   }
 
   get visibleIds(): string[] {
@@ -109,7 +125,7 @@ export class VisualAssetPickerComponent implements OnChanges {
       await Promise.all(
         chunk.map(async (id) => {
           try {
-            const res = await this.api.getHairBeardAsset(this.type, id);
+            const res = await this.api.getVisualAsset(this.type, id);
             if (sessionId === this.currentSessionId) {
               this.loadedThumbnails[id] = res.found ? res.dataUrl : "";
             }
