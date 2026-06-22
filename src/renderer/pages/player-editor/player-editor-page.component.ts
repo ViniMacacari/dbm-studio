@@ -270,10 +270,20 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
         });
       }
 
-      // 8. Visual Head / Miniface update
+      // 8. Detected skin tone
+      if (payload.skinTone) {
+        setField("skintonecode", payload.skinTone.type.toString());
+      }
+
+      // 9. Visual Head / Miniface update
       void this.loadMiniface(this.draft.playerId);
 
-      this.lastApplied = `Successfully imported ${fullName} from Transfermarkt.`;
+      const skinToneStatus = payload.skinTone
+        ? ` Skin tone ${payload.skinTone.type} detected automatically.`
+        : payload.skinToneWarning
+          ? ` Skin tone was not detected: ${payload.skinToneWarning}`
+          : "";
+      this.lastApplied = `Successfully imported ${fullName} from Transfermarkt.${skinToneStatus}`;
       this.lastAppliedTone = "info";
     } catch (err) {
       console.error("Error applying imported player data:", err);

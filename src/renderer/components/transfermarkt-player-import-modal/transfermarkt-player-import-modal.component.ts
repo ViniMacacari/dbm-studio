@@ -2,12 +2,16 @@ import { CommonModule } from "@angular/common";
 import { Component, EventEmitter, Input, Output, NgZone, ChangeDetectorRef } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { PlayerProfileResponse, PlayerSearchResult } from "../../../utils/transfermarkt-services/transfermarkt";
+import type { SkinToneResult } from "../../../utils/skin-tone-detector/skin-tone-detector";
 import { LoadingService } from "../../services/loading.service";
+import { SkinToneDetectorService } from "../../services/skin-tone-detector.service";
 import { GetPlayerOverallService, type CompletePlayerOverall } from "../../services/transfermarkt-services/get-player-overall/get-player-overall.service";
 
 export interface ImportedPlayerPayload {
   overall: CompletePlayerOverall;
   profile: PlayerProfileResponse;
+  skinTone?: SkinToneResult;
+  skinToneWarning?: string;
 }
 
 @Component({
@@ -30,6 +34,7 @@ export class TransfermarktPlayerImportModalComponent {
   constructor(
     private readonly loadingService: LoadingService,
     private readonly getPlayerOverallService: GetPlayerOverallService,
+    private readonly skinToneDetectorService: SkinToneDetectorService,
     private readonly ngZone: NgZone,
     private readonly changeDetector: ChangeDetectorRef
   ) {}
@@ -98,10 +103,26 @@ export class TransfermarktPlayerImportModalComponent {
         throw new Error(profileResponse.error ?? `Could not retrieve profile for player ID ${playerId}.`);
       }
 
+      const profile = profileResponse.result;
+      let skinTone: SkinToneResult | undefined;
+      let skinToneWarning: string | undefined;
+      if (profile.imageUrl) {
+        try {
+          skinTone = await this.skinToneDetectorService.detect(profile.imageUrl);
+        } catch (error) {
+          skinToneWarning = error instanceof Error ? error.message : String(error);
+          console.warn("Could not detect the imported player's skin tone:", error);
+        }
+      } else {
+        skinToneWarning = "Transfermarkt did not return a profile image.";
+      }
+
       this.ngZone.run(() => {
         this.imported.emit({
           overall,
-          profile: profileResponse.result!
+          profile,
+          skinTone,
+          skinToneWarning
         });
       });
     } catch (err) {

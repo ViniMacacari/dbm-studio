@@ -13,6 +13,7 @@ import type {
 import type { CompdataProject } from "../../shared/types";
 import type { TransfermarktOverallResult } from "../../utils/overall-calculator";
 import type { PlayerProfileResponse, PlayerSearchResult } from "../../utils/transfermarkt-services/transfermarkt";
+import type { SkinToneResult } from "../../utils/skin-tone-detector/skin-tone-detector";
 
 export interface DbMasterApi {
   openXml(): Promise<{ canceled?: boolean; project?: DbProject; error?: string }>;
@@ -41,6 +42,7 @@ export interface DbMasterApi {
   getTransfermarktPlayerProfile(
     playerId: string | number
   ): Promise<{ result?: PlayerProfileResponse; error?: string }>;
+  detectSkinTone(imageUrl: string): Promise<{ result?: SkinToneResult; error?: string }>;
   extractDatabasesFromBig(): Promise<{ canceled?: boolean; message?: string; entries?: unknown[]; warnings?: string[] }>;
   getVisualDependenciesStatus(): Promise<VisualDependenciesStatus>;
   installVisualDependencies(): Promise<VisualDependenciesInstallResult>;
