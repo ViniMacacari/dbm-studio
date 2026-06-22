@@ -26,6 +26,7 @@
     "fifarating": "^0.2.4",
     "node-cache": "^5.1.2",
     "rxjs": "^7.8.2",
+    "sharp": "^0.35.2",
     "transfermarkt-parser": "^0.1.1",
     "zone.js": "^0.15.1"
   },
