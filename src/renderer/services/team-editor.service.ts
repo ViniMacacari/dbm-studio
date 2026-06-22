@@ -6,6 +6,8 @@ import type { LocalizationFieldDraft } from "./localization.service";
 import { NationService } from "./nation.service";
 import { TransferService } from "./transfer.service";
 import type { TeamPlayerLinkDraft } from "./transfer.service";
+import { TeamFormationEditorService } from "./team-formation-editor.service";
+import type { TeamFormationEditorState } from "./team-formation-editor.service";
 
 export interface TeamEditorFieldDraft {
   column: string;
@@ -130,6 +132,7 @@ export interface TeamEditorDraft {
   kitLinks: TeamKitDraft[];
   kitTypeToAdd: string;
   localizationFields: LocalizationFieldDraft[];
+  formation?: TeamFormationEditorState;
 }
 
 export interface TeamSearchResult {
@@ -169,7 +172,8 @@ export class TeamEditorService {
   constructor(
     private readonly nations: NationService,
     private readonly transfers: TransferService,
-    private readonly localization: LocalizationService
+    private readonly localization: LocalizationService,
+    private readonly formations: TeamFormationEditorService
   ) {}
 
   private readonly defaultKitTypes = [
@@ -427,22 +431,29 @@ export class TeamEditorService {
       stadiumToAssign: "",
       kitLinks,
       kitTypeToAdd: this.nextAvailableKitType(kitLinks),
-      localizationFields: this.localization.teamFields(project, teamId, displayName)
+      localizationFields: this.localization.teamFields(project, teamId, displayName),
+      formation: this.formations.loadTeamFormation(project, teamId, playerLinks)
     };
   }
 
-  addPlayerToDraft(draft: TeamEditorDraft, playerId: string): string {
+  addPlayerToDraft(project: DbProject, draft: TeamEditorDraft, playerId: string): string {
     const message = this.transfers.addPlayerToTeamDraft(draft, playerId);
     this.refreshSetPiecePlayerOptions(draft);
+    if (draft.formation) {
+      this.formations.syncSquadPlayers(project, draft.formation, draft.playerLinks);
+    }
     return message;
   }
 
-  removePlayerFromDraft(draft: TeamEditorDraft, playerId: string): void {
+  removePlayerFromDraft(project: DbProject, draft: TeamEditorDraft, playerId: string): void {
     if (draft.isNationalTeam) {
       throw new Error("Cannot remove players from a national team.");
     }
     draft.playerLinks = draft.playerLinks.filter((link) => link.playerId !== playerId);
     this.refreshSetPiecePlayerOptions(draft);
+    if (draft.formation) {
+      this.formations.syncSquadPlayers(project, draft.formation, draft.playerLinks);
+    }
   }
 
   addNationToDraft(draft: TeamEditorDraft, nationId: string): string {
@@ -579,6 +590,14 @@ export class TeamEditorService {
       throw new Error("Selected team row no longer exists.");
     }
 
+    if (draft.formation) {
+      this.formations.syncSquadPlayers(project, draft.formation, draft.playerLinks);
+      const formationValidation = this.formations.validateTeamFormationState(draft.formation);
+      if (!formationValidation.valid) {
+        throw new Error(formationValidation.errors.join(" "));
+      }
+    }
+
     const linkedPlayerIds = new Set(draft.playerLinks.map((player) => player.playerId));
     for (const field of draft.sections.flatMap((section) => section.fields)) {
       if (!field.readonly) {
@@ -609,6 +628,13 @@ export class TeamEditorService {
     const rosterResult = this.transfers.applyTeamPlayers(project, draft.teamId, draft.playerLinks);
     if (rosterResult) {
       for (const tableName of rosterResult.changedTables) {
+        changedTables.add(tableName);
+      }
+    }
+
+    if (draft.formation?.dirty) {
+      const formationResult = this.formations.saveTeamFormation(project, draft.formation);
+      for (const tableName of formationResult.changedTables) {
         changedTables.add(tableName);
       }
     }
