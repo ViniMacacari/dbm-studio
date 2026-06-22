@@ -6,6 +6,7 @@ import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { inflateRawSync } from "node:zlib";
 import { AppConfig, type VisualDependencyConfig } from "../app-config";
+import type { SkinToneOption } from "../utils/skin-tone-detector/skin-tone-detector";
 import type {
   LeagueLogoImageResult,
   MinifaceImageResult,
@@ -435,6 +436,23 @@ export class VisualDependencyManager {
       dataUrl: "",
       found: false
     };
+  }
+
+  getSkinToneOptions(): SkinToneOption[] {
+    const tonesPath = join(this.dependencyTargetPath("skin-tones"), "tones.json");
+    if (!existsSync(tonesPath)) {
+      throw new Error("Skin tone references are not installed. Download the visual dependencies first.");
+    }
+
+    try {
+      const tones: unknown = JSON.parse(readFileSync(tonesPath, "utf8"));
+      if (!Array.isArray(tones)) {
+        throw new Error("expected a JSON array");
+      }
+      return tones as SkinToneOption[];
+    } catch (error) {
+      throw new Error(`Could not read skin tone references: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }
 
