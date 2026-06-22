@@ -51,6 +51,14 @@ export class AppConfig {
       targetDirectory: "beards",
       stripRootDirectories: ["beard", "beards"],
       expectedExtension: ".png"
+    },
+    {
+      id: "skin-tones",
+      label: "Player skin tones",
+      fileName: "skin-tone.zip",
+      targetDirectory: "skin-tones",
+      stripRootDirectories: ["skin-toke", "skin-tone", "skin-tones"],
+      expectedExtension: ".png"
     }
   ];
 

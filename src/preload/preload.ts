@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { CompdataOpenProgress, CompdataProject, DataTable, DbProject, VisualDependencyProgress } from "../shared/types";
+import type { CompdataOpenProgress, CompdataProject, DataTable, DbProject, VisualAssetType, VisualDependencyProgress } from "../shared/types";
 
 contextBridge.exposeInMainWorld("dbmaster", {
   openXml: () => ipcRenderer.invoke("project:openXml"),
@@ -40,6 +40,6 @@ contextBridge.exposeInMainWorld("dbmaster", {
   getPlayerMiniface: (playerId: string) => ipcRenderer.invoke("visualDependencies:getMiniface", playerId),
   getTeamCrest: (teamId: string) => ipcRenderer.invoke("visualDependencies:getTeamCrest", teamId),
   getLeagueLogo: (leagueId: string) => ipcRenderer.invoke("visualDependencies:getLeagueLogo", leagueId),
-  listAssets: (type: "hairs" | "beards") => ipcRenderer.invoke("visualDependencies:listAssets", type),
-  getHairBeardAsset: (type: "hairs" | "beards", assetId: string) => ipcRenderer.invoke("visualDependencies:getHairBeardAsset", type, assetId)
+  listAssets: (type: VisualAssetType) => ipcRenderer.invoke("visualDependencies:listAssets", type),
+  getVisualAsset: (type: VisualAssetType, assetId: string) => ipcRenderer.invoke("visualDependencies:getAsset", type, assetId)
 });

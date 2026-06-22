@@ -211,6 +211,8 @@ export interface VisualDependenciesInstallResult extends VisualDependenciesStatu
   warnings: string[];
 }
 
+export type VisualAssetType = "hairs" | "beards" | "skin-tones";
+
 export interface VisualDependencyProgress {
   id: string;
   label: string;

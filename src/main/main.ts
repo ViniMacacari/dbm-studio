@@ -16,7 +16,7 @@ import {
   openXmlProject,
   saveDatabaseProject
 } from "../core/projectIO";
-import type { CompdataOpenProgress, CompdataProject, DataTable, DbProject, LocalizationProject } from "../shared/types";
+import type { CompdataOpenProgress, CompdataProject, DataTable, DbProject, LocalizationProject, VisualAssetType } from "../shared/types";
 
 let mainWindow: BrowserWindow | undefined;
 let visualDependencyManager: VisualDependencyManager | undefined;
@@ -742,12 +742,12 @@ ipcMain.handle("visualDependencies:getLeagueLogo", (_event, leagueId: string) =>
   return visualDependencies().getLeagueLogo(leagueId);
 });
 
-ipcMain.handle("visualDependencies:listAssets", (_event, type: "hairs" | "beards") => {
+ipcMain.handle("visualDependencies:listAssets", (_event, type: VisualAssetType) => {
   return visualDependencies().listAssets(type);
 });
 
-ipcMain.handle("visualDependencies:getHairBeardAsset", async (_event, type: "hairs" | "beards", assetId: string) => {
-  return await visualDependencies().getHairBeardAsset(type, assetId);
+ipcMain.handle("visualDependencies:getAsset", async (_event, type: VisualAssetType, assetId: string) => {
+  return await visualDependencies().getVisualAsset(type, assetId);
 });
 
 app.whenReady().then(() => {
