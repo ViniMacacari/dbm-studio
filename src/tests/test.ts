@@ -45,7 +45,7 @@ const test = async () => {
         }
     ]
 
-    const url = 'https://img.a.transfermarkt.technology/portrait/header/401530-1719653438.jpg?lm=1'
+    const url = 'https://img.a.transfermarkt.technology/portrait/header/515208-1723486899.png?lm=1'
 
     const service = new SkinToneDetector()
 
