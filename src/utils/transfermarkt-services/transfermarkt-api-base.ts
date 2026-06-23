@@ -2,6 +2,12 @@ import { JSDOM } from "jsdom";
 import { trim } from "./transfermarkt-api-utils";
 import { PaginationXPaths } from "./transfermarkt-api-xpath";
 
+class TransfermarktRequestError extends Error {
+    constructor(message: string, readonly retryable: boolean) {
+        super(message);
+    }
+}
+
 export interface XPathOptions {
     pos?: number;
     iloc?: number;
@@ -11,6 +17,13 @@ export interface XPathOptions {
 }
 
 export class TransfermarktApiBase {
+    private static readonly requestHeaders = {
+        "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36",
+    };
+    private static readonly transientStatuses = new Set([408, 425, 429, 500, 502, 503, 504]);
+    private static readonly maximumAttempts = 3;
+    private static readonly maximumRedirects = 5;
     protected URL: string;
     protected document!: Document;
     protected response: Record<string, any> = {};
@@ -22,16 +35,8 @@ export class TransfermarktApiBase {
     async makeRequest(url?: string): Promise<string> {
         const targetUrl = url || this.URL;
         try {
-            const res = await fetch(targetUrl, {
-                headers: {
-                    "User-Agent":
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36",
-                },
-            });
-            if (!res.ok) {
-                throw new Error(`HTTP Error: ${res.status} ${res.statusText} for URL: ${targetUrl}`);
-            }
-            return await res.text();
+            const { response } = await this.requestFollowingRedirects(targetUrl);
+            return await response.text();
         } catch (e: any) {
             throw new Error(`Request failed for URL ${targetUrl}: ${e.message}`);
         }
@@ -39,19 +44,71 @@ export class TransfermarktApiBase {
 
     async makeRequestJson(url: string): Promise<any> {
         try {
-            const res = await fetch(url, {
-                headers: {
-                    "User-Agent":
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36",
-                },
-            });
-            if (!res.ok) {
-                throw new Error(`HTTP Error: ${res.status} ${res.statusText} for URL: ${url}`);
-            }
-            return await res.json();
+            const { response } = await this.requestFollowingRedirects(url);
+            return await response.json();
         } catch (e: any) {
             throw new Error(`JSON request failed for URL ${url}: ${e.message}`);
         }
+    }
+
+    private async requestFollowingRedirects(
+        targetUrl: string
+    ): Promise<{ response: Response; resolvedUrl: string }> {
+        let lastError: Error | undefined;
+        for (let attempt = 0; attempt < TransfermarktApiBase.maximumAttempts; attempt += 1) {
+            let currentUrl = targetUrl;
+            let retryScheduled = false;
+            try {
+                for (let redirect = 0; redirect <= TransfermarktApiBase.maximumRedirects; redirect += 1) {
+                    const response = await fetch(currentUrl, {
+                        headers: TransfermarktApiBase.requestHeaders,
+                        redirect: "manual"
+                    });
+                    const location = response.headers.get("location");
+                    if (response.status >= 300 && response.status < 400 && location) {
+                        await response.body?.cancel();
+                        currentUrl = new URL(location, currentUrl).toString();
+                        continue;
+                    }
+                    if (response.ok) {
+                        return { response, resolvedUrl: currentUrl };
+                    }
+
+                    const retryable = TransfermarktApiBase.transientStatuses.has(response.status);
+                    const error = new TransfermarktRequestError(
+                        `HTTP Error: ${response.status} ${response.statusText} for URL: ${currentUrl}`,
+                        retryable
+                    );
+                    await response.body?.cancel();
+                    if (!retryable || attempt === TransfermarktApiBase.maximumAttempts - 1) {
+                        throw error;
+                    }
+                    lastError = error;
+                    retryScheduled = true;
+                    break;
+                }
+                if (!retryScheduled) {
+                    throw new TransfermarktRequestError(
+                        `Too many redirects while requesting URL: ${targetUrl}`,
+                        false
+                    );
+                }
+            } catch (error) {
+                lastError = error instanceof Error ? error : new Error(String(error));
+                if (
+                    (lastError instanceof TransfermarktRequestError && !lastError.retryable)
+                    || attempt === TransfermarktApiBase.maximumAttempts - 1
+                ) {
+                    throw lastError;
+                }
+            }
+            await this.wait(300 * (attempt + 1));
+        }
+        throw lastError ?? new Error(`Request failed for URL: ${targetUrl}`);
+    }
+
+    private wait(milliseconds: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, milliseconds));
     }
 
     async initializePage(): Promise<void> {

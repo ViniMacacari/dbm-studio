@@ -49,8 +49,9 @@ export class TransfermarktPlayerImportModalComponent {
       return;
     }
 
-    if (/^\d+$/.test(q)) {
-      void this.importPlayerById(q);
+    const profileUrlPlayerId = /\/spieler\/(\d+)(?:[/?#]|$)/i.exec(q)?.[1];
+    if (/^\d+$/.test(q) || profileUrlPlayerId) {
+      void this.importPlayerById(profileUrlPlayerId ?? q);
     } else {
       void this.searchPlayers(q);
     }
@@ -92,22 +93,16 @@ export class TransfermarktPlayerImportModalComponent {
 
   async importPlayerById(playerId: string | number): Promise<void> {
     this.error = "";
-    // Close the search modal before showing the global loading overlay. The
-    // search backdrop has a higher z-index and would otherwise cover it while
-    // the Transfermarkt requests are running.
-    this.onClose();
     this.loadingService.show("Importing Player", "Fetching and calculating player overall details from Transfermarkt...");
     try {
-      const [overall, profileResponse] = await Promise.all([
-        this.getPlayerOverallService.getPlayerOverall(playerId),
-        window.dbmaster.getTransfermarktPlayerProfile(playerId)
-      ]);
+      const profileResponse = await window.dbmaster.getTransfermarktPlayerProfile(playerId);
 
       if (profileResponse.error || !profileResponse.result) {
         throw new Error(profileResponse.error ?? `Could not retrieve profile for player ID ${playerId}.`);
       }
 
       const profile = profileResponse.result;
+      const overall = await this.getPlayerOverallService.getPlayerOverall(playerId);
       let skinTone: SkinToneResult | undefined;
       let skinToneWarning: string | undefined;
       let facialHairTypeCode: number | undefined;
