@@ -11,6 +11,7 @@ import type { DbMasterApi } from "../../services/dbmaster-api";
 import { NationService } from "../../services/nation.service";
 import { PlayerEditorService } from "../../services/player-editor.service";
 import type { PlayerEditorDraft, PlayerEditorFieldDraft } from "../../services/player-editor.service";
+import { PotentialCalculator } from "../../../utils/overall-calculator/potential-calculator";
 import { positionInformation, positionNameToId, transfermarktPositionToFifaPosition } from "../../../utils/position-mapper/position-mapper";
 import { VisualAssetPickerComponent } from "../../components/visual-asset-picker/visual-asset-picker.component";
 import { TransfermarktPlayerImportModalComponent, type ImportedPlayerPayload } from "../../components/transfermarkt-player-import-modal/transfermarkt-player-import-modal.component";
@@ -65,6 +66,7 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
   importModalVisible = false;
   private readonly api: DbMasterApi = window.dbmaster;
   private minifaceRequestId = 0;
+  private readonly potentialCalculator = new PotentialCalculator();
 
   constructor(
     private readonly playerEditor: PlayerEditorService,
@@ -269,6 +271,10 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
           }
         });
       }
+      const potential = this.resolveImportedPotential(payload);
+      if (potential !== undefined) {
+        setField("potential", potential.toString());
+      }
 
       // 8. Detected skin tone
       if (payload.skinTone) {
@@ -305,6 +311,49 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
       return countryPart === normalizedSearch || countryPart.includes(normalizedSearch) || normalizedSearch.includes(countryPart);
     });
     return match?.value;
+  }
+
+  private resolveImportedPotential(payload: ImportedPlayerPayload): number | undefined {
+    const importedPotential = this.ratingValue(payload.overall.potential);
+    if (importedPotential !== undefined) {
+      return importedPotential;
+    }
+
+    const overall = this.ratingValue(payload.overall.overall)
+      ?? this.ratingValue(payload.overall.playerFields?.["overallrating"]);
+    if (overall === undefined) {
+      return undefined;
+    }
+
+    const age = payload.profile.age;
+    const marketValue = this.positiveNumber(payload.profile.marketValue)
+      ?? this.positiveNumber(payload.overall.breakdown?.marketValue);
+    const position = payload.overall.position
+      ?? transfermarktPositionToFifaPosition(payload.profile.position?.main);
+    if (!Number.isFinite(age) || marketValue === undefined || !position) {
+      return overall;
+    }
+
+    try {
+      return this.potentialCalculator.calculate({
+        overall,
+        age: age as number,
+        marketValue,
+        position
+      }).potential;
+    } catch {
+      return overall;
+    }
+  }
+
+  private ratingValue(value: unknown): number | undefined {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.round(Math.min(Math.max(parsed, 0), 99)) : undefined;
+  }
+
+  private positiveNumber(value: unknown): number | undefined {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
 
   ngOnDestroy(): void {

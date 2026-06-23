@@ -233,6 +233,14 @@ function testPotentialCalculator(): void {
     });
     assert.ok(youngPremium.potential >= 78);
 
+    const developingMidfielder = calculator.calculate({
+        overall: 76,
+        age: 24,
+        marketValue: 6_000_000,
+        position: Position.CDM
+    });
+    assert.ok(developingMidfielder.potential >= 78);
+
     const centreBack = calculator.calculate({
         overall: 78,
         age: 26,

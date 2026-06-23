@@ -31,9 +31,16 @@ export class GetPlayerOverallService {
       );
     }
 
+    const potential = this.clampRating(
+      Number.isFinite(result.potential) ? result.potential : overall,
+      overall,
+      99
+    );
+
     return {
       ...result,
-      playerFields: this.toPlayerFields(result.attributes, overall, result.potential, result.reputation, result.position)
+      potential,
+      playerFields: this.toPlayerFields(result.attributes, overall, potential, result.reputation, result.position)
     };
   }
 
@@ -101,5 +108,9 @@ export class GetPlayerOverallService {
 
   private average(...values: number[]): number {
     return Math.round(values.reduce((total, value) => total + value, 0) / values.length);
+  }
+
+  private clampRating(value: number, minimum: number, maximum: number): number {
+    return Math.round(Math.min(Math.max(value, minimum), maximum));
   }
 }

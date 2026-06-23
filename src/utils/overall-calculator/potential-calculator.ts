@@ -83,10 +83,14 @@ export class PotentialCalculator {
         const growthScore = eligibleForLateGrowth
             ? this.clamp(youthGrowthFloor + marketGrowthFactor * (1 - youthGrowthFloor), 0, 1)
             : 0;
-        const growth = this.clampInteger(
+        const calculatedGrowth = this.clampInteger(
             ageGrowthCeiling * growthScore * positionGrowthFactor * highOverallDamping,
             0,
             this.config.maximumPotential - overall
+        );
+        const growth = Math.max(
+            calculatedGrowth,
+            Math.min(this.minimumGrowth(age, input.position), this.config.maximumPotential - overall)
         );
 
         return this.makeResult(overall + growth, {
@@ -165,6 +169,22 @@ export class PotentialCalculator {
         }
         if (age <= 25) {
             return 0.08;
+        }
+        return 0;
+    }
+
+    private minimumGrowth(age: number, position: Position): number {
+        if (age <= 18) {
+            return 4;
+        }
+        if (age <= 20) {
+            return 3;
+        }
+        if (age <= 23) {
+            return 2;
+        }
+        if (age === 24) {
+            return this.isLateDevelopingPosition(position) ? 2 : 1;
         }
         return 0;
     }
