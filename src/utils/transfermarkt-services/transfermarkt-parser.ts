@@ -129,4 +129,4 @@ export * from "./transfermarkt-api-xpath";
 export * from "./transfermarkt-api-players";
 export * from "./transfermarkt-api-clubs";
 export * from "./transfermarkt-api-competitions";
-export * from "./transfermarkt.d";
+export type * from "./transfermarkt";
