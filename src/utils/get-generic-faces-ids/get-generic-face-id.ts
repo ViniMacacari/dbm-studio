@@ -457,7 +457,7 @@ function fallbackRegionFromSkinTone(skinTone: number): FaceRegion {
     if (skinTone <= 4) {
         return 'caucasian'
     }
-    if (skinTone <= 6) {
+    if (skinTone === 5) {
         return 'latin'
     }
     return 'african'

@@ -15,6 +15,7 @@ import { PotentialCalculator } from "../../../utils/overall-calculator/potential
 import { positionInformation, positionNameToId, transfermarktPositionToFifaPosition } from "../../../utils/position-mapper/position-mapper";
 import { VisualAssetPickerComponent } from "../../components/visual-asset-picker/visual-asset-picker.component";
 import { TransfermarktPlayerImportModalComponent, type ImportedPlayerPayload } from "../../components/transfermarkt-player-import-modal/transfermarkt-player-import-modal.component";
+import { getRandomGenericFaceId } from "../../../utils/get-generic-faces-ids/get-generic-face-id";
 
 @Component({
   selector: "app-player-editor-page",
@@ -186,6 +187,7 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
     }
 
     try {
+      let importedNationalityId: string | undefined;
       const setField = (column: string, val: string) => {
         let field = this.draft!.identityFields.find(f => f.column.toLowerCase() === column.toLowerCase());
         if (!field) {
@@ -237,6 +239,7 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
           const natId = this.findNationId(natName);
           if (natId) {
             setField("nationality", natId);
+            importedNationalityId = natId;
             this.draft.nationalityName = natName;
           }
         }
@@ -281,7 +284,19 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
         setField("skintonecode", payload.skinTone.type.toString());
       }
 
-      // 9. Visual Head / Miniface update
+      // 9. Generic head selected from skin tone and nationality
+      let headTypeStatus = "";
+      if (payload.skinTone) {
+        const headTypeCode = getRandomGenericFaceId(
+          payload.skinTone.type.toString(),
+          importedNationalityId ?? ""
+        );
+        setField("headtypecode", headTypeCode.toString());
+        setField("headclasscode", "1");
+        headTypeStatus = ` Generic head ${headTypeCode} selected automatically.`;
+      }
+
+      // 10. Miniface update
       void this.loadMiniface(this.draft.playerId);
 
       const skinToneStatus = payload.skinTone
@@ -289,7 +304,7 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
         : payload.skinToneWarning
           ? ` Skin tone was not detected: ${payload.skinToneWarning}`
           : "";
-      this.lastApplied = `Successfully imported ${fullName} from Transfermarkt.${skinToneStatus}`;
+      this.lastApplied = `Successfully imported ${fullName} from Transfermarkt.${skinToneStatus}${headTypeStatus}`;
       this.lastAppliedTone = "info";
     } catch (err) {
       console.error("Error applying imported player data:", err);
@@ -301,7 +316,11 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
   }
 
   private findNationId(nationalityName: string): string | undefined {
-    const normalizedSearch = nationalityName.toLowerCase().trim();
+    const aliases: Record<string, string> = {
+      netherlands: "holland"
+    };
+    const requestedNation = nationalityName.toLowerCase().trim();
+    const normalizedSearch = aliases[requestedNation] ?? requestedNation;
     let match = this.nationOptions.find(opt => opt.label.toLowerCase().startsWith(normalizedSearch));
     if (match) {
       return match.value;
