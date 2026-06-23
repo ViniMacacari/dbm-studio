@@ -405,3 +405,82 @@ export const genericIds: FaceInformation[] = [
     { id: 1537, region: 'african' },
     { id: 7010, region: 'african' }
 ]
+
+type FaceRegion = FaceInformation['region']
+
+const nationalityIdsByRegion: Record<FaceRegion, ReadonlySet<number>> = {
+    caucasian: new Set([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+        18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
+        34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+        50, 51, 70, 95, 195, 198, 205, 206, 208, 219
+    ]),
+    latin: new Set([
+        52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 64, 67, 72, 73, 76,
+        78, 81, 83, 85, 86, 87, 88, 207, 225
+    ]),
+    asian: new Set([
+        149, 150, 151, 152, 153, 154, 155, 157, 158, 159, 160, 161, 162,
+        163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175,
+        176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188,
+        189, 190, 191, 192, 193, 194, 196, 197, 199, 200, 201, 202, 203,
+        204, 212, 213, 215
+    ]),
+    african: new Set([
+        62, 63, 65, 66, 68, 69, 71, 74, 77, 79, 80, 82, 84, 89, 90,
+        91, 92, 93, 94, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105,
+        106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118,
+        119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131,
+        132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144,
+        145, 146, 147, 148, 214, 218
+    ])
+}
+
+const acceptedSkinToneRange: Record<FaceRegion, readonly [number, number]> = {
+    caucasian: [1, 4],
+    latin: [2, 6],
+    asian: [1, 6],
+    african: [6, 10]
+}
+
+function regionFromNationality(nationalityId: number): FaceRegion | undefined {
+    return (Object.keys(nationalityIdsByRegion) as FaceRegion[])
+        .find(region => nationalityIdsByRegion[region].has(nationalityId))
+}
+
+function acceptsSkinTone(region: FaceRegion, skinTone: number): boolean {
+    const [minimum, maximum] = acceptedSkinToneRange[region]
+    return skinTone >= minimum && skinTone <= maximum
+}
+
+function fallbackRegionFromSkinTone(skinTone: number): FaceRegion {
+    if (skinTone <= 4) {
+        return 'caucasian'
+    }
+    if (skinTone <= 6) {
+        return 'latin'
+    }
+    return 'african'
+}
+
+export function getRandomGenericFaceId(skintonecode: string, nationality: string): number {
+    const skinTone = Number(skintonecode)
+    if (!Number.isInteger(skinTone) || skinTone < 1 || skinTone > 10) {
+        throw new RangeError(`Invalid skintonecode: ${skintonecode}`)
+    }
+
+    const nationalityId = Number(nationality)
+    const nationalityRegion = Number.isInteger(nationalityId)
+        ? regionFromNationality(nationalityId)
+        : undefined
+    const region = nationalityRegion && acceptsSkinTone(nationalityRegion, skinTone)
+        ? nationalityRegion
+        : fallbackRegionFromSkinTone(skinTone)
+    const candidates = genericIds.filter(face => face.region === region)
+
+    if (candidates.length === 0) {
+        throw new Error(`No generic face IDs available for region: ${region}`)
+    }
+
+    return candidates[Math.floor(Math.random() * candidates.length)].id
+}
