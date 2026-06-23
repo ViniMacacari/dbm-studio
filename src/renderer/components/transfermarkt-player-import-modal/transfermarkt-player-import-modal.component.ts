@@ -12,6 +12,8 @@ export interface ImportedPlayerPayload {
   profile: PlayerProfileResponse;
   skinTone?: SkinToneResult;
   skinToneWarning?: string;
+  facialHairTypeCode?: number;
+  facialHairWarning?: string;
 }
 
 @Component({
@@ -106,15 +108,35 @@ export class TransfermarktPlayerImportModalComponent {
       const profile = profileResponse.result;
       let skinTone: SkinToneResult | undefined;
       let skinToneWarning: string | undefined;
-      if (profile.imageUrl) {
-        try {
-          skinTone = await this.skinToneDetectorService.detect(profile.imageUrl);
-        } catch (error) {
-          skinToneWarning = error instanceof Error ? error.message : String(error);
-          console.warn("Could not detect the imported player's skin tone:", error);
-        }
+      let facialHairTypeCode: number | undefined;
+      let facialHairWarning: string | undefined;
+      const imageUrl = profile.imageUrl;
+      if (imageUrl) {
+        await Promise.all([
+          (async () => {
+            try {
+              skinTone = await this.skinToneDetectorService.detect(imageUrl);
+            } catch (error) {
+              skinToneWarning = error instanceof Error ? error.message : String(error);
+              console.warn("Could not detect the imported player's skin tone:", error);
+            }
+          })(),
+          (async () => {
+            try {
+              const response = await window.dbmaster.detectBeard(imageUrl);
+              if (response.error || response.result === undefined) {
+                throw new Error(response.error ?? "Beard detection returned no result.");
+              }
+              facialHairTypeCode = response.result;
+            } catch (error) {
+              facialHairWarning = error instanceof Error ? error.message : String(error);
+              console.warn("Could not detect the imported player's facial hair:", error);
+            }
+          })()
+        ]);
       } else {
         skinToneWarning = "Transfermarkt did not return a profile image.";
+        facialHairWarning = "Transfermarkt did not return a profile image.";
       }
 
       this.ngZone.run(() => {
@@ -122,7 +144,9 @@ export class TransfermarktPlayerImportModalComponent {
           overall,
           profile,
           skinTone,
-          skinToneWarning
+          skinToneWarning,
+          facialHairTypeCode,
+          facialHairWarning
         });
       });
     } catch (err) {

@@ -10,6 +10,7 @@ import { OverallCalculator } from "../utils/overall-calculator";
 import { Fifa } from "fifarating";
 import { CommonTransfermarktParser } from "../utils/transfermarkt-services/transfermarkt-parser";
 import { SkinToneDetector } from "../utils/skin-tone-detector/skin-tone-detector";
+import { BeardDetector } from "../utils/beard-detector/beard-detector";
 import {
   exportTable,
   importTable,
@@ -21,6 +22,7 @@ import type { CompdataOpenProgress, CompdataProject, DataTable, DbProject, Local
 
 let mainWindow: BrowserWindow | undefined;
 let visualDependencyManager: VisualDependencyManager | undefined;
+let beardDetector: BeardDetector | undefined;
 const overallCalculator = new OverallCalculator();
 const skinToneDetector = new SkinToneDetector();
 let lastBlurDisplayState: WindowDisplayState | undefined;
@@ -73,6 +75,11 @@ function activeWindow(): BrowserWindow | undefined {
 function visualDependencies(): VisualDependencyManager {
   visualDependencyManager ??= new VisualDependencyManager(app.getPath("userData"));
   return visualDependencyManager;
+}
+
+function beards(): BeardDetector {
+  beardDetector ??= new BeardDetector(app.getPath("userData"));
+  return beardDetector;
 }
 
 interface WindowDisplayState {
@@ -698,6 +705,14 @@ ipcMain.handle("skinTone:detect", async (_event, imageUrl: string) => {
   try {
     const result = await skinToneDetector.getTone(visualDependencies().getSkinToneOptions(), imageUrl);
     return { result };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle("beard:detect", async (_event, imageUrl: string) => {
+  try {
+    return { result: await beards().detect(imageUrl) };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }

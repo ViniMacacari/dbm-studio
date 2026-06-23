@@ -296,7 +296,16 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
         headTypeStatus = ` Generic head ${headTypeCode} selected automatically.`;
       }
 
-      // 10. Miniface update
+      // 10. Facial hair detected from the Transfermarkt photo
+      let facialHairStatus = "";
+      if (payload.facialHairTypeCode !== undefined) {
+        setField("facialhairtypecode", payload.facialHairTypeCode.toString());
+        facialHairStatus = ` Facial hair ${payload.facialHairTypeCode} selected automatically.`;
+      } else if (payload.facialHairWarning) {
+        facialHairStatus = ` Facial hair was not detected: ${payload.facialHairWarning}`;
+      }
+
+      // 11. Miniface update
       void this.loadMiniface(this.draft.playerId);
 
       const skinToneStatus = payload.skinTone
@@ -304,7 +313,7 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
         : payload.skinToneWarning
           ? ` Skin tone was not detected: ${payload.skinToneWarning}`
           : "";
-      this.lastApplied = `Successfully imported ${fullName} from Transfermarkt.${skinToneStatus}${headTypeStatus}`;
+      this.lastApplied = `Successfully imported ${fullName} from Transfermarkt.${skinToneStatus}${headTypeStatus}${facialHairStatus}`;
       this.lastAppliedTone = "info";
     } catch (err) {
       console.error("Error applying imported player data:", err);
