@@ -315,14 +315,10 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
 
   private resolveImportedPotential(payload: ImportedPlayerPayload): number | undefined {
     const importedPotential = this.ratingValue(payload.overall.potential);
-    if (importedPotential !== undefined) {
-      return importedPotential;
-    }
-
     const overall = this.ratingValue(payload.overall.overall)
       ?? this.ratingValue(payload.overall.playerFields?.["overallrating"]);
     if (overall === undefined) {
-      return undefined;
+      return importedPotential;
     }
 
     const age = payload.profile.age;
@@ -331,18 +327,19 @@ export class PlayerEditorPageComponent implements OnChanges, OnDestroy {
     const position = payload.overall.position
       ?? transfermarktPositionToFifaPosition(payload.profile.position?.main);
     if (!Number.isFinite(age) || marketValue === undefined || !position) {
-      return overall;
+      return Math.max(importedPotential ?? overall, overall);
     }
 
     try {
-      return this.potentialCalculator.calculate({
+      const calculatedPotential = this.potentialCalculator.calculate({
         overall,
         age: age as number,
         marketValue,
         position
       }).potential;
+      return Math.max(importedPotential ?? calculatedPotential, calculatedPotential, overall);
     } catch {
-      return overall;
+      return Math.max(importedPotential ?? overall, overall);
     }
   }
 
