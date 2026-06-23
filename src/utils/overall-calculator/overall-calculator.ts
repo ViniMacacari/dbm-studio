@@ -1,6 +1,7 @@
 import { AttributesUtils, CalculateUtils, Fifa, Position, type FifaRatingAttributes } from "fifarating";
 import { transfermarktPositionToFifaPosition } from "../position-mapper/position-mapper";
 import { CommonTransfermarktParser } from "../transfermarkt-services/transfermarkt-parser";
+import { PotentialCalculator, type PotentialCalculationBreakdown } from "./potential-calculator";
 import type {
     ClubProfileResponse,
     CompetitionSearchResponse,
@@ -126,6 +127,7 @@ export interface TransfermarktOverallResult {
     playerName: string;
     rawOverall: number;
     overall: number;
+    potential: number;
     reputation: number;
     position: Position;
     fifa: Fifa;
@@ -133,6 +135,7 @@ export interface TransfermarktOverallResult {
     confidence: number;
     validation: OverallCalculationValidation;
     breakdown: OverallCalculationBreakdown;
+    potentialBreakdown: PotentialCalculationBreakdown;
     context: {
         clubId?: string;
         clubName?: string;
@@ -158,6 +161,7 @@ interface ResolvedTransfermarktContext {
 
 export class OverallCalculator {
     readonly config: OverallCalculatorConfig;
+    private readonly potentialCalculator: PotentialCalculator;
 
     constructor(
         private readonly transfermarkt: OverallCalculatorTransfermarktGateway = new CommonTransfermarktParser(),
@@ -165,6 +169,11 @@ export class OverallCalculator {
     ) {
         this.config = { ...defaultOverallCalculatorConfig, ...config };
         this.validateConfig();
+        this.potentialCalculator = new PotentialCalculator({
+            minimumOverall: this.config.minimumOverall,
+            marketValueFloor: this.config.marketValueFloor,
+            marketValueCeiling: this.config.marketValueCeiling
+        });
     }
 
     async generateFromTransfermarkt(
@@ -340,6 +349,12 @@ export class OverallCalculator {
             throw new Error(`fifarating generated raw overall ${calculatedRawOverall}; expected ${rawOverall}.`);
         }
         const overall = CalculateUtils.displayOverall(attributes, fifa, position, reputation);
+        const potential = this.potentialCalculator.calculate({
+            overall,
+            age,
+            marketValue,
+            position
+        });
 
         const validationCount = Object.values(validation).filter(Boolean).length;
         const confidence = this.round(validationCount / Object.keys(validation).length, 3);
@@ -351,6 +366,7 @@ export class OverallCalculator {
             playerName: profile.name ?? profile.fullName ?? context.playerId,
             rawOverall,
             overall,
+            potential: potential.potential,
             reputation,
             position,
             fifa,
@@ -377,6 +393,7 @@ export class OverallCalculator {
                 clubMeanMarketValue: this.optionalRound(clubMeanMarketValue),
                 leagueMeanMarketValue: this.optionalRound(leagueMeanMarketValue)
             },
+            potentialBreakdown: potential.breakdown,
             context: {
                 clubId: club?.id ?? profile.club.id ?? undefined,
                 clubName: club?.name ?? profile.club.name ?? undefined,

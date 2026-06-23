@@ -5,6 +5,7 @@ import {
     type OverallCalculatorConfig,
     type OverallCalculatorTransfermarktGateway
 } from "../utils/overall-calculator/overall-calculator";
+import { PotentialCalculator } from "../utils/overall-calculator/potential-calculator";
 import { transfermarktPositionToFifaPosition } from "../utils/position-mapper/position-mapper";
 import type {
     ClubProfileResponse,
@@ -197,6 +198,76 @@ async function testAchievementsAndReputation(): Promise<void> {
     assert.equal(withTrophies.confidence, 1);
 }
 
+function testPotentialCalculator(): void {
+    const calculator = new PotentialCalculator();
+    const veteran = calculator.calculate({
+        overall: 78,
+        age: 28,
+        marketValue: 100_000_000,
+        position: Position.ST
+    });
+    assert.equal(veteran.potential, 78);
+    assert.equal(veteran.breakdown.growth, 0);
+
+    const lateNormalMarket = calculator.calculate({
+        overall: 78,
+        age: 27,
+        marketValue: 5_000_000,
+        position: Position.CB
+    });
+    assert.equal(lateNormalMarket.potential, 78);
+
+    const lateStrongMarket = calculator.calculate({
+        overall: 78,
+        age: 27,
+        marketValue: 80_000_000,
+        position: Position.CB
+    });
+    assert.ok(lateStrongMarket.potential > 78);
+
+    const youngPremium = calculator.calculate({
+        overall: 70,
+        age: 20,
+        marketValue: 25_000_000,
+        position: Position.RW
+    });
+    assert.ok(youngPremium.potential >= 78);
+
+    const centreBack = calculator.calculate({
+        overall: 78,
+        age: 26,
+        marketValue: 70_000_000,
+        position: Position.CB
+    });
+    const winger = calculator.calculate({
+        overall: 78,
+        age: 26,
+        marketValue: 70_000_000,
+        position: Position.LW
+    });
+    assert.ok(centreBack.potential > winger.potential);
+}
+
+async function testTransfermarktPotentialIntegration(): Promise<void> {
+    const young = await calculate({
+        age: 20,
+        marketValue: 50_000_000,
+        clubMeanMarketValue: 4_000_000,
+        leagueMeanMarketValue: 5_000_000
+    });
+    assert.ok(young.potential >= young.overall);
+    assert.equal(typeof young.potentialBreakdown.marketPremium, "number");
+
+    const veteran = await calculate({
+        age: 29,
+        marketValue: 90_000_000,
+        clubMeanMarketValue: 10_000_000,
+        leagueMeanMarketValue: 12_000_000,
+        position: "Centre-Back"
+    });
+    assert.equal(veteran.potential, veteran.overall);
+}
+
 function testPositionMapping(): void {
     assert.equal(transfermarktPositionToFifaPosition("Goalkeeper"), Position.GK);
     assert.equal(transfermarktPositionToFifaPosition("Defensive Midfield"), Position.CDM);
@@ -211,6 +282,8 @@ async function run(): Promise<void> {
     await testAchievementsAndReputation();
     await testMidTierCalibration();
     await testGoalkeeperLongevity();
+    testPotentialCalculator();
+    await testTransfermarktPotentialIntegration();
     testPositionMapping();
     console.log("Overall calculator tests passed.");
 }

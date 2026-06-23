@@ -33,13 +33,14 @@ export class GetPlayerOverallService {
 
     return {
       ...result,
-      playerFields: this.toPlayerFields(result.attributes, overall, result.reputation, result.position)
+      playerFields: this.toPlayerFields(result.attributes, overall, result.potential, result.reputation, result.position)
     };
   }
 
   private toPlayerFields(
     attributes: FifaRatingAttributes,
     overall: number,
+    potential: number,
     reputation: number,
     position: Position
   ): Record<string, number> {
@@ -84,6 +85,7 @@ export class GetPlayerOverallService {
 
     return {
       overallrating: overall,
+      potential,
       internationalrep: reputation,
       ...attributes,
       defensiveawareness: attributes.marking,
