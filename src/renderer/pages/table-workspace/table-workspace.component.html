@@ -49,6 +49,8 @@
             {{ column }}
           </option>
         </select>
+        <button type="button" [disabled]="!hasTable" title="Center the selected column in the table"
+          (click)="scrollToSelectedColumn()">Go to column</button>
         <input type="search" placeholder="Search" [(ngModel)]="searchTerm" [disabled]="!hasTable"
           (keydown.enter)="findNext()" />
         <app-input-checkbox [(checked)]="searchExact" [disabled]="!hasTable" label="Exact match"
@@ -65,7 +67,8 @@
               <thead>
                 <tr>
                   <th class="row-select">#</th>
-                  <th *ngFor="let column of table.columns; let columnIndex = index; trackBy: trackByColumn">
+                  <th *ngFor="let column of table.columns; let columnIndex = index; trackBy: trackByColumn"
+                    [attr.data-column-index]="columnIndex">
                     <button type="button" [title]="column" (click)="sortByColumn(columnIndex)">
                       {{ sort?.column === columnIndex ? column + (sort?.direction === 1 ? ' up' : ' down') : column }}
                     </button>
@@ -74,6 +77,7 @@
               </thead>
               <tbody>
                 <tr *ngFor="let rowIndex of visibleRowIndexes(); trackBy: trackByRowIndex"
+                  [attr.data-row-index]="rowIndex"
                   [class.row-selected]="selectedRows.has(rowIndex)" (click)="selectGridRow(rowIndex, $event)">
                   <td class="row-select">
                     <input type="checkbox" [checked]="selectedRows.has(rowIndex)" (click)="$event.stopPropagation()"

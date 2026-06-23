@@ -432,6 +432,7 @@ export class TableWorkspaceComponent implements AfterViewInit {
         this.selectedRows.add(index);
         this.page = Math.floor(index / this.pageSize);
         this.syncHorizontalScrollbar();
+        this.scrollToRow(index);
         return;
       }
     }
@@ -451,6 +452,31 @@ export class TableWorkspaceComponent implements AfterViewInit {
   onPageSizeChange(): void {
     this.page = 0;
     this.syncHorizontalScrollbar();
+  }
+
+  scrollToSelectedColumn(): void {
+    requestAnimationFrame(() => {
+      const gridWrap = this.gridWrap?.nativeElement;
+      const dataGrid = this.dataGrid?.nativeElement;
+      const horizontalScroll = this.horizontalScroll?.nativeElement;
+      const columnHeader = dataGrid?.querySelector<HTMLElement>(
+        `thead th[data-column-index="${this.selectedColumnIndex}"]`
+      );
+      if (!gridWrap || !dataGrid || !columnHeader) {
+        return;
+      }
+
+      const frozenColumnWidth = dataGrid.querySelector<HTMLElement>("thead .row-select")?.offsetWidth ?? 0;
+      const availableWidth = Math.max(0, gridWrap.clientWidth - frozenColumnWidth);
+      const centeredPosition = columnHeader.offsetLeft
+        - frozenColumnWidth
+        - (availableWidth - columnHeader.offsetWidth) / 2;
+      const maximumScroll = Math.max(0, gridWrap.scrollWidth - gridWrap.clientWidth);
+      gridWrap.scrollLeft = Math.min(maximumScroll, Math.max(0, centeredPosition));
+      if (horizontalScroll) {
+        horizontalScroll.scrollLeft = gridWrap.scrollLeft;
+      }
+    });
   }
 
   onHorizontalScroll(): void {
@@ -601,6 +627,25 @@ export class TableWorkspaceComponent implements AfterViewInit {
         this.horizontalScroll.nativeElement.scrollLeft = 0;
       }
       this.syncHorizontalScrollbar();
+    });
+  }
+
+  private scrollToRow(rowIndex: number): void {
+    requestAnimationFrame(() => {
+      const gridWrap = this.gridWrap?.nativeElement;
+      const dataGrid = this.dataGrid?.nativeElement;
+      const row = dataGrid?.querySelector<HTMLElement>(`tbody tr[data-row-index="${rowIndex}"]`);
+      if (!gridWrap || !dataGrid || !row) {
+        return;
+      }
+
+      const headerHeight = dataGrid.tHead?.offsetHeight ?? 0;
+      const availableHeight = Math.max(0, gridWrap.clientHeight - headerHeight);
+      const centeredPosition = row.offsetTop
+        - headerHeight
+        - (availableHeight - row.offsetHeight) / 2;
+      const maximumScroll = Math.max(0, gridWrap.scrollHeight - gridWrap.clientHeight);
+      gridWrap.scrollTop = Math.min(maximumScroll, Math.max(0, centeredPosition));
     });
   }
 
