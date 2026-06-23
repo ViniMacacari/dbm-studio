@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld("dbmaster", {
     ipcRenderer.invoke("transfermarkt:getPlayerProfile", playerId),
   detectSkinTone: (imageUrl: string) => ipcRenderer.invoke("skinTone:detect", imageUrl),
   detectBeard: (imageUrl: string) => ipcRenderer.invoke("beard:detect", imageUrl),
+  detectHair: (imageUrl: string) => ipcRenderer.invoke("hair:detect", imageUrl),
   listBig: () => ipcRenderer.invoke("big:list"),
   extractDatabasesFromBig: () => ipcRenderer.invoke("big:extractDatabases"),
   getVisualDependenciesStatus: () => ipcRenderer.invoke("visualDependencies:getStatus"),

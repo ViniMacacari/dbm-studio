@@ -14,6 +14,8 @@ export interface ImportedPlayerPayload {
   skinToneWarning?: string;
   facialHairTypeCode?: number;
   facialHairWarning?: string;
+  hairTypeCode?: number;
+  hairWarning?: string;
 }
 
 @Component({
@@ -110,6 +112,8 @@ export class TransfermarktPlayerImportModalComponent {
       let skinToneWarning: string | undefined;
       let facialHairTypeCode: number | undefined;
       let facialHairWarning: string | undefined;
+      let hairTypeCode: number | undefined;
+      let hairWarning: string | undefined;
       const imageUrl = profile.imageUrl;
       if (imageUrl) {
         await Promise.all([
@@ -132,11 +136,24 @@ export class TransfermarktPlayerImportModalComponent {
               facialHairWarning = error instanceof Error ? error.message : String(error);
               console.warn("Could not detect the imported player's facial hair:", error);
             }
+          })(),
+          (async () => {
+            try {
+              const response = await window.dbmaster.detectHair(imageUrl);
+              if (response.error || response.result === undefined) {
+                throw new Error(response.error ?? "Hair detection returned no result.");
+              }
+              hairTypeCode = response.result;
+            } catch (error) {
+              hairWarning = error instanceof Error ? error.message : String(error);
+              console.warn("Could not detect the imported player's hair:", error);
+            }
           })()
         ]);
       } else {
         skinToneWarning = "Transfermarkt did not return a profile image.";
         facialHairWarning = "Transfermarkt did not return a profile image.";
+        hairWarning = "Transfermarkt did not return a profile image.";
       }
 
       this.ngZone.run(() => {
@@ -146,7 +163,9 @@ export class TransfermarktPlayerImportModalComponent {
           skinTone,
           skinToneWarning,
           facialHairTypeCode,
-          facialHairWarning
+          facialHairWarning,
+          hairTypeCode,
+          hairWarning
         });
       });
     } catch (err) {

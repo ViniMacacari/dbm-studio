@@ -44,6 +44,7 @@ export interface DbMasterApi {
   ): Promise<{ result?: PlayerProfileResponse; error?: string }>;
   detectSkinTone(imageUrl: string): Promise<{ result?: SkinToneResult; error?: string }>;
   detectBeard(imageUrl: string): Promise<{ result?: number; error?: string }>;
+  detectHair(imageUrl: string): Promise<{ result?: number; error?: string }>;
   extractDatabasesFromBig(): Promise<{ canceled?: boolean; message?: string; entries?: unknown[]; warnings?: string[] }>;
   getVisualDependenciesStatus(): Promise<VisualDependenciesStatus>;
   installVisualDependencies(): Promise<VisualDependenciesInstallResult>;
