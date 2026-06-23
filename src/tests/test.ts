@@ -1,5 +1,6 @@
 import { OverallCalculator } from "../utils/overall-calculator";
 import { SkinToneDetector } from "../utils/skin-tone-detector/skin-tone-detector";
+import assert from "node:assert/strict";
 
 const test = async () => {
     const json = [
@@ -52,6 +53,10 @@ const test = async () => {
     const result = await service.getTone(json, url)
 
     console.log(result)
+
+    const calleri = await service.getTone(json, "https://img.a.transfermarkt.technology/portrait/header/284727-1738840512.jpg?lm=1");
+    assert.ok(calleri.type <= 5, `Calleri should not be classified as dark skin tone 8+, received ${calleri.type}`);
+    console.log("Skin tone detector tests passed.");
 };
 
 test().catch(err => {

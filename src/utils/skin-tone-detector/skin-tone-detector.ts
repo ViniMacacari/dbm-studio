@@ -340,6 +340,20 @@ export class SkinToneDetector {
             };
         }
 
+        const isShadowContaminatedLightSkin =
+            q10 <= 58 &&
+            q50 >= 132 &&
+            q50 <= 150 &&
+            q90 >= 180;
+
+        if (isShadowContaminatedLightSkin) {
+            return {
+                name: 'shadow-contaminated-light-mid-band',
+                lower: 0.25,
+                upper: 0.78,
+            };
+        }
+
         const isTrueDarkSkin =
             q50 <= 68 &&
             q90 <= 105 &&
