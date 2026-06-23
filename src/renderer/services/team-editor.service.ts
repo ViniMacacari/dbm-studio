@@ -450,6 +450,7 @@ export class TeamEditorService {
       throw new Error("Cannot remove players from a national team.");
     }
     draft.playerLinks = draft.playerLinks.filter((link) => link.playerId !== playerId);
+    this.clearUnlinkedSetPieceFields(draft);
     this.refreshSetPiecePlayerOptions(draft);
     if (draft.formation) {
       this.formations.syncSquadPlayers(project, draft.formation, draft.playerLinks);
@@ -602,7 +603,7 @@ export class TeamEditorService {
     for (const field of draft.sections.flatMap((section) => section.fields)) {
       if (!field.readonly) {
         const value = this.normalizeFieldForWrite(field);
-        if (field.inputType === "player" && !linkedPlayerIds.has(value)) {
+        if (field.inputType === "player" && value !== "-1" && value !== "0" && !linkedPlayerIds.has(value)) {
           throw new Error(`${field.label}: choose a player linked to ${draft.displayName}.`);
         }
         this.write(teams, draft.rowIndex, field.column, value);
@@ -1478,12 +1479,24 @@ export class TeamEditorService {
     draft.setPiecePlayerOptions = this.setPiecePlayerOptions(draft.playerLinks);
   }
 
+  private clearUnlinkedSetPieceFields(draft: TeamEditorDraft): void {
+    const linkedPlayerIds = new Set(draft.playerLinks.map((player) => player.playerId));
+    for (const field of draft.sections.flatMap((section) => section.fields)) {
+      if (field.inputType === "player" && !linkedPlayerIds.has(field.value)) {
+        field.value = "-1";
+      }
+    }
+  }
+
   private setPiecePlayerOptions(playerLinks: TeamPlayerLinkDraft[]): SearchListOption[] {
-    return playerLinks.map((player) => ({
-      value: player.playerId,
-      label: player.displayName,
-      meta: player.jerseyNumber ? `#${player.jerseyNumber} / ID ${player.playerId}` : `ID ${player.playerId}`
-    }));
+    return [
+      { value: "-1", label: "Unassigned" },
+      ...playerLinks.map((player) => ({
+        value: player.playerId,
+        label: player.displayName,
+        meta: player.jerseyNumber ? `#${player.jerseyNumber} / ID ${player.playerId}` : `ID ${player.playerId}`
+      }))
+    ];
   }
 
   private normalizeFieldForWrite(field: TeamEditorFieldDraft): string {

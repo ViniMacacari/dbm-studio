@@ -247,7 +247,7 @@ function validationTest(): void {
     const state = service.loadTeamFormation(project, "100", links)!;
     state.sheetPlayerIds[0] = "-1";
     state.mentalityPlayerIds = state.sheetPlayerIds.slice(0, 11);
-    assert.match(service.validateTeamFormationState(state).errors.join(" "), /Starting XI/);
+    assert.equal(service.validateTeamFormationState(state).valid, true);
   }
   {
     const { project, links, service } = fixture();
@@ -256,6 +256,35 @@ function validationTest(): void {
     state.mentalityPlayerIds = state.sheetPlayerIds.slice(0, 11);
     assert.match(service.validateTeamFormationState(state).errors.join(" "), /not linked/);
   }
+}
+
+function rosterRemovalSyncTest(): void {
+  const { project, links, service } = fixture();
+  const state = service.loadTeamFormation(project, "100", links)!;
+  service.syncSquadPlayers(
+    project,
+    state,
+    links.filter((link) => link.playerId !== "1" && link.playerId !== "9")
+  );
+
+  assert.equal(state.sheetPlayerIds[0], "-1");
+  assert.equal(state.sheetPlayerIds[8], "-1");
+  assert.equal(state.mentalityPlayerIds[0], "-1");
+  assert.equal(state.mentalityPlayerIds[8], "-1");
+  assert.equal(state.captainId, undefined);
+  assert.equal(state.setPieceTakers.penaltyTakerId, undefined);
+  assert.equal(state.dirty, true);
+  assert.equal(service.validateTeamFormationState(state).valid, true);
+
+  service.saveTeamFormation(project, state);
+  const sheet = findTable(project, "default_teamsheets");
+  const mentality = findTable(project, "default_mentalities");
+  assert.equal(read(sheet, 0, "playerid0"), "-1");
+  assert.equal(read(sheet, 0, "playerid8"), "-1");
+  assert.equal(read(sheet, 0, "captainid"), "-1");
+  assert.equal(read(sheet, 0, "penaltytakerid"), "-1");
+  assert.equal(read(mentality, 1, "playerid0"), "-1");
+  assert.equal(read(mentality, 1, "playerid8"), "-1");
 }
 
 function atomicRollbackTest(): void {
@@ -281,5 +310,6 @@ starterBenchSwapTest();
 starterSwapTest();
 formationChangeTest();
 validationTest();
+rosterRemovalSyncTest();
 atomicRollbackTest();
 console.log("TeamFormationEditorService tests passed.");

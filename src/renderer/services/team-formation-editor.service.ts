@@ -200,6 +200,34 @@ export class TeamFormationEditorService {
     }
     state.allowedPlayerIds = Object.keys(playerCatalog);
     state.playerCatalog = playerCatalog;
+    const allowedPlayerIds = new Set(state.allowedPlayerIds);
+    let referencesChanged = false;
+    state.sheetPlayerIds = state.sheetPlayerIds.map((playerId) => {
+      if (playerId === "-1" || allowedPlayerIds.has(playerId)) {
+        return playerId;
+      }
+      referencesChanged = true;
+      return "-1";
+    });
+    const nextMentalityPlayerIds = state.sheetPlayerIds.slice(0, startingSlotCount);
+    if (!this.stringArraysEqual(state.mentalityPlayerIds, nextMentalityPlayerIds)) {
+      state.mentalityPlayerIds = nextMentalityPlayerIds;
+      referencesChanged = true;
+    }
+    if (state.captainId && !allowedPlayerIds.has(state.captainId)) {
+      state.captainId = undefined;
+      referencesChanged = true;
+    }
+    for (const key of Object.keys(state.setPieceTakers) as Array<keyof TeamFormationEditorState["setPieceTakers"]>) {
+      const playerId = state.setPieceTakers[key];
+      if (playerId && !allowedPlayerIds.has(playerId)) {
+        state.setPieceTakers[key] = undefined;
+        referencesChanged = true;
+      }
+    }
+    if (referencesChanged) {
+      state.dirty = true;
+    }
     this.rebuildSlots(state);
   }
 
@@ -207,8 +235,10 @@ export class TeamFormationEditorService {
     if (this.slotKey(fromSlot) === this.slotKey(toSlot)) {
       return state;
     }
-    if (!fromSlot.playerId || fromSlot.playerId === "-1" || !toSlot.playerId || toSlot.playerId === "-1") {
-      throw new Error("Choose two populated player slots to swap.");
+    const fromPopulated = Boolean(fromSlot.playerId && fromSlot.playerId !== "-1");
+    const toPopulated = Boolean(toSlot.playerId && toSlot.playerId !== "-1");
+    if (!fromPopulated && !toPopulated) {
+      throw new Error("Choose at least one populated player slot.");
     }
 
     if (fromSlot.slot >= 0 && toSlot.slot >= 0) {
@@ -250,10 +280,6 @@ export class TeamFormationEditorService {
   validateTeamFormationState(state: TeamFormationEditorState): FormationValidationResult {
     const errors: string[] = [];
     const startingIds = state.sheetPlayerIds.slice(0, startingSlotCount);
-    if (startingIds.some((playerId) => !playerId || playerId === "-1")) {
-      errors.push("Starting XI must have a player in every slot.");
-    }
-
     const populatedIds = state.sheetPlayerIds.filter((playerId) => playerId && playerId !== "-1");
     if (new Set(populatedIds).size !== populatedIds.length) {
       errors.push("A player cannot appear more than once in teamsheet slots 0..51.");
@@ -319,6 +345,14 @@ export class TeamFormationEditorService {
       for (let slot = 0; slot < startingSlotCount; slot += 1) {
         this.writeRequired(mentalities, rows.mentality, `playerid${slot}`, state.sheetPlayerIds[slot]);
       }
+      this.writeIfPresent(teamsheets, rows.teamsheet, "captainid", state.captainId ?? "-1");
+      this.writeIfPresent(teamsheets, rows.teamsheet, "penaltytakerid", state.setPieceTakers.penaltyTakerId ?? "-1");
+      this.writeIfPresent(teamsheets, rows.teamsheet, "freekicktakerid", state.setPieceTakers.freekickTakerId ?? "-1");
+      this.writeIfPresent(teamsheets, rows.teamsheet, "leftfreekicktakerid", state.setPieceTakers.leftFreekickTakerId ?? "-1");
+      this.writeIfPresent(teamsheets, rows.teamsheet, "rightfreekicktakerid", state.setPieceTakers.rightFreekickTakerId ?? "-1");
+      this.writeIfPresent(teamsheets, rows.teamsheet, "leftcornerkicktakerid", state.setPieceTakers.leftCornerKickTakerId ?? "-1");
+      this.writeIfPresent(teamsheets, rows.teamsheet, "rightcornerkicktakerid", state.setPieceTakers.rightCornerKickTakerId ?? "-1");
+      this.writeIfPresent(teamsheets, rows.teamsheet, "longkicktakerid", state.setPieceTakers.longKickTakerId ?? "-1");
       teamsheets.changed = true;
       mentalities.changed = true;
       changedTables.add(teamsheets.name);

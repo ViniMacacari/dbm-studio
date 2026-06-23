@@ -227,7 +227,8 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
     }
     this.runDraftAction(() => {
       this.teamEditor.removePlayerFromDraft(this.project, this.draft!, playerId);
-      return "Player removed from roster draft";
+      this.selectedFormationSlot = undefined;
+      return "Player removed from roster, formation, and set pieces draft";
     });
   }
 
