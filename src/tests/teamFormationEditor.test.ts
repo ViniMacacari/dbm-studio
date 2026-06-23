@@ -43,7 +43,7 @@ function fixture(): { project: DbProject; links: TeamPlayerLinkDraft[]; service:
     freekicktakerid: "8"
   };
   for (const slot of sheetSlots) {
-    teamsheet[`playerid${slot}`] = slot < 20 ? String(slot + 1) : "-1";
+    teamsheet[`playerid${slot}`] = slot < 21 ? String(slot + 1) : "-1";
   }
 
   const mentalityPlayers = Object.fromEntries(slots.map((slot) => [`playerid${slot}`, String(slot + 1)]));
@@ -167,6 +167,11 @@ function loadTest(): void {
   assert.equal(state.selectedFormationId, "1");
   assert.equal(state.bench[0].slot, 11);
   assert.equal(state.bench[0].playerId, "12");
+  assert.equal(state.bench.length, 9);
+  assert.equal(state.bench[8].slot, 19);
+  assert.equal(state.bench[8].playerId, "20");
+  assert.equal(state.reserves[0].slot, 20);
+  assert.equal(state.reserves[0].playerId, "21");
 }
 
 function starterBenchSwapTest(): void {

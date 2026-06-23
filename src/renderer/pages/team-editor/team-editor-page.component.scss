@@ -94,6 +94,10 @@
 
 .formation-editor-panel {
   max-width: none;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .formation-toolbar {
@@ -121,7 +125,7 @@
 }
 
 .formation-workspace {
-  min-height: 660px;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(620px, 1.45fr) minmax(320px, 0.75fr);
   gap: 14px;
@@ -129,7 +133,8 @@
 
 .formation-pitch {
   position: relative;
-  min-height: 660px;
+  min-height: 520px;
+  height: 100%;
   overflow: hidden;
   border: 3px solid rgba(255, 255, 255, 0.9);
   border-radius: 12px;
@@ -260,7 +265,7 @@
 
 .formation-squad-panel {
   min-height: 0;
-  max-height: 660px;
+  height: 100%;
   overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -430,10 +435,12 @@
   }
 
   .formation-pitch {
+    height: auto;
     min-height: 620px;
   }
 
   .formation-squad-panel {
+    height: auto;
     max-height: none;
   }
 

@@ -53,6 +53,8 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
   private crestRequestId = 0;
   private minifaceLoadGeneration = 0;
   private readonly playerImageBatchSize = 20;
+  private readonly pitchHorizontalPadding = 5;
+  private readonly pitchVerticalPadding = 4;
 
   constructor(
     private readonly teamEditor: TeamEditorService,
@@ -196,11 +198,11 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
   }
 
   pitchLeft(slot: TeamSheetSlot): number {
-    return this.clampOffset(slot.offsetX) * 100;
+    return this.scalePitchOffset(this.clampOffset(slot.offsetX), this.pitchHorizontalPadding);
   }
 
   pitchTop(slot: TeamSheetSlot): number {
-    return (1 - this.clampOffset(slot.offsetY)) * 100;
+    return this.scalePitchOffset(1 - this.clampOffset(slot.offsetY), this.pitchVerticalPadding);
   }
 
   addPlayer(): void {
@@ -399,6 +401,10 @@ export class TeamEditorPageComponent implements OnChanges, OnDestroy {
 
   private clampOffset(value: number | undefined): number {
     return Number.isFinite(value) ? Math.max(0, Math.min(1, value as number)) : 0.5;
+  }
+
+  private scalePitchOffset(value: number, paddingPercent: number): number {
+    return paddingPercent + value * (100 - paddingPercent * 2);
   }
 
   private async loadPlayerMinifaces(playerIds: string[]): Promise<void> {

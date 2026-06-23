@@ -94,7 +94,8 @@ export interface FormationSaveResult {
 const startingSlotCount = 11;
 const totalTeamsheetSlots = 52;
 const firstBenchSlot = 11;
-const lastBenchSlot = 17;
+const benchSlotCount = 9;
+const lastBenchSlot = firstBenchSlot + benchSlotCount - 1;
 const optionalFormationFields = ["defenders", "midfielders", "attackers", "offensiverating"];
 
 @Injectable({ providedIn: "root" })
