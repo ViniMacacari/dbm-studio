@@ -33,14 +33,9 @@ interface FaceBounds {
 const fallbackHairIds = Array.from({ length: 300 }, (_value, id) => id)
   .filter(id => id !== 202);
 
-const hairRegions: ImageRegion[] = [
-  { left: 0.38, top: 0.16, right: 0.62, bottom: 0.34 },
-  { left: 0.31, top: 0.22, right: 0.69, bottom: 0.38 },
-  { left: 0.24, top: 0.27, right: 0.41, bottom: 0.49 },
-  { left: 0.59, top: 0.27, right: 0.76, bottom: 0.49 },
-  { left: 0.18, top: 0.36, right: 0.36, bottom: 0.68 },
-  { left: 0.64, top: 0.36, right: 0.82, bottom: 0.68 }
-];
+const hairGridColumns = 8;
+const hairGridRows = 6;
+const hairGridBounds = { left: 0.1, top: 0.08, right: 0.9, bottom: 0.68 };
 
 export class HairDetector {
   private readonly hairsPath: string;
@@ -60,26 +55,30 @@ export class HairDetector {
       return this.randomFallbackId();
     }
 
-    this.validateImageUrl(imageUrl);
-    const [imageBuffer, references] = await Promise.all([
-      this.downloadImage(imageUrl),
-      this.references(assetFiles)
-    ]);
-    if (references.length === 0) {
+    try {
+      this.validateImageUrl(imageUrl);
+      const [imageBuffer, references] = await Promise.all([
+        this.downloadImage(imageUrl),
+        this.references(assetFiles)
+      ]);
+      if (references.length === 0) {
+        return this.randomFallbackId();
+      }
+
+      const targetDescriptor = await this.createDescriptor(imageBuffer);
+      let closest = references[0];
+      let closestDistance = Number.POSITIVE_INFINITY;
+      for (const reference of references) {
+        const distance = this.descriptorDistance(targetDescriptor, reference.descriptor);
+        if (distance < closestDistance) {
+          closest = reference;
+          closestDistance = distance;
+        }
+      }
+      return closest.id;
+    } catch {
       return this.randomFallbackId();
     }
-
-    const targetDescriptor = await this.createDescriptor(imageBuffer);
-    let closest = references[0];
-    let closestDistance = Number.POSITIVE_INFINITY;
-    for (const reference of references) {
-      const distance = this.descriptorDistance(targetDescriptor, reference.descriptor);
-      if (distance < closestDistance) {
-        closest = reference;
-        closestDistance = distance;
-      }
-    }
-    return closest.id;
   }
 
   private async listHairAssets(): Promise<Array<{ id: number; path: string }>> {
@@ -130,12 +129,8 @@ export class HairDetector {
   private async createDescriptor(imageBuffer: Buffer): Promise<number[]> {
     const image = await this.normalizedPixels(imageBuffer);
     const skinLuminance = this.skinLuminance(image);
-    const luminance = this.luminanceMap(image);
-    const descriptor: number[] = [];
-    for (const region of hairRegions) {
-      descriptor.push(...this.regionDescriptor(image, luminance, skinLuminance, region));
-    }
-    return descriptor;
+    const rowBackgrounds = this.rowBackgrounds(image);
+    return this.hairGridDescriptor(image, rowBackgrounds, skinLuminance);
   }
 
   private async normalizedPixels(imageBuffer: Buffer): Promise<ImagePixels> {
@@ -326,75 +321,90 @@ export class HairDetector {
     return values[Math.floor(values.length / 2)];
   }
 
-  private regionDescriptor(
+  private hairGridDescriptor(
     image: ImagePixels,
-    luminance: Float32Array,
-    skinLuminance: number,
-    region: ImageRegion
+    rowBackgrounds: Array<{ r: number; g: number; b: number }>,
+    skinLuminance: number
   ): number[] {
-    let count = 0;
-    let darknessTotal = 0;
-    let gradientTotal = 0;
-    let moderatelyDark = 0;
-    let veryDark = 0;
-    this.forEachPixel(image, region, (x, y, r, g, b) => {
-      const pixelLuminance = this.luminance(r, g, b);
-      const backgroundDistance = Math.sqrt(
-        (r - image.background.r) ** 2
-        + (g - image.background.g) ** 2
-        + (b - image.background.b) ** 2
-      );
-      const foregroundWeight = Math.max(0, Math.min(1, (backgroundDistance - 18) / 45));
-      const darkness = Math.max(0, (skinLuminance - pixelLuminance) / Math.max(1, skinLuminance))
-        * foregroundWeight;
-      darknessTotal += darkness;
-      if (darkness >= 0.14) {
-        moderatelyDark += 1;
-      }
-      if (darkness >= 0.32) {
-        veryDark += 1;
-      }
-      if (x > 0 && y > 0) {
-        const index = y * image.width + x;
-        gradientTotal += Math.min(1, (
-          Math.abs(luminance[index] - luminance[index - 1])
-          + Math.abs(luminance[index] - luminance[index - image.width])
-        ) / 96) * foregroundWeight;
-      }
-      count += 1;
-    });
-    if (count === 0) {
-      return [0, 0, 0, 0];
-    }
-    return [
-      darknessTotal / count,
-      moderatelyDark / count,
-      veryDark / count,
-      gradientTotal / count
-    ];
-  }
-
-  private luminanceMap(image: ImagePixels): Float32Array {
-    const result = new Float32Array(image.width * image.height);
-    for (let y = 0; y < image.height; y += 1) {
-      for (let x = 0; x < image.width; x += 1) {
-        const index = (y * image.width + x) * image.channels;
-        result[y * image.width + x] = this.luminance(
-          image.data[index],
-          image.data[index + 1],
-          image.data[index + 2]
+    const descriptor: number[] = [];
+    const cellWidth = (hairGridBounds.right - hairGridBounds.left) / hairGridColumns;
+    const cellHeight = (hairGridBounds.bottom - hairGridBounds.top) / hairGridRows;
+    for (let row = 0; row < hairGridRows; row += 1) {
+      for (let column = 0; column < hairGridColumns; column += 1) {
+        let count = 0;
+        let intensityTotal = 0;
+        let occupied = 0;
+        const region: ImageRegion = {
+          left: hairGridBounds.left + column * cellWidth,
+          top: hairGridBounds.top + row * cellHeight,
+          right: hairGridBounds.left + (column + 1) * cellWidth,
+          bottom: hairGridBounds.top + (row + 1) * cellHeight
+        };
+        this.forEachPixel(image, region, (_x, y, r, g, b) => {
+          const rowBackground = rowBackgrounds[y] ?? image.background;
+          const backgroundDistance = Math.sqrt(
+            (r - rowBackground.r) ** 2
+            + (g - rowBackground.g) ** 2
+            + (b - rowBackground.b) ** 2
+          );
+          const foregroundWeight = Math.max(0, Math.min(1, (backgroundDistance - 18) / 45));
+          const intensity = Math.max(
+            0,
+            (skinLuminance - this.luminance(r, g, b)) / Math.max(1, skinLuminance)
+          ) * foregroundWeight;
+          intensityTotal += intensity;
+          if (intensity >= 0.18) {
+            occupied += 1;
+          }
+          count += 1;
+        });
+        descriptor.push(
+          count === 0 ? 0 : intensityTotal / count,
+          count === 0 ? 0 : occupied / count
         );
       }
     }
-    return result;
+    return descriptor;
+  }
+
+  private rowBackgrounds(image: ImagePixels): Array<{ r: number; g: number; b: number }> {
+    const edgeWidth = Math.max(2, Math.floor(image.width * 0.1));
+    const rows: Array<{ r: number; g: number; b: number }> = [];
+    for (let y = 0; y < image.height; y += 1) {
+      const reds: number[] = [];
+      const greens: number[] = [];
+      const blues: number[] = [];
+      for (let offset = 0; offset < edgeWidth; offset += 1) {
+        for (const x of [offset, image.width - 1 - offset]) {
+          const index = (y * image.width + x) * image.channels;
+          reds.push(image.data[index]);
+          greens.push(image.data[index + 1]);
+          blues.push(image.data[index + 2]);
+        }
+      }
+      reds.sort((left, right) => left - right);
+      greens.sort((left, right) => left - right);
+      blues.sort((left, right) => left - right);
+      const middle = Math.floor(reds.length / 2);
+      rows.push({ r: reds[middle], g: greens[middle], b: blues[middle] });
+    }
+    return rows;
   }
 
   private descriptorDistance(left: number[], right: number[]): number {
-    const featureWeights = [1.2, 1.4, 1.55, 0.85];
     let distance = 0;
-    for (let index = 0; index < left.length; index += 1) {
-      const difference = left[index] - right[index];
-      distance += difference * difference * featureWeights[index % featureWeights.length];
+    for (let index = 0; index < left.length; index += 2) {
+      const cell = index / 2;
+      const row = Math.floor(cell / hairGridColumns);
+      const column = cell % hairGridColumns;
+      const isOuterColumn = column <= 1 || column >= hairGridColumns - 2;
+      const positionWeight = isOuterColumn && row >= 3 ? 5 : isOuterColumn ? 2 : 1;
+      const intensityDifference = left[index] - right[index];
+      const occupancyDifference = left[index + 1] - right[index + 1];
+      distance += positionWeight * (
+        intensityDifference * intensityDifference
+        + 1.5 * occupancyDifference * occupancyDifference
+      );
     }
     return Math.sqrt(distance);
   }
