@@ -245,51 +245,43 @@
     </section>
 
     <section class="editor-panel" [class.hidden]="activeTab !== 'countries'">
-      <ng-container *ngIf="team.isNationalTeam; else standardClubLock">
-        <div class="league-team-toolbar">
-          <app-search-list
-            [options]="team.nationOptions"
-            [(value)]="team.nationToAdd"
-            placeholder="Search country to link"
-          ></app-search-list>
-          <button type="button" class="create-player-button" (click)="addNation()">
-            <span class="plus-icon" aria-hidden="true"></span>
-            <span>Add Country</span>
-          </button>
-        </div>
+      <div class="league-team-toolbar">
+        <app-search-list
+          [options]="team.nationOptions"
+          [(value)]="team.nationToAdd"
+          placeholder="Search country to link"
+        ></app-search-list>
+        <button type="button" class="create-player-button" (click)="addNation()">
+          <span class="plus-icon" aria-hidden="true"></span>
+          <span>Add Country</span>
+        </button>
+      </div>
 
-        <div class="league-team-list" *ngIf="team.nationLinks.length > 0; else noTeamCountries">
-          <div class="league-team-row country-link-row" *ngFor="let link of team.nationLinks; trackBy: trackByNation">
-            <div class="league-team-main">
-              <strong>{{ link.nationName || 'Country ' + link.nationId }}</strong>
-              <span>Nation ID {{ link.nationId }}</span>
-            </div>
-            <label class="inline-field">
-              <span>League ID</span>
-              <input type="number" [(ngModel)]="link.leagueId" />
-            </label>
-            <label class="inline-field country-search-field">
-              <span>Country</span>
-              <app-search-list
-                [options]="team.nationOptions"
-                [(value)]="link.nationId"
-                placeholder="Search country"
-              ></app-search-list>
-            </label>
-            <button type="button" class="danger-button" (click)="removeNation(link.key)">Remove</button>
+      <div class="league-team-list" *ngIf="team.nationLinks.length > 0; else noTeamCountries">
+        <div class="league-team-row country-link-row" *ngFor="let link of team.nationLinks; trackBy: trackByNation">
+          <div class="league-team-main">
+            <strong>{{ link.nationName || 'Country ' + link.nationId }}</strong>
+            <span>Nation ID {{ link.nationId }}</span>
           </div>
+          <label class="inline-field">
+            <span>League ID</span>
+            <input type="number" [(ngModel)]="link.leagueId" />
+          </label>
+          <label class="inline-field country-search-field">
+            <span>Country</span>
+            <app-search-list
+              [options]="team.nationOptions"
+              [(value)]="link.nationId"
+              placeholder="Search country"
+            ></app-search-list>
+          </label>
+          <button type="button" class="danger-button" (click)="removeNation(link.key)">Remove</button>
         </div>
+      </div>
 
-        <ng-template #noTeamCountries>
-          <div class="empty-state module-empty">
-            <strong>No country links.</strong>
-          </div>
-        </ng-template>
-      </ng-container>
-
-      <ng-template #standardClubLock>
+      <ng-template #noTeamCountries>
         <div class="empty-state module-empty">
-          <strong>Only national teams can have country links. This feature is locked for standard club teams.</strong>
+          <strong>No country links.</strong>
         </div>
       </ng-template>
     </section>

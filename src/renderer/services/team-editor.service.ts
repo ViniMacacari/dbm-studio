@@ -458,9 +458,6 @@ export class TeamEditorService {
   }
 
   addNationToDraft(draft: TeamEditorDraft, nationId: string): string {
-    if (!draft.isNationalTeam) {
-      throw new Error("Only national teams can be linked to a country.");
-    }
     if (!nationId) {
       throw new Error("Choose a country first.");
     }
@@ -485,9 +482,6 @@ export class TeamEditorService {
   }
 
   removeNationFromDraft(draft: TeamEditorDraft, key: string): void {
-    if (!draft.isNationalTeam) {
-      throw new Error("Only national teams can be linked to a country.");
-    }
     draft.nationLinks = draft.nationLinks.filter((link) => link.key !== key);
   }
 
@@ -686,10 +680,6 @@ export class TeamEditorService {
         throw new Error("teamnationlinks table was not found.");
       }
       return undefined;
-    }
-
-    if (!draft.isNationalTeam && draft.nationLinks.length > 0) {
-      throw new Error("Only national teams can have country links.");
     }
 
     const teamIdColumn = this.columnIndex(links, "teamid");
