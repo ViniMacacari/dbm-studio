@@ -29,7 +29,7 @@ const mainCompdataFiles = [
   "objectives.txt"
 ];
 
-const requiredCompdataFiles = mainCompdataFiles.filter((fileName) => !["activeteams.txt", "objectives.txt"].includes(fileName));
+const requiredCompdataFiles = ["compobj.txt"];
 
 function emitProgress(
   onProgress: CompdataOpenProgressCallback | undefined,
@@ -49,10 +49,12 @@ function emitProgress(
   });
 }
 
-function readOptionalText(folderPath: string, filesByLowerName: Map<string, string>, fileName: string, warnings: string[]): string {
+function readOptionalText(folderPath: string, filesByLowerName: Map<string, string>, fileName: string, warnings: string[], warnIfMissing = true): string {
   const match = filesByLowerName.get(fileName.toLowerCase());
   if (!match) {
-    warnings.push(`${fileName} was not found.`);
+    if (warnIfMissing) {
+      warnings.push(`${fileName} was not found.`);
+    }
     return "";
   }
   return readFileSync(join(folderPath, match), "utf8");
@@ -76,18 +78,24 @@ function numberValue(value: string | undefined, fallback = 0): number {
 }
 
 function parseObjects(text: string, warnings: string[]): CompdataObject[] {
-  return rows(text).map((row, index) => {
-    if (row.length < 5) {
-      warnings.push(`compobj.txt line ${index + 1} has ${row.length} column(s); expected 5.`);
-    }
-    return {
-      id: numberValue(row[0]),
-      kind: numberValue(row[1]),
-      shortName: row[2] ?? "",
-      description: row[3] ?? "",
-      parentId: numberValue(row[4], -1)
-    };
-  });
+  return text
+    .split(/\r?\n/)
+    .map((rawLine, sourceIndex) => ({ rawLine: rawLine.trim(), sourceIndex }))
+    .filter(({ rawLine }) => rawLine && !rawLine.startsWith("#"))
+    .map(({ rawLine, sourceIndex }) => {
+      const row = rawLine.split(",").map((part) => part.trim());
+      if (row.length < 5) {
+        warnings.push(`compobj.txt line ${sourceIndex + 1} has ${row.length} column(s); expected 5.`);
+      }
+      return {
+        id: numberValue(row[0]),
+        kind: numberValue(row[1]),
+        shortName: row[2] ?? "",
+        description: row[3] ?? "",
+        parentId: numberValue(row[4], -1),
+        originalRawLine: rawLine
+      };
+    });
 }
 
 function parseCompIds(text: string): number[] {
@@ -191,7 +199,7 @@ function competitionSummaries(
 ): CompdataCompetitionSummary[] {
   const byId = new Map(objects.map((object) => [object.id, object]));
   const byParent = descendantsByParent(objects);
-  const ids = compIds.length > 0 ? compIds : objects.filter((object) => object.kind === 3).map((object) => object.id);
+  const ids = [...new Set([...compIds, ...objects.filter((object) => object.kind === 3).map((object) => object.id)])];
 
   return ids
     .map((id) => {
@@ -232,9 +240,9 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
   }
   const totalSteps = mainCompdataFiles.length + 10;
   let step = 0;
-  const readFile = (fileName: string): string => {
+  const readFile = (fileName: string, warnIfMissing = false): string => {
     emitProgress(onProgress, "reading", step, totalSteps, `Reading ${fileName}`, fileName);
-    const text = readOptionalText(folderPath, filesByLowerName, fileName, warnings);
+    const text = readOptionalText(folderPath, filesByLowerName, fileName, warnings, warnIfMissing);
     step += 1;
     emitProgress(onProgress, "reading", step, totalSteps, `${fileName} loaded`, fileName);
     return text;
@@ -247,7 +255,7 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
     return value;
   };
 
-  const compobj = readFile("compobj.txt");
+  const compobj = readFile("compobj.txt", true);
   const compids = readFile("compids.txt");
   const settingsText = readFile("settings.txt");
   const tasksText = readFile("tasks.txt");
@@ -303,56 +311,13 @@ function line(parts: Array<number | string>): string {
   return parts.map((part) => String(part)).join(",");
 }
 
-function serializeRows(dataRows: string[][]): string {
-  return `${dataRows.map((row) => line(row)).join("\n")}\n`;
-}
-
 export function saveCompdataProject(project: CompdataProject): { folderPath: string; filesWritten: number; warnings: string[] } {
   const writes: Array<{ fileName: string; content: string }> = [
     {
       fileName: "compobj.txt",
       content: `${project.objects.map((object) => line([object.id, object.kind, object.shortName, object.description, object.parentId])).join("\n")}\n`
-    },
-    {
-      fileName: "compids.txt",
-      content: `${project.compIds.map((id) => String(id)).join("\n")}\n`
-    },
-    {
-      fileName: "settings.txt",
-      content: `${project.settings.map((setting) => line([setting.objectId, setting.key, setting.value])).join("\n")}\n`
-    },
-    {
-      fileName: "tasks.txt",
-      content: `${project.tasks.map((task) => line([task.competitionId, task.timing, task.action, task.targetId, task.param1, task.param2, task.param3])).join("\n")}\n`
-    },
-    {
-      fileName: "schedule.txt",
-      content: `${project.schedules.map((schedule) => line([schedule.objectId, schedule.day, schedule.round, schedule.minGames, schedule.maxGames, schedule.time])).join("\n")}\n`
-    },
-    {
-      fileName: "standings.txt",
-      content: `${project.standings.map((standing) => line([standing.groupId, standing.position])).join("\n")}\n`
-    },
-    {
-      fileName: "advancement.txt",
-      content: `${project.advancements.map((advancement) => line([advancement.fromGroupId, advancement.fromPosition, advancement.toGroupId, advancement.toPosition])).join("\n")}\n`
-    },
-    {
-      fileName: "initteams.txt",
-      content: `${project.initTeams.map((team) => line([team.competitionId, team.position, team.teamId])).join("\n")}\n`
-    },
-    {
-      fileName: "weather.txt",
-      content: serializeRows(project.weatherRows)
     }
   ];
-
-  if (project.activeTeamsRows.length > 0) {
-    writes.push({ fileName: "activeteams.txt", content: serializeRows(project.activeTeamsRows) });
-  }
-  if (project.objectiveRows.length > 0) {
-    writes.push({ fileName: "objectives.txt", content: serializeRows(project.objectiveRows) });
-  }
 
   for (const write of writes) {
     writeFileSync(join(project.folderPath, write.fileName), write.content, "utf8");
