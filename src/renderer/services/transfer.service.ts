@@ -36,10 +36,29 @@ export interface TransferApplyResult {
 
 @Injectable({ providedIn: "root" })
 export class TransferService {
+  private readonly nameMapCache = new WeakMap<DataTable, { rowCount: number; rows: string[][]; value: Map<string, string> }>();
+  private readonly editedNamesCache = new WeakMap<DataTable, { rowCount: number; rows: string[][]; value: Map<string, any> }>();
+  private readonly playerRowIndexCache = new WeakMap<DataTable, { rowCount: number; rows: string[][]; value: Map<string, number> }>();
+  private readonly sortCache = new WeakMap<DataTable, { rowCount: number; rows: string[][]; value: boolean }>();
+
   constructor(
     private readonly players: PlayerEditorService,
     private readonly nations: NationService
   ) {}
+
+  private cachedTableValue<T>(
+    cache: WeakMap<DataTable, { rowCount: number; rows: string[][]; value: T }>,
+    table: DataTable,
+    build: () => T
+  ): T {
+    const cached = cache.get(table);
+    if (cached && cached.rows === table.rows && cached.rowCount === table.rows.length) {
+      return cached.value;
+    }
+    const value = build();
+    cache.set(table, { rowCount: table.rows.length, rows: table.rows, value });
+    return value;
+  }
 
   findTeamPlayerLinksTable(project?: DbProject): DataTable | undefined {
     return this.findTable(project, "teamplayerlinks");
@@ -160,24 +179,22 @@ export class TransferService {
       .sort((left, right) => this.numericValue(left.jerseyNumber) - this.numericValue(right.jerseyNumber) || left.displayName.localeCompare(right.displayName));
   }
 
-  private checkTableSortedByNameId(table: DataTable & { _isNameIdSorted?: boolean }, nameIdCol: number): boolean {
-    if (table._isNameIdSorted !== undefined) {
-      return table._isNameIdSorted;
-    }
-    let sorted = true;
-    let prev = -Infinity;
-    for (const row of table.rows) {
-      const val = Number(row[nameIdCol]);
-      if (Number.isInteger(val)) {
-        if (val < prev) {
-          sorted = false;
-          break;
+  private checkTableSortedByNameId(table: DataTable, nameIdCol: number): boolean {
+    return this.cachedTableValue(this.sortCache, table, () => {
+      let sorted = true;
+      let prev = -Infinity;
+      for (const row of table.rows) {
+        const val = Number(row[nameIdCol]);
+        if (Number.isInteger(val)) {
+          if (val < prev) {
+            sorted = false;
+            break;
+          }
+          prev = val;
         }
-        prev = val;
       }
-    }
-    table._isNameIdSorted = sorted;
-    return sorted;
+      return sorted;
+    });
   }
 
   private binarySearchName(table: DataTable, nameIdCol: number, nameCol: number, nameId: string): string | undefined {
@@ -204,11 +221,8 @@ export class TransferService {
     return undefined;
   }
 
-  private nameMapLazy(table: DataTable & { _lazyNameMap?: Map<string, string> }): Map<string, string> {
-    if (!table._lazyNameMap) {
-      table._lazyNameMap = new Map<string, string>();
-    }
-    return table._lazyNameMap;
+  private nameMapLazy(table: DataTable): Map<string, string> {
+    return this.cachedTableValue(this.nameMapCache, table, () => new Map<string, string>());
   }
 
   private lookupNameFast(project: DbProject, tableName: string, nameId: string): string {
@@ -250,39 +264,29 @@ export class TransferService {
     if (!table) {
       return undefined;
     }
-    const playerIdCol = this.columnIndex(table, "playerid");
-    if (playerIdCol < 0) {
-      return undefined;
-    }
-    
-    const lazyMap = (table as any)._lazyEditedMap || new Map();
-    if (!(table as any)._lazyEditedMap) {
-      (table as any)._lazyEditedMap = lazyMap;
-    }
-    
-    if (lazyMap.has(playerId)) {
-      return lazyMap.get(playerId) || undefined;
-    }
-    
-    const row = table.rows.find(r => r[playerIdCol] === playerId);
-    if (!row) {
-      lazyMap.set(playerId, null);
-      return undefined;
-    }
-    
-    const firstnameCol = this.columnIndex(table, "firstname");
-    const surnameCol = this.columnIndex(table, "surname");
-    const commonNameCol = this.columnIndex(table, "commonname");
-    const jerseyNameCol = this.columnIndex(table, "playerjerseyname");
-    
-    const res = {
-      firstname: firstnameCol >= 0 ? row[firstnameCol] ?? "" : "",
-      surname: surnameCol >= 0 ? row[surnameCol] ?? "" : "",
-      commonname: commonNameCol >= 0 ? row[commonNameCol] ?? "" : "",
-      playerjerseyname: jerseyNameCol >= 0 ? row[jerseyNameCol] ?? "" : ""
-    };
-    lazyMap.set(playerId, res);
-    return res;
+    const lazyMap = this.cachedTableValue(this.editedNamesCache, table, () => {
+      const map = new Map<string, any>();
+      const playerIdCol = this.columnIndex(table, "playerid");
+      if (playerIdCol < 0) return map;
+      const firstnameCol = this.columnIndex(table, "firstname");
+      const surnameCol = this.columnIndex(table, "surname");
+      const commonNameCol = this.columnIndex(table, "commonname");
+      const jerseyNameCol = this.columnIndex(table, "playerjerseyname");
+      for (const row of table.rows) {
+        const id = row[playerIdCol];
+        if (id) {
+          map.set(id, {
+            firstname: firstnameCol >= 0 ? row[firstnameCol] ?? "" : "",
+            surname: surnameCol >= 0 ? row[surnameCol] ?? "" : "",
+            commonname: commonNameCol >= 0 ? row[commonNameCol] ?? "" : "",
+            playerjerseyname: jerseyNameCol >= 0 ? row[jerseyNameCol] ?? "" : ""
+          });
+        }
+      }
+      return map;
+    });
+
+    return lazyMap.get(playerId);
   }
 
   private resolvePlayerNameFast(project: DbProject, playerId: string, playersTable: DataTable, rowIndex: number): string {
@@ -329,16 +333,16 @@ export class TransferService {
       return undefined;
     }
     
-    const indexMap = (playersTable as any)._indexMap || new Map();
-    if (!(playersTable as any)._indexMap) {
-      (playersTable as any)._indexMap = indexMap;
+    const indexMap = this.cachedTableValue(this.playerRowIndexCache, playersTable, () => {
+      const map = new Map<string, number>();
       for (let r = 0; r < playersTable.rows.length; r++) {
         const id = playersTable.rows[r]?.[playerIdCol];
         if (id) {
-          indexMap.set(id, r);
+          map.set(id, r);
         }
       }
-    }
+      return map;
+    });
     
     const rowIndex = indexMap.get(playerId) ?? -1;
     if (rowIndex < 0) {
@@ -591,16 +595,16 @@ export class TransferService {
     if (playersTable) {
       const playerIdCol = this.columnIndex(playersTable, "playerid");
       if (playerIdCol >= 0) {
-        const indexMap = (playersTable as any)._indexMap || new Map();
-        if (!(playersTable as any)._indexMap) {
-          (playersTable as any)._indexMap = indexMap;
+        const indexMap = this.cachedTableValue(this.playerRowIndexCache, playersTable, () => {
+          const map = new Map<string, number>();
           for (let r = 0; r < playersTable.rows.length; r++) {
             const id = playersTable.rows[r]?.[playerIdCol];
             if (id) {
-              indexMap.set(id, r);
+              map.set(id, r);
             }
           }
-        }
+          return map;
+        });
         const pRowIndex = indexMap.get(playerId) ?? -1;
         if (pRowIndex >= 0) {
           playerName = this.resolvePlayerNameFast(project, playerId, playersTable, pRowIndex);
@@ -730,16 +734,16 @@ export class TransferService {
     if (playersTable) {
       const playerIdCol = this.columnIndex(playersTable, "playerid");
       if (playerIdCol >= 0) {
-        const indexMap = (playersTable as any)._indexMap || new Map();
-        if (!(playersTable as any)._indexMap) {
-          (playersTable as any)._indexMap = indexMap;
+        const indexMap = this.cachedTableValue(this.playerRowIndexCache, playersTable, () => {
+          const map = new Map<string, number>();
           for (let r = 0; r < playersTable.rows.length; r++) {
             const id = playersTable.rows[r]?.[playerIdCol];
             if (id) {
-              indexMap.set(id, r);
+              map.set(id, r);
             }
           }
-        }
+          return map;
+        });
         const pRowIndex = indexMap.get(playerId) ?? -1;
         if (pRowIndex >= 0) {
           displayName = this.resolvePlayerNameFast(project, playerId, playersTable, pRowIndex);
