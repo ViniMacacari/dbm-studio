@@ -46,6 +46,7 @@ export interface CompdataObject {
   shortName: string;
   description: string;
   parentId: number;
+  originalRawLine?: string;
 }
 
 export interface CompdataSetting {
