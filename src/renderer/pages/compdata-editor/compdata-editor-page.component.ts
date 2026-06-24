@@ -129,8 +129,13 @@ export class CompdataEditorPageComponent {
 
   createTournament(request: CreateTournamentRequest): void {
     if (!this.compdataProject) return;
+    const parent = this.tree.object(this.compdataProject, request.parentId);
+    if (!parent || parent.kind < 0 || parent.kind > 2) {
+      this.toast.show("Choose a valid Country, Confederation or World/FIFA location from compobj.txt.", "error");
+      return;
+    }
     const tournamentId = this.nextObjectId();
-    this.compdataProject.objects.push({ id: tournamentId, kind: 3, shortName: request.internalCode, description: request.nameKey, parentId: request.parentId });
+    this.compdataProject.objects.push({ id: tournamentId, kind: 3, shortName: request.internalCode, description: request.nameKey, parentId: parent.id });
     this.compdataProject.compIds.push(tournamentId);
     if (request.template === "league") this.createPhase(tournamentId, "FCE_League_Stage", "S1", 1);
     if (request.template === "cup") {

@@ -1,7 +1,8 @@
 import { CommonModule } from "@angular/common";
 import { Component, EventEmitter, Input, Output } from "@angular/core";
 import { FormsModule } from "@angular/forms";
-import type { CompdataObject, CompdataProject, DbProject } from "../../../shared/types";
+import type { CompdataProject, DbProject } from "../../../shared/types";
+import { InputListComponent, InputListOption } from "../../components/input-list/input-list.component";
 import { CompObjDisplayService } from "../../services/compdata/compobj-display.service";
 
 export interface CreateTournamentRequest {
@@ -14,7 +15,7 @@ export interface CreateTournamentRequest {
 @Component({
   selector: "app-create-tournament-wizard",
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, InputListComponent],
   template: `
     <div class="tse-modal-backdrop">
       <section class="tse-modal tse-wizard" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
@@ -28,7 +29,20 @@ export interface CreateTournamentRequest {
               <button type="button" [class.active]="locationType === 1" (click)="chooseLocationType(1)"><strong>Confederation</strong><span>For continental tournaments.</span></button>
               <button type="button" [class.active]="locationType === 0" (click)="chooseLocationType(0)"><strong>World/FIFA</strong><span>For international or world tournaments.</span></button>
             </div>
-            <label class="tse-field" *ngIf="locationType !== undefined"><span>{{ locationType === 2 ? 'Country' : locationType === 1 ? 'Confederation' : 'World/FIFA' }}</span><select [(ngModel)]="parentId"><option [ngValue]="-1" disabled>Choose an existing location...</option><option *ngFor="let object of locationOptions" [ngValue]="object.id">{{ display.objectName(object, reference, project) }}</option></select></label>
+            <div class="tse-field tse-location-picker" *ngIf="locationType !== undefined">
+              <span>Selected type: {{ locationTypeLabel }}</span>
+              <app-input-list
+                [value]="selectedLocationValue"
+                [options]="locationPickerOptions"
+                [placeholder]="locationPickerPlaceholder"
+                [searchable]="true"
+                [searchPlaceholder]="locationSearchPlaceholder"
+                [emptyText]="locationEmptyText"
+                [inlineDropdown]="true"
+                (valueChange)="selectLocation($event)"
+              ></app-input-list>
+              <div class="tse-selected-location" *ngIf="selectedParentName"><span>Selected</span><strong>{{ selectedParentName }}</strong></div>
+            </div>
           </ng-container>
 
           <ng-container *ngIf="step === 2">
@@ -66,17 +80,28 @@ export class CreateTournamentWizardComponent {
   step = 1;
   locationType?: 0 | 1 | 2;
   parentId = -1;
+  selectedLocationValue = "";
+  locationPickerOptions: InputListOption[] = [];
   nameKey = "";
   internalCode = "";
   template: "league" | "cup" | "empty" = "league";
   constructor(public readonly display: CompObjDisplayService) {}
 
   get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Review"][this.step]; }
-  get locationOptions(): CompdataObject[] { return this.project.objects.filter((object) => object.kind === this.locationType); }
-  get selectedParentName(): string { return this.display.objectName(this.display.object(this.project, this.parentId), this.reference, this.project); }
+  get locationTypeLabel(): string { return this.locationType === 2 ? "Country" : this.locationType === 1 ? "Confederation" : "World/FIFA"; }
+  get locationPickerPlaceholder(): string { return `Choose ${this.locationType === 2 ? "a country" : this.locationType === 1 ? "a confederation" : "World/FIFA"}...`; }
+  get locationSearchPlaceholder(): string { return `Search ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA"}...`; }
+  get locationEmptyText(): string { return `No ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA objects"} were found in compobj.txt.`; }
+  get selectedParentName(): string { return this.parentId >= 0 ? this.display.objectName(this.display.object(this.project, this.parentId), this.reference, this.project) : ""; }
   get nameKeyFound(): boolean { return this.display.hasResolvedText(this.reference, this.nameKey); }
   get resolvedName(): string { return this.nameKeyFound ? this.display.resolvedText(this.reference, this.nameKey) : (this.nameKey || "Unnamed tournament"); }
-  get canContinue(): boolean { return this.step === 1 ? this.parentId >= 0 : this.step === 2 ? Boolean(this.nameKey.trim() && this.internalCode.trim()) : true; }
+  get canContinue(): boolean {
+    if (this.step === 1) {
+      const parent = this.display.object(this.project, this.parentId);
+      return Boolean(parent && parent.kind === this.locationType && parent.kind >= 0 && parent.kind <= 2);
+    }
+    return this.step === 2 ? Boolean(this.nameKey.trim() && this.internalCode.trim()) : true;
+  }
   get templatePhases(): string[] { return this.template === "league" ? ["League Phase"] : this.template === "cup" ? ["Team Setup Phase", "First Round", "Quarter Finals", "Semi Finals", "Final"] : []; }
   get generatedLines(): string[] {
     let id = Math.max(0, ...this.project.objects.map((object) => object.id)) + 1;
@@ -86,6 +111,36 @@ export class CreateTournamentWizardComponent {
     return lines;
   }
 
-  chooseLocationType(type: 0 | 1 | 2): void { this.locationType = type; this.parentId = -1; }
-  submit(): void { this.create.emit({ parentId: this.parentId, internalCode: this.internalCode.trim(), nameKey: this.nameKey.trim(), template: this.template }); }
+  chooseLocationType(type: 0 | 1 | 2): void {
+    if (this.locationType === type && this.locationPickerOptions.length > 0) return;
+    this.locationType = type;
+    this.parentId = -1;
+    this.selectedLocationValue = "";
+    this.locationPickerOptions = this.project.objects
+      .filter((object) => object.kind === type)
+      .map((object) => {
+        const label = this.display.objectName(object, this.reference, this.project);
+        const typeName = type === 2 ? "Country" : type === 1 ? "Confederation" : "World/FIFA";
+        return {
+          value: String(object.id),
+          label,
+          detail: `${typeName} · ${object.shortName || "no code"} · objectId ${object.id}`,
+          searchText: `${object.description} ${object.shortName} ${object.id}`
+        };
+      });
+  }
+
+  selectLocation(value: string): void {
+    const id = Number(value);
+    const parent = this.display.object(this.project, id);
+    if (!parent || parent.kind !== this.locationType || parent.kind < 0 || parent.kind > 2) return;
+    this.parentId = id;
+    this.selectedLocationValue = value;
+  }
+
+  submit(): void {
+    const parent = this.display.object(this.project, this.parentId);
+    if (!parent || parent.kind !== this.locationType || parent.kind < 0 || parent.kind > 2) return;
+    this.create.emit({ parentId: parent.id, internalCode: this.internalCode.trim(), nameKey: this.nameKey.trim(), template: this.template });
+  }
 }

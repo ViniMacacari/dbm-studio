@@ -496,7 +496,7 @@ app-tournament-phase-details {
   box-shadow: 0 20px 60px rgb(0 0 0 / 24%);
 }
 
-.tse-wizard { width: min(700px, 100%); }
+.tse-wizard { width: min(640px, 100%); }
 .tse-preview-modal { width: min(760px, 100%); }
 .tse-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--tse-line); padding: 14px 16px; }
 .tse-modal-header h2 { margin: 3px 0 0; font-size: 19px; }
@@ -513,6 +513,7 @@ app-tournament-phase-details {
 .tse-choice-grid span,.tse-template-grid span,.tse-template-grid small { color: var(--tse-muted); font-size: 10px; line-height: 1.35; }
 .tse-template-grid small { border-top: 1px solid var(--tse-line); padding-top: 6px; }
 .tse-resolved { display: grid; gap: 3px; border-left: 3px solid var(--tse-accent); background: #f3f8f5; padding: 9px; }.tse-resolved span,.tse-review span { color: var(--tse-muted); font-size: 9px; text-transform: uppercase; }.tse-resolved small { color: #97620d; line-height: 1.4; }
+.tse-selected-location { display: flex; align-items: center; gap: 7px; border-radius: 6px; background: #eef6f2; color: var(--tse-accent); padding: 7px 9px; }.tse-selected-location span { color: var(--tse-muted); font-size: 9px; text-transform: uppercase; }
 .tse-review { display: grid; gap: 8px; }.tse-review > div { display: grid; gap: 3px; border-bottom: 1px solid var(--tse-line); padding-bottom: 8px; }.tse-review ul { margin: 2px 0 0; padding-left: 18px; }
 
 .tse-validation-list article { display: grid; gap: 3px; border-left: 3px solid #c28720; background: #fff8e9; padding: 9px; }.tse-validation-list article.error { border-color: #b84747; background: #fff1f1; }.tse-validation-list article span { font-size: 12px; }.tse-validation-list article small { color: var(--tse-muted); }
