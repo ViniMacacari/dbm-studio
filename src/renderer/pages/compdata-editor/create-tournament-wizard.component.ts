@@ -2,7 +2,7 @@ import { CommonModule } from "@angular/common";
 import { Component, EventEmitter, Input, Output } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { CompdataObject, CompdataProject, DbProject } from "../../../shared/types";
-import { CompObjDisplayService } from "./compobj-display.service";
+import { CompObjDisplayService } from "../../services/compdata/compobj-display.service";
 
 export interface CreateTournamentRequest {
   parentId: number;

@@ -4,13 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CompdataProject, DbProject } from "../shared/types";
 import { openCompdataProject, saveCompdataProject } from "../core/compdataIO";
-import type { LocalizationService } from "../renderer/services/localization.service";
-import { CompObjDisplayService, CompObjTreeService } from "../renderer/pages/compdata-editor/compobj-display.service";
-import { CompObjValidationService } from "../renderer/pages/compdata-editor/compobj-validation.service";
+import { CompObjDisplayService } from "../renderer/services/compdata/compobj-display.service";
+import { CompObjTreeService } from "../renderer/services/compdata/compobj-tree.service";
+import { CompObjValidationService } from "../renderer/services/compdata/compobj-validation.service";
 
-const localization = { resolveString: (_project: unknown, key: string, fallback: string) => fallback || key } as LocalizationService;
-const display = new CompObjDisplayService(localization);
 const tree = new CompObjTreeService();
+const display = new CompObjDisplayService(tree);
 const validation = new CompObjValidationService(tree, display);
 
 assert.equal(display.phaseInfo("FCE_Quarter_Final").label, "Quarter Finals");
@@ -47,6 +46,8 @@ assert.equal(tree.groups(project, 11).length, 1);
 assert.equal(validation.status(project, project.competitions[0]), "OK");
 
 project.objects[1].parentId = 9999;
+tree.invalidate(project);
+validation.invalidate(project);
 assert.equal(validation.validateTournament(project, project.competitions[0]).some((issue) => issue.severity === "error"), true);
 
 const folder = mkdtempSync(join(tmpdir(), "dbm-compobj-test-"));

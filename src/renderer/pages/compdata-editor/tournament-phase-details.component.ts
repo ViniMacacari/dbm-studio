@@ -1,7 +1,8 @@
 import { CommonModule } from "@angular/common";
 import { Component, EventEmitter, Input, Output } from "@angular/core";
 import type { CompdataObject, CompdataProject, DbProject } from "../../../shared/types";
-import { CompObjDisplayService, CompObjTreeService } from "./compobj-display.service";
+import { CompObjDisplayService } from "../../services/compdata/compobj-display.service";
+import { CompObjTreeService } from "../../services/compdata/compobj-tree.service";
 
 @Component({
   selector: "app-tournament-phase-details",

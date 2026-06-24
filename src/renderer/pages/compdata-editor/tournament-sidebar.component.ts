@@ -2,8 +2,8 @@ import { CommonModule } from "@angular/common";
 import { Component, EventEmitter, Input, Output } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { CompdataCompetitionSummary, CompdataProject, DbProject } from "../../../shared/types";
-import { CompObjDisplayService } from "./compobj-display.service";
-import { CompObjValidationService } from "./compobj-validation.service";
+import { CompObjDisplayService } from "../../services/compdata/compobj-display.service";
+import { CompObjValidationService } from "../../services/compdata/compobj-validation.service";
 
 type TournamentFilter = "all" | "countries" | "continental" | "world" | "warnings";
 
