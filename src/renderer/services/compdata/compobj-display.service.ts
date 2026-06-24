@@ -1,6 +1,7 @@
 import { Injectable } from "@angular/core";
 import type { CompdataCompetitionSummary, CompdataObject, CompdataProject, DbProject } from "../../../shared/types";
 import { CompObjTreeService } from "./compobj-tree.service";
+import { nations } from "../../../utils/get-nations/get-nations";
 
 export interface PhaseDisplayInfo {
   key: string;
@@ -103,7 +104,12 @@ export class CompObjDisplayService {
   }
 
   parentName(object: CompdataObject, project: CompdataProject, reference?: DbProject): string {
-    return this.objectName(this.object(project, object.parentId), reference, project);
+    const parent = this.object(project, object.parentId);
+    if (!parent) {
+      const nation = nations.find((n) => n.id === object.parentId);
+      if (nation) return nation.name;
+    }
+    return this.objectName(parent, reference, project);
   }
 
   locationName(competition: CompdataCompetitionSummary, project: CompdataProject, reference?: DbProject): string {
@@ -114,6 +120,7 @@ export class CompObjDisplayService {
     const parent = this.object(project, competition.parentId);
     if (parent?.kind === 2) return "countries";
     if (parent?.kind === 1) return "continental";
+    if (!parent && nations.some((n) => n.id === competition.parentId)) return "countries";
     return "world";
   }
 

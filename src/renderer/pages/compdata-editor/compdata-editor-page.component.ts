@@ -13,6 +13,7 @@ import { CreateTournamentRequest, CreateTournamentWizardComponent } from "./crea
 import { TournamentOverviewComponent } from "./tournament-overview.component";
 import { TournamentPhaseDetailsComponent } from "./tournament-phase-details.component";
 import { TournamentSidebarComponent } from "./tournament-sidebar.component";
+import { nations } from "../../../utils/get-nations/get-nations";
 
 type EditorDialog = "create" | "addPhase" | "addChild" | "editTournament" | "editPhase" | "editChild" | "delete" | "validation" | "preview" | undefined;
 type DeleteTarget = { kind: "tournament" | "phase" | "child"; object: CompdataObject };
@@ -81,7 +82,9 @@ export class CompdataEditorPageComponent {
   }
 
   get locationOptions(): CompdataObject[] {
-    return this.compdataProject?.objects.filter((object) => object.kind <= 2) ?? [];
+    const compOptions = this.compdataProject?.objects.filter((object) => object.kind === 0 || object.kind === 1) ?? [];
+    const nationOptions: CompdataObject[] = nations.map((n) => ({ id: n.id, kind: 2, shortName: n.name, description: n.name, parentId: 0 }));
+    return [...compOptions, ...nationOptions];
   }
 
   get effectivePhaseKey(): string {
@@ -129,24 +132,70 @@ export class CompdataEditorPageComponent {
 
   createTournament(request: CreateTournamentRequest): void {
     if (!this.compdataProject) return;
-    const parent = this.tree.object(this.compdataProject, request.parentId);
-    if (!parent || parent.kind < 0 || parent.kind > 2) {
-      this.toast.show("Choose a valid Country, Confederation or World/FIFA location from compobj.txt.", "error");
-      return;
+    
+    let resolvedParentId = request.locationId;
+    let newCountryCreated = false;
+    let maxId = this.nextObjectId() - 1;
+
+    if (request.locationType === 2) {
+      const targetDesc = `NationName_${request.locationId}`.toLowerCase();
+      const existingCountry = this.compdataProject.objects.find(obj => obj.kind === 2 && obj.description.toLowerCase() === targetDesc);
+      
+      if (existingCountry) {
+        resolvedParentId = existingCountry.id;
+      } else {
+        const nation = nations.find(n => n.id === request.locationId);
+        if (!nation) {
+          this.toast.show("DBM Studio could not create the country entry in compobj.", "error");
+          return;
+        }
+        
+        const shortCode = nation.name.substring(0, 4).toUpperCase();
+        maxId++;
+        const newCountryId = maxId;
+        // Since we don't have confederation data in nations constant, we use fallback 0 (World)
+        this.compdataProject.objects.push({ id: newCountryId, kind: 2, shortName: shortCode, description: `NationName_${nation.id}`, parentId: 0 });
+        resolvedParentId = newCountryId;
+        newCountryCreated = true;
+      }
+    } else {
+      const parent = this.tree.object(this.compdataProject, request.locationId);
+      if (!parent || parent.kind < 0 || parent.kind > 2) {
+        this.toast.show("Choose a valid Country, Confederation or World/FIFA location from compobj.txt.", "error");
+        return;
+      }
+      resolvedParentId = parent.id;
     }
-    const tournamentId = this.nextObjectId();
-    this.compdataProject.objects.push({ id: tournamentId, kind: 3, shortName: request.internalCode, description: request.nameKey, parentId: parent.id });
+
+    maxId++;
+    const tournamentId = maxId;
+    this.compdataProject.objects.push({ id: tournamentId, kind: 3, shortName: request.internalCode, description: request.nameKey, parentId: resolvedParentId });
     this.compdataProject.compIds.push(tournamentId);
-    if (request.template === "league") this.createPhase(tournamentId, "FCE_League_Stage", "S1", 1);
-    if (request.template === "cup") {
-      [
-        ["FCE_Setup_Stage", 1], ["FCE_Round_1", 1], ["FCE_Quarter_Finals", 4], ["FCE_Semi_Finals", 2], ["FCE_Final", 1]
-      ].forEach(([key, count], index) => this.createPhase(tournamentId, String(key), `S${index + 1}`, Number(count)));
+    
+    if (request.template === "league") {
+      maxId++;
+      const phaseId = maxId;
+      this.compdataProject.objects.push({ id: phaseId, kind: 4, shortName: "S1", description: "FCE_League_Stage", parentId: tournamentId });
+      maxId++;
+      this.compdataProject.objects.push({ id: maxId, kind: 5, shortName: "G1", description: "", parentId: phaseId });
+    } else if (request.template === "cup") {
+      let currentPhaseIdx = 1;
+      [["FCE_Setup_Stage", 1], ["FCE_Round_1", 1], ["FCE_Quarter_Finals", 4], ["FCE_Semi_Finals", 2], ["FCE_Final", 1]].forEach(([key, count]) => {
+        maxId++;
+        const phaseId = maxId;
+        this.compdataProject!.objects.push({ id: phaseId, kind: 4, shortName: `S${currentPhaseIdx}`, description: String(key), parentId: tournamentId });
+        currentPhaseIdx++;
+        for (let index = 0; index < Number(count); index++) {
+          maxId++;
+          this.compdataProject!.objects.push({ id: maxId, kind: 5, shortName: `G${index + 1}`, description: "", parentId: phaseId });
+        }
+      });
     }
+
     this.afterStructureChange();
     this.selectTournament(tournamentId);
     this.dialog = undefined;
-    this.statusChanged.emit("Tournament structure created");
+    this.statusChanged.emit(newCountryCreated ? "Country and tournament structure created" : "Tournament structure created");
   }
 
   openAddPhase(): void {

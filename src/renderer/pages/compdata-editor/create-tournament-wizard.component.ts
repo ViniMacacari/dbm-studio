@@ -1,12 +1,14 @@
 import { CommonModule } from "@angular/common";
-import { Component, EventEmitter, Input, Output } from "@angular/core";
+import { Component, EventEmitter, Input, Output, OnInit } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import type { CompdataProject, DbProject } from "../../../shared/types";
 import { InputListComponent, InputListOption } from "../../components/input-list/input-list.component";
 import { CompObjDisplayService } from "../../services/compdata/compobj-display.service";
+import { nations } from "../../../utils/get-nations/get-nations";
 
 export interface CreateTournamentRequest {
-  parentId: number;
+  locationType: 0 | 1 | 2;
+  locationId: number;
   internalCode: string;
   nameKey: string;
   template: "league" | "cup" | "empty";
@@ -41,15 +43,35 @@ export interface CreateTournamentRequest {
                 [inlineDropdown]="true"
                 (valueChange)="selectLocation($event)"
               ></app-input-list>
-              <div class="tse-selected-location" *ngIf="selectedParentName"><span>Selected</span><strong>{{ selectedParentName }}</strong></div>
+              <div class="tse-selected-location" *ngIf="selectedParentName">
+                <span>Selected</span><strong>{{ selectedParentName }}</strong>
+                <small *ngIf="locationType === 2" [class.tse-warning]="willCreateCountry" [class.tse-success]="!willCreateCountry" style="display: block; margin-top: 4px;">
+                  {{ willCreateCountry ? 'Will be added to compobj' : 'Already in compobj' }}
+                </small>
+              </div>
             </div>
           </ng-container>
 
           <ng-container *ngIf="step === 2">
-            <p>Choose the localization key and internal short code used by the game.</p>
-            <label class="tse-field"><span>Name key</span><input [(ngModel)]="nameKey" placeholder="TrophyName_Abbr15_999" /></label>
-            <div class="tse-resolved" *ngIf="nameKey"><span>Resolved name</span><strong>{{ resolvedName }}</strong><small *ngIf="reference && !nameKeyFound">This localization key was not found in the loaded language files. You can still use it, but the game may not display a translated name.</small><small *ngIf="!reference">Translated names are not loaded, so this key cannot be checked yet.</small></div>
-            <label class="tse-field"><span>Internal code</span><input [(ngModel)]="internalCode" placeholder="C999" /></label>
+            <p>Choose a tournament ID. DBM Studio will generate the internal code and localization key automatically.</p>
+            <label class="tse-field"><span>Tournament ID <span title="This is not the compobj objectId. The compobj objectId is generated automatically.">ⓘ</span></span><input type="number" min="1" [(ngModel)]="tournamentId" (ngModelChange)="onTournamentIdChange()" /></label>
+            <div class="tse-field-error" *ngIf="isCodeAlreadyUsed" style="color: var(--tse-danger); font-size: 13px; margin-top: -12px; margin-bottom: 16px;">This tournament ID is already used by another competition.</div>
+            <div class="tse-resolved">
+              <span>Generated internal data</span>
+              <div style="margin-top: 8px;"><small>Internal code:</small><div><strong>{{ internalCode || 'None' }}</strong></div></div>
+              <div style="margin-top: 8px;"><small>Localization key:</small><div><strong>{{ nameKey || 'None' }}</strong></div></div>
+              <div style="margin-top: 8px;">
+                <small>Resolved name:</small>
+                <div *ngIf="nameKeyFound"><strong>{{ resolvedName }}</strong></div>
+                <div *ngIf="!nameKeyFound"><strong>Not found in loaded language files</strong></div>
+              </div>
+            </div>
+            <details class="tse-technical" style="margin-top: 16px;">
+              <summary>Show advanced fields</summary>
+              <p style="color: var(--tse-warning); font-size: 13px; margin-bottom: 12px;">Changing these fields manually can break localization or make the tournament harder to identify.</p>
+              <label class="tse-field"><span>Name key</span><input [(ngModel)]="nameKey" /></label>
+              <label class="tse-field"><span>Internal code</span><input [(ngModel)]="internalCode" /></label>
+            </details>
           </ng-container>
 
           <ng-container *ngIf="step === 3">
@@ -62,7 +84,19 @@ export interface CreateTournamentRequest {
           </ng-container>
 
           <ng-container *ngIf="step === 4">
-            <div class="tse-review"><div><span>Tournament</span><strong>{{ resolvedName }}</strong></div><div><span>Belongs to</span><strong>{{ selectedParentName }}</strong></div><div><span>Structure</span><ul><li *ngFor="let phase of templatePhases">{{ phase }}</li><li *ngIf="!templatePhases.length">No phases yet</li></ul></div></div>
+            <div class="tse-review">
+              <div><span>Tournament ID</span><strong>{{ tournamentId }}</strong></div>
+              <div><span>Generated internal code</span><strong>{{ internalCode }}</strong></div>
+              <div><span>Generated localization key</span><strong>{{ nameKey }}</strong></div>
+              <div>
+                <span>Belongs to</span>
+                <strong>{{ selectedParentName }}</strong>
+                <small *ngIf="locationType === 2" style="display: block; opacity: 0.8; margin-top: 4px;">
+                  Status: {{ willCreateCountry ? selectedParentName + ' will be added to compobj' : selectedParentName + ' already exists in compobj with objectId ' + (existingCountry?.id || '') }}
+                </small>
+              </div>
+              <div><span>Structure</span><ul><li *ngFor="let phase of templatePhases">{{ phase }}</li><li *ngIf="!templatePhases.length">No phases yet</li></ul></div>
+            </div>
             <details class="tse-technical"><summary>Show generated compobj lines</summary><code *ngFor="let line of generatedLines">{{ line }}</code></details>
           </ng-container>
         </div>
@@ -71,7 +105,7 @@ export interface CreateTournamentRequest {
     </div>
   `
 })
-export class CreateTournamentWizardComponent {
+export class CreateTournamentWizardComponent implements OnInit {
   @Input({ required: true }) project!: CompdataProject;
   @Input() reference?: DbProject;
   @Output() create = new EventEmitter<CreateTournamentRequest>();
@@ -82,32 +116,117 @@ export class CreateTournamentWizardComponent {
   parentId = -1;
   selectedLocationValue = "";
   locationPickerOptions: InputListOption[] = [];
+  tournamentId: number | null = null;
   nameKey = "";
   internalCode = "";
   template: "league" | "cup" | "empty" = "league";
   constructor(public readonly display: CompObjDisplayService) {}
+
+  ngOnInit() {
+    this.tournamentId = this.suggestedTournamentId;
+    this.onTournamentIdChange();
+  }
+
+  get suggestedTournamentId(): number {
+    let max = 0;
+    this.project.objects.forEach((obj) => {
+      if (obj.kind === 3) {
+        const cMatch = /^C(\d+)$/i.exec(obj.shortName);
+        if (cMatch && Number(cMatch[1]) > max) max = Number(cMatch[1]);
+        const tMatch = /^TrophyName_Abbr15_(\d+)$/i.exec(obj.description);
+        if (tMatch && Number(tMatch[1]) > max) max = Number(tMatch[1]);
+      }
+    });
+    return max > 0 ? max + 1 : 1;
+  }
+
+  onTournamentIdChange() {
+    if (this.tournamentId !== null && this.tournamentId > 0) {
+      this.internalCode = `C${this.tournamentId}`;
+      this.nameKey = `TrophyName_Abbr15_${this.tournamentId}`;
+    } else {
+      this.internalCode = "";
+      this.nameKey = "";
+    }
+  }
+
+  get isCodeAlreadyUsed(): boolean {
+    const c = this.internalCode.trim().toLowerCase();
+    const t = this.nameKey.trim().toLowerCase();
+    if (!c || !t) return false;
+    return this.project.objects.some((obj) => 
+      obj.kind === 3 && (obj.shortName.toLowerCase() === c || obj.description.toLowerCase() === t)
+    );
+  }
 
   get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Review"][this.step]; }
   get locationTypeLabel(): string { return this.locationType === 2 ? "Country" : this.locationType === 1 ? "Confederation" : "World/FIFA"; }
   get locationPickerPlaceholder(): string { return `Choose ${this.locationType === 2 ? "a country" : this.locationType === 1 ? "a confederation" : "World/FIFA"}...`; }
   get locationSearchPlaceholder(): string { return `Search ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA"}...`; }
   get locationEmptyText(): string { return `No ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA objects"} were found in compobj.txt.`; }
-  get selectedParentName(): string { return this.parentId >= 0 ? this.display.objectName(this.display.object(this.project, this.parentId), this.reference, this.project) : ""; }
+  get selectedParentName(): string {
+    if (this.parentId >= 0) {
+      if (this.locationType === 2) return nations.find((n) => n.id === this.parentId)?.name || "";
+      return this.display.objectName(this.display.object(this.project, this.parentId), this.reference, this.project);
+    }
+    return "";
+  }
   get nameKeyFound(): boolean { return this.display.hasResolvedText(this.reference, this.nameKey); }
   get resolvedName(): string { return this.nameKeyFound ? this.display.resolvedText(this.reference, this.nameKey) : (this.nameKey || "Unnamed tournament"); }
   get canContinue(): boolean {
     if (this.step === 1) {
+      if (this.locationType === 2) return nations.some((n) => n.id === this.parentId);
       const parent = this.display.object(this.project, this.parentId);
       return Boolean(parent && parent.kind === this.locationType && parent.kind >= 0 && parent.kind <= 2);
     }
-    return this.step === 2 ? Boolean(this.nameKey.trim() && this.internalCode.trim()) : true;
+    return this.step === 2 ? Boolean(this.tournamentId && this.tournamentId > 0 && this.nameKey.trim() && this.internalCode.trim() && !this.isCodeAlreadyUsed) : true;
   }
+  get existingCountry() {
+    if (this.locationType !== 2) return undefined;
+    const targetDesc = `NationName_${this.parentId}`.toLowerCase();
+    return this.project.objects.find(obj => obj.kind === 2 && obj.description.toLowerCase() === targetDesc);
+  }
+
+  get willCreateCountry(): boolean {
+    return this.locationType === 2 && !this.existingCountry;
+  }
+
+  get inferredConfederationObjectId(): number {
+    return 0; // Fallback to World/FIFA since we don't have confederation in the constant
+  }
+
+  get generatedCountryShortCode(): string {
+    const nation = nations.find(n => n.id === this.parentId);
+    return nation ? nation.name.substring(0, 4).toUpperCase() : "UNKN";
+  }
+
   get templatePhases(): string[] { return this.template === "league" ? ["League Phase"] : this.template === "cup" ? ["Team Setup Phase", "First Round", "Quarter Finals", "Semi Finals", "Final"] : []; }
   get generatedLines(): string[] {
-    let id = Math.max(0, ...this.project.objects.map((object) => object.id)) + 1;
-    const lines = [`${id},3,${this.internalCode},${this.nameKey},${this.parentId}`];
-    if (this.template === "league") lines.push(`${++id},4,S1,FCE_League_Stage,${id - 1}`, `${++id},5,G1,,${id - 1}`);
-    if (this.template === "cup") ["FCE_Setup_Stage", "FCE_Round_1", "FCE_Quarter_Finals", "FCE_Semi_Finals", "FCE_Final"].forEach((key, index) => lines.push(`${++id},4,S${index + 1},${key},${lines[0].split(",")[0]}`));
+    let id = Math.max(0, ...this.project.objects.map((object) => object.id));
+    const lines: string[] = [];
+    let resolvedParentId = this.parentId;
+    
+    if (this.locationType === 2) {
+      if (this.willCreateCountry) {
+        id++;
+        resolvedParentId = id;
+        lines.push(`${id},2,${this.generatedCountryShortCode},NationName_${this.parentId},${this.inferredConfederationObjectId}`);
+      } else {
+        resolvedParentId = this.existingCountry!.id;
+      }
+    }
+    
+    id++;
+    const compId = id;
+    lines.push(`${id},3,${this.internalCode},${this.nameKey},${resolvedParentId}`);
+    
+    if (this.template === "league") {
+      lines.push(`${++id},4,S1,FCE_League_Stage,${compId}`, `${++id},5,G1,,${id - 1}`);
+    } else if (this.template === "cup") {
+      ["FCE_Setup_Stage", "FCE_Round_1", "FCE_Quarter_Finals", "FCE_Semi_Finals", "FCE_Final"].forEach((key, index) => {
+        lines.push(`${++id},4,S${index + 1},${key},${compId}`);
+      });
+    }
     return lines;
   }
 
@@ -116,22 +235,43 @@ export class CreateTournamentWizardComponent {
     this.locationType = type;
     this.parentId = -1;
     this.selectedLocationValue = "";
-    this.locationPickerOptions = this.project.objects
-      .filter((object) => object.kind === type)
-      .map((object) => {
-        const label = this.display.objectName(object, this.reference, this.project);
-        const typeName = type === 2 ? "Country" : type === 1 ? "Confederation" : "World/FIFA";
+    
+    if (type === 2) {
+      this.locationPickerOptions = nations.map((nation) => {
+        const targetDesc = `NationName_${nation.id}`.toLowerCase();
+        const exists = this.project.objects.some(obj => obj.kind === 2 && obj.description.toLowerCase() === targetDesc);
         return {
-          value: String(object.id),
-          label,
-          detail: `${typeName} · ${object.shortName || "no code"} · objectId ${object.id}`,
-          searchText: `${object.description} ${object.shortName} ${object.id}`
+          value: String(nation.id),
+          label: nation.name,
+          detail: `Country · nationid ${nation.id} · ${exists ? 'Existing in compobj' : 'Available from nations'}`,
+          searchText: `${nation.name} ${nation.id}`
         };
       });
+    } else {
+      this.locationPickerOptions = this.project.objects
+        .filter((object) => object.kind === type)
+        .map((object) => {
+          const label = this.display.objectName(object, this.reference, this.project);
+          const typeName = type === 1 ? "Confederation" : "World/FIFA";
+          return {
+            value: String(object.id),
+            label,
+            detail: `${typeName} · ${object.shortName || "no code"} · objectId ${object.id}`,
+            searchText: `${object.description} ${object.shortName} ${object.id}`
+          };
+        });
+    }
   }
 
   selectLocation(value: string): void {
     const id = Number(value);
+    if (this.locationType === 2) {
+      const nation = nations.find((n) => n.id === id);
+      if (!nation) return;
+      this.parentId = id;
+      this.selectedLocationValue = value;
+      return;
+    }
     const parent = this.display.object(this.project, id);
     if (!parent || parent.kind !== this.locationType || parent.kind < 0 || parent.kind > 2) return;
     this.parentId = id;
@@ -139,8 +279,26 @@ export class CreateTournamentWizardComponent {
   }
 
   submit(): void {
+    if (this.locationType === 2) {
+      const nation = nations.find((n) => n.id === this.parentId);
+      if (!nation) return;
+      this.create.emit({ 
+        locationType: this.locationType,
+        locationId: nation.id,
+        internalCode: this.internalCode.trim(), 
+        nameKey: this.nameKey.trim(), 
+        template: this.template 
+      });
+      return;
+    }
     const parent = this.display.object(this.project, this.parentId);
     if (!parent || parent.kind !== this.locationType || parent.kind < 0 || parent.kind > 2) return;
-    this.create.emit({ parentId: parent.id, internalCode: this.internalCode.trim(), nameKey: this.nameKey.trim(), template: this.template });
+    this.create.emit({ 
+      locationType: this.locationType,
+      locationId: parent.id,
+      internalCode: this.internalCode.trim(), 
+      nameKey: this.nameKey.trim(), 
+      template: this.template 
+    });
   }
 }
