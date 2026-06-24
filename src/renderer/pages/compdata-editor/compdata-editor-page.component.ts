@@ -6,8 +6,9 @@ import type { DbMasterApi } from "../../services/dbmaster-api";
 import { LoadingService } from "../../services/loading.service";
 import { ToastService } from "../../services/toast.service";
 import { CompObjAdvancedViewComponent } from "./compobj-advanced-view.component";
-import { CompObjDisplayService, CompObjTreeService, PHASE_OPTIONS } from "./compobj-display.service";
-import { CompObjValidationIssue, CompObjValidationService } from "./compobj-validation.service";
+import { CompObjDisplayService, PHASE_OPTIONS } from "../../services/compdata/compobj-display.service";
+import { CompObjTreeService } from "../../services/compdata/compobj-tree.service";
+import { CompObjValidationIssue, CompObjValidationService } from "../../services/compdata/compobj-validation.service";
 import { CreateTournamentRequest, CreateTournamentWizardComponent } from "./create-tournament-wizard.component";
 import { TournamentOverviewComponent } from "./tournament-overview.component";
 import { TournamentPhaseDetailsComponent } from "./tournament-phase-details.component";
@@ -277,6 +278,9 @@ export class CompdataEditorPageComponent {
       this.statusChanged.emit(`${this.compdataProject.title} loaded`);
       if (this.compdataProject.warnings.length) this.toast.show(this.compdataProject.warnings[0], "warn");
       await this.loadTranslatedNames();
+      this.loading.show("Preparing tournament editor", "Indexing tournament structure");
+      this.tree.prime(this.compdataProject);
+      this.validation.prime(this.compdataProject, this.compdataReferenceProject);
       this.changeDetector.detectChanges();
     } catch (error) {
       this.toast.show(error instanceof Error ? error.message : String(error), "error");
@@ -291,7 +295,12 @@ export class CompdataEditorPageComponent {
       this.loading.show("Loading translated names", "Select the localization reference files");
       const result = await this.api.openCompdataLocalizationReference();
       if (result.referenceProject) {
+        this.display.primeLocalization(result.referenceProject);
         this.compdataReferenceProject = result.referenceProject;
+        if (this.compdataProject) {
+          this.validation.invalidate(this.compdataProject);
+          this.validation.prime(this.compdataProject, result.referenceProject);
+        }
         this.statusChanged.emit("Translated tournament names loaded");
       }
       if (result.warnings.length) this.toast.show(result.warnings[0], "warn");
@@ -342,6 +351,10 @@ export class CompdataEditorPageComponent {
   }
 
   private afterStructureChange(): void {
+    if (this.compdataProject) {
+      this.tree.invalidate(this.compdataProject);
+      this.validation.invalidateTournament(this.compdataProject, this.selectedTournamentId);
+    }
     this.compdataDirty = true;
     this.refreshCompetitionSummaries();
   }
