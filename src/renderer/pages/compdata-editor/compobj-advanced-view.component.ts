@@ -33,6 +33,14 @@ import { CompObjTreeService } from "../../services/compdata/compobj-tree.service
         <section class="tse-code-panel"><span>Raw line</span><code>{{ object.originalRawLine || display.rawLine(object) }}</code></section>
         <section class="tse-code-panel"><span>Generated line</span><code>{{ display.rawLine(object) }}</code></section>
         <details class="tse-technical tse-full-preview"><summary>Preview complete compobj.txt</summary><div class="tse-generated-lines"><code *ngFor="let candidate of project.objects">{{ display.rawLine(candidate) }}</code></div></details>
+        <details class="tse-technical tse-full-preview">
+          <summary>Preview compids.txt</summary>
+          <div class="tse-warning" *ngFor="let warning of compidsWarnings" style="margin-bottom: 8px;">{{ warning }}</div>
+          <div class="tse-generated-lines">
+            <code *ngFor="let id of compidsPreview">{{ id }}</code>
+            <code *ngIf="!compidsPreview.length">No Competition IDs found.</code>
+          </div>
+        </details>
       </main>
       <ng-template #selectObject><main class="tse-main-empty"><strong>Select an object</strong><span>Choose an object from the technical tree.</span></main></ng-template>
     </div>
@@ -45,4 +53,27 @@ export class CompObjAdvancedViewComponent {
   constructor(public readonly display: CompObjDisplayService, private readonly tree: CompObjTreeService) {}
   get rows() { return this.tree.fullTree(this.project); }
   get selectedObject(): CompdataObject | undefined { return this.display.object(this.project, this.selectedId) ?? this.rows[0]?.object; }
+
+  get compidsPreview(): number[] {
+    return this.project.objects.filter(obj => obj.kind === 3).map(obj => obj.id);
+  }
+
+  get compidsWarnings(): string[] {
+    const warnings: string[] = [];
+    const type3Ids = new Set(this.project.objects.filter(o => o.kind === 3).map(o => o.id));
+    const compIdsSet = new Set(this.project.compIds);
+
+    if (compIdsSet.size !== this.project.compIds.length) {
+      warnings.push("compids.txt contains duplicate IDs.");
+    }
+    for (const id of compIdsSet) {
+      const obj = this.project.objects.find(o => o.id === id);
+      if (!obj) warnings.push(`compids.txt references missing object ${id}.`);
+      else if (obj.kind !== 3) warnings.push(`compids.txt references object ${id} which is not a Competition (type 3).`);
+    }
+    for (const id of type3Ids) {
+      if (!compIdsSet.has(id)) warnings.push(`compobj.txt contains Competition ${id} that is missing from compids.txt.`);
+    }
+    return warnings;
+  }
 }

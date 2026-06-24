@@ -97,7 +97,13 @@ export interface CreateTournamentRequest {
               </div>
               <div><span>Structure</span><ul><li *ngFor="let phase of templatePhases">{{ phase }}</li><li *ngIf="!templatePhases.length">No phases yet</li></ul></div>
             </div>
-            <details class="tse-technical"><summary>Show generated compobj lines</summary><code *ngFor="let line of generatedLines">{{ line }}</code></details>
+            <details class="tse-technical">
+              <summary>Show generated lines</summary>
+              <div style="margin-bottom: 8px; font-weight: 500;">Generated compobj lines:</div>
+              <code *ngFor="let line of generatedLines">{{ line }}</code>
+              <div style="margin-top: 16px; margin-bottom: 8px; font-weight: 500;">Generated compids line:</div>
+              <code>{{ generatedCompidsLine }}</code>
+            </details>
           </ng-container>
         </div>
         <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 4" [disabled]="!canContinue" (click)="step = step + 1">Continue</button><button type="button" class="tse-primary" *ngIf="step === 4" (click)="submit()">Create tournament</button></footer>
@@ -228,6 +234,15 @@ export class CreateTournamentWizardComponent implements OnInit {
       });
     }
     return lines;
+  }
+
+  get generatedCompidsLine(): string {
+    let id = Math.max(0, ...this.project.objects.map((object) => object.id));
+    if (this.locationType === 2 && this.willCreateCountry) {
+      id++; // For the new Country
+    }
+    id++; // For the new Competition
+    return String(id);
   }
 
   chooseLocationType(type: 0 | 1 | 2): void {

@@ -199,13 +199,35 @@ function competitionSummaries(
 ): CompdataCompetitionSummary[] {
   const byId = new Map(objects.map((object) => [object.id, object]));
   const byParent = descendantsByParent(objects);
-  const ids = [...new Set([...compIds, ...objects.filter((object) => object.kind === 3).map((object) => object.id)])];
+  const type3Objects = objects.filter((object) => object.kind === 3);
+  const type3IdsSet = new Set(type3Objects.map((object) => object.id));
+  const compIdsSet = new Set(compIds);
+
+  if (compIdsSet.size !== compIds.length) {
+    warnings.push("compids.txt contains duplicate IDs.");
+  }
+
+  for (const id of compIdsSet) {
+    const obj = byId.get(id);
+    if (!obj) {
+      warnings.push(`compids.txt references missing object ${id}.`);
+    } else if (obj.kind !== 3) {
+      warnings.push(`compids.txt references object ${id} which is not a Competition (type 3).`);
+    }
+  }
+
+  for (const id of type3IdsSet) {
+    if (!compIdsSet.has(id)) {
+      warnings.push(`compobj.txt contains Competition ${id} that is missing from compids.txt.`);
+    }
+  }
+
+  const ids = [...new Set([...compIds, ...type3IdsSet])];
 
   return ids
     .map((id) => {
       const competition = byId.get(id);
-      if (!competition) {
-        warnings.push(`compids.txt references missing competition object ${id}.`);
+      if (!competition || competition.kind !== 3) {
         return undefined;
       }
       const descendantIds = collectDescendantIds(id, byParent);
@@ -312,10 +334,19 @@ function line(parts: Array<number | string>): string {
 }
 
 export function saveCompdataProject(project: CompdataProject): { folderPath: string; filesWritten: number; warnings: string[] } {
+  const compidsContent = project.objects
+    .filter(obj => obj.kind === 3)
+    .map(obj => String(obj.id))
+    .join("\n") + (project.objects.some(obj => obj.kind === 3) ? "\n" : "");
+
   const writes: Array<{ fileName: string; content: string }> = [
     {
       fileName: "compobj.txt",
       content: `${project.objects.map((object) => line([object.id, object.kind, object.shortName, object.description, object.parentId])).join("\n")}\n`
+    },
+    {
+      fileName: "compids.txt",
+      content: compidsContent
     }
   ];
 
