@@ -23,8 +23,8 @@ import { CompObjValidationService } from "../../services/compdata/compobj-valida
 
       <div class="tse-summary-grid">
         <div><strong>{{ phases.length }}</strong><span>Phases</span></div>
-        <div><strong>{{ competition.groups.length }}</strong><span>Groups / match slots</span></div>
-        <div><strong>{{ display.parentName(tournament, project, reference) }}</strong><span>Belongs to</span></div>
+        <div><strong>{{ competition.groups.length }}</strong><span>Groups / slots</span></div>
+        <div><strong>{{ totalPositions }}</strong><span>Total positions</span></div>
         <div [class.warn]="status !== 'OK'"><strong>{{ status }}</strong><span>Validation status</span></div>
       </div>
 
@@ -94,5 +94,6 @@ export class TournamentOverviewComponent {
   get tournamentObject(): CompdataObject | undefined { return this.display.object(this.project, this.competition.id); }
   get phases(): CompdataObject[] { return this.tree.phases(this.project, this.competition.id); }
   get status(): string { return this.validationService.status(this.project, this.competition, this.reference); }
+  get totalPositions(): number { return this.tree.getTotalPositionsForTournament(this.project, this.competition.id); }
   childCount(phase: CompdataObject): number { return this.tree.groups(this.project, phase.id).length; }
 }

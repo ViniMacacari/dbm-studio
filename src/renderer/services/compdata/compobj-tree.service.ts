@@ -72,6 +72,45 @@ export class CompObjTreeService {
     return this.index(project).fullTree;
   }
 
+  getPositionsCount(project: CompdataProject, groupId: number): number {
+    return project.standings.filter(s => s.groupId === groupId).length;
+  }
+
+  getTotalPositionsForPhase(project: CompdataProject, phaseId: number): number {
+    const groups = this.groups(project, phaseId);
+    const groupIds = new Set(groups.map(g => g.id));
+    return project.standings.filter(s => groupIds.has(s.groupId)).length;
+  }
+
+  getTotalPositionsForTournament(project: CompdataProject, tournamentId: number): number {
+    const objects = this.tournamentObjects(project, tournamentId);
+    const groupIds = new Set(objects.filter(o => o.kind === 5).map(o => o.id));
+    return project.standings.filter(s => groupIds.has(s.groupId)).length;
+  }
+
+  createStandingsForGroup(project: CompdataProject, groupId: number, positionsCount: number): void {
+    for (let t = 0; t < positionsCount; t++) {
+      project.standings.push({ groupId, position: t });
+    }
+  }
+
+  updateStandingsForGroup(project: CompdataProject, groupId: number, positionsCount: number): void {
+    const currentStandings = project.standings.filter(s => s.groupId === groupId);
+    const currentCount = currentStandings.length;
+    
+    if (positionsCount > currentCount) {
+      for (let t = currentCount; t < positionsCount; t++) {
+        project.standings.push({ groupId, position: t });
+      }
+    } else if (positionsCount < currentCount) {
+      project.standings = project.standings.filter(s => !(s.groupId === groupId && s.position >= positionsCount));
+    }
+  }
+
+  removeStandingsForGroup(project: CompdataProject, groupId: number): void {
+    project.standings = project.standings.filter(s => s.groupId !== groupId);
+  }
+
   private index(project: CompdataProject): CompObjIndex {
     const cached = this.indexes.get(project);
     if (cached && cached.objectsReference === project.objects && cached.objectCount === project.objects.length) return cached;

@@ -20,15 +20,16 @@ import { CompObjTreeService } from "../../services/compdata/compobj-tree.service
       </header>
 
       <div class="tse-summary-grid three">
-        <div><strong>{{ groups.length }}</strong><span>{{ display.childNoun(phase, groups.length) }}</span></div>
-        <div><strong>{{ phase.shortName }}</strong><span>Internal code</span></div>
+        <div><strong>{{ groups.length }}</strong><span><span class="tse-capitalize">{{ display.childNoun(phase, groups.length) }}</span></span></div>
+        <div><strong>{{ totalPositions }}</strong><span>Total positions/teams</span></div>
         <div [class.warn]="groups.length === 0"><strong>{{ groups.length ? 'OK' : 'Warning' }}</strong><span>Validation status</span></div>
       </div>
       <p class="tse-phase-description">{{ info.description }}</p>
 
       <div class="tse-actions">
         <button type="button" class="tse-primary" (click)="addChild.emit()">+ Add {{ display.childNoun(phase, 1) }}</button>
-        <button type="button" (click)="editPhase.emit()">Edit phase</button>
+        <button type="button" (click)="editQuantities.emit()">Edit quantities</button>
+        <button type="button" (click)="editPhase.emit()">Edit phase details</button>
         <button type="button" class="tse-danger-link" (click)="deletePhase.emit()">Delete phase</button>
       </div>
 
@@ -38,7 +39,7 @@ import { CompObjTreeService } from "../../services/compdata/compobj-tree.service
           <article *ngFor="let group of groups; let index = index">
             <span class="tse-child-icon">{{ index + 1 }}</span>
             <strong>{{ display.childLabel(group, project) }}</strong>
-            <span>{{ group.shortName }}</span>
+            <span>{{ group.shortName }} · {{ teamsCount(group.id) }} teams</span>
             <button type="button" (click)="editChild.emit(group.id)">Edit</button>
             <button type="button" class="tse-danger-link" (click)="deleteChild.emit(group.id)">Delete</button>
             <details class="tse-technical compact">
@@ -73,7 +74,17 @@ export class TournamentPhaseDetailsComponent {
   @Output() editChild = new EventEmitter<number>();
   @Output() deleteChild = new EventEmitter<number>();
 
+  @Output() editQuantities = new EventEmitter<void>();
+
   constructor(public readonly display: CompObjDisplayService, private readonly tree: CompObjTreeService) {}
   get info() { return this.display.phaseInfo(this.phase.description); }
   get groups(): CompdataObject[] { return this.tree.groups(this.project, this.phase.id); }
+
+  get totalPositions(): number {
+    return this.tree.getTotalPositionsForPhase(this.project, this.phase.id);
+  }
+
+  teamsCount(groupId: number): number {
+    return this.tree.getPositionsCount(this.project, groupId);
+  }
 }

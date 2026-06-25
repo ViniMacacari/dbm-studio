@@ -41,6 +41,14 @@ import { CompObjTreeService } from "../../services/compdata/compobj-tree.service
             <code *ngIf="!compidsPreview.length">No Competition IDs found.</code>
           </div>
         </details>
+        <details class="tse-technical tse-full-preview">
+          <summary>Preview standings.txt</summary>
+          <div class="tse-warning" *ngFor="let warning of standingsWarnings" style="margin-bottom: 8px;">{{ warning }}</div>
+          <div class="tse-generated-lines">
+            <code *ngFor="let standing of standingsPreview">{{ standing }}</code>
+            <code *ngIf="!standingsPreview.length">No standings found.</code>
+          </div>
+        </details>
       </main>
       <ng-template #selectObject><main class="tse-main-empty"><strong>Select an object</strong><span>Choose an object from the technical tree.</span></main></ng-template>
     </div>
@@ -74,6 +82,44 @@ export class CompObjAdvancedViewComponent {
     for (const id of type3Ids) {
       if (!compIdsSet.has(id)) warnings.push(`compobj.txt contains Competition ${id} that is missing from compids.txt.`);
     }
+    return warnings;
+  }
+
+  get standingsPreview(): string[] {
+    return this.project.standings
+      .slice()
+      .sort((a, b) => {
+        if (a.groupId !== b.groupId) {
+          const idxA = this.project.objects.findIndex(o => o.id === a.groupId);
+          const idxB = this.project.objects.findIndex(o => o.id === b.groupId);
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          return a.groupId - b.groupId;
+        }
+        return a.position - b.position;
+      })
+      .map(s => `${s.groupId},${s.position}`);
+  }
+
+  get standingsWarnings(): string[] {
+    const warnings: string[] = [];
+    const allObjectIds = new Set(this.project.objects.map(o => o.id));
+    const allType5Ids = new Set(this.project.objects.filter(o => o.kind === 5).map(o => o.id));
+    const duplicateOrphanCheck = new Set<number>();
+    
+    this.project.standings.forEach(s => {
+      if (!allObjectIds.has(s.groupId)) {
+        if (!duplicateOrphanCheck.has(s.groupId)) {
+          duplicateOrphanCheck.add(s.groupId);
+          warnings.push(`standing groupObjectId ${s.groupId} not found in compobj`);
+        }
+      } else if (!allType5Ids.has(s.groupId)) {
+        if (!duplicateOrphanCheck.has(s.groupId)) {
+          duplicateOrphanCheck.add(s.groupId);
+          warnings.push(`standing groupObjectId ${s.groupId} points to an object that is not a group/slot (type 5)`);
+        }
+      }
+    });
+
     return warnings;
   }
 }

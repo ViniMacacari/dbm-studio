@@ -15,7 +15,7 @@ import { TournamentPhaseDetailsComponent } from "./tournament-phase-details.comp
 import { TournamentSidebarComponent } from "./tournament-sidebar.component";
 import { nations } from "../../../utils/get-nations/get-nations";
 
-type EditorDialog = "create" | "addPhase" | "addChild" | "editTournament" | "editPhase" | "editChild" | "delete" | "validation" | "preview" | undefined;
+type EditorDialog = "create" | "addPhase" | "addChild" | "editTournament" | "editPhase" | "editPhaseQuantities" | "editChild" | "delete" | "validation" | "preview" | undefined;
 type DeleteTarget = { kind: "tournament" | "phase" | "child"; object: CompdataObject };
 
 @Component({
@@ -48,9 +48,10 @@ export class CompdataEditorPageComponent {
   deleteTarget?: DeleteTarget;
 
   readonly phaseOptions = PHASE_OPTIONS;
-  phaseDraft = { key: "FCE_League_Stage", customKey: "", code: "S1", childCount: 1 };
+  phaseDraft = { key: "FCE_League_Stage", customKey: "", code: "S1", childCount: 1, teamsPerChild: 20 };
+  phaseQuantitiesDraft = { groups: 1, teams: 20 };
   tournamentDraft = { nameKey: "", code: "", parentId: 0 };
-  childDraft = { code: "G1", description: "" };
+  childDraft = { code: "G1", description: "", teams: 20 };
 
   private readonly api: DbMasterApi = window.dbmaster;
   private originalObjectIds = new Set<number>();
@@ -118,6 +119,15 @@ export class CompdataEditorPageComponent {
   get previewEdited(): number { return this.previewObjects.filter((object) => this.originalObjectIds.has(object.id) && object.originalRawLine && object.originalRawLine !== this.display.rawLine(object)).length; }
   get previewRemoved(): number { return this.removedOriginalLines.length; }
 
+  get generatedStandingsLines(): string[] {
+    if (!this.compdataProject || !this.selectedTournamentId) return [];
+    const groupIds = new Set(this.previewObjects.filter(o => o.kind === 5).map(o => o.id));
+    return this.compdataProject.standings
+      .filter(s => groupIds.has(s.groupId))
+      .sort((a, b) => a.groupId !== b.groupId ? a.groupId - b.groupId : a.position - b.position)
+      .map(s => `${s.groupId},${s.position}`);
+  }
+
   selectTournament(id: number): void {
     this.selectedTournamentId = id;
     this.selectedPhaseId = 0;
@@ -176,18 +186,47 @@ export class CompdataEditorPageComponent {
       maxId++;
       const phaseId = maxId;
       this.compdataProject.objects.push({ id: phaseId, kind: 4, shortName: "S1", description: "FCE_League_Stage", parentId: tournamentId });
+      const leagueGroups = request.leagueGroups || 1;
+      const leagueTeams = request.leagueTeams || 20;
+      for (let i = 0; i < leagueGroups; i++) {
+        maxId++;
+        const groupId = maxId;
+        this.compdataProject.objects.push({ id: groupId, kind: 5, shortName: `G${i + 1}`, description: "", parentId: phaseId });
+        this.tree.createStandingsForGroup(this.compdataProject, groupId, leagueTeams);
+      }
+    } else if (request.template === "groupStage") {
       maxId++;
-      this.compdataProject.objects.push({ id: maxId, kind: 5, shortName: "G1", description: "", parentId: phaseId });
+      const phaseId = maxId;
+      this.compdataProject.objects.push({ id: phaseId, kind: 4, shortName: "S1", description: "FCE_Group_Stage", parentId: tournamentId });
+      const groupStageGroups = request.groupStageGroups || 8;
+      const groupStageTeams = request.groupStageTeams || 4;
+      for (let i = 0; i < groupStageGroups; i++) {
+        maxId++;
+        const groupId = maxId;
+        this.compdataProject.objects.push({ id: groupId, kind: 5, shortName: `G${i + 1}`, description: "", parentId: phaseId });
+        this.tree.createStandingsForGroup(this.compdataProject, groupId, groupStageTeams);
+      }
     } else if (request.template === "cup") {
+      const cupInitialTeams = request.cupInitialTeams || 16;
+      const phasesToCreate: Array<{key: string, slots: number, teamsPerSlot: number}> = [
+        { key: "FCE_Setup_Stage", slots: 1, teamsPerSlot: cupInitialTeams }
+      ];
+      if (cupInitialTeams >= 16) phasesToCreate.push({ key: "FCE_Round_1", slots: 8, teamsPerSlot: 2 });
+      if (cupInitialTeams >= 8) phasesToCreate.push({ key: "FCE_Quarter_Finals", slots: 4, teamsPerSlot: 2 });
+      if (cupInitialTeams >= 4) phasesToCreate.push({ key: "FCE_Semi_Finals", slots: 2, teamsPerSlot: 2 });
+      if (cupInitialTeams >= 2) phasesToCreate.push({ key: "FCE_Final", slots: 1, teamsPerSlot: 2 });
+
       let currentPhaseIdx = 1;
-      [["FCE_Setup_Stage", 1], ["FCE_Round_1", 1], ["FCE_Quarter_Finals", 4], ["FCE_Semi_Finals", 2], ["FCE_Final", 1]].forEach(([key, count]) => {
+      phasesToCreate.forEach((phase) => {
         maxId++;
         const phaseId = maxId;
-        this.compdataProject!.objects.push({ id: phaseId, kind: 4, shortName: `S${currentPhaseIdx}`, description: String(key), parentId: tournamentId });
+        this.compdataProject!.objects.push({ id: phaseId, kind: 4, shortName: `S${currentPhaseIdx}`, description: String(phase.key), parentId: tournamentId });
         currentPhaseIdx++;
-        for (let index = 0; index < Number(count); index++) {
+        for (let index = 0; index < phase.slots; index++) {
           maxId++;
-          this.compdataProject!.objects.push({ id: maxId, kind: 5, shortName: `G${index + 1}`, description: "", parentId: phaseId });
+          const groupId = maxId;
+          this.compdataProject!.objects.push({ id: groupId, kind: 5, shortName: `G${index + 1}`, description: "", parentId: phaseId });
+          this.tree.createStandingsForGroup(this.compdataProject!, groupId, phase.teamsPerSlot);
         }
       });
     }
@@ -201,13 +240,13 @@ export class CompdataEditorPageComponent {
   openAddPhase(): void {
     if (!this.compdataProject || !this.selectedTournamentId) return;
     const phases = this.tree.phases(this.compdataProject, this.selectedTournamentId);
-    this.phaseDraft = { key: "FCE_League_Stage", customKey: "", code: this.nextCode(phases, "S"), childCount: 1 };
+    this.phaseDraft = { key: "FCE_League_Stage", customKey: "", code: this.nextCode(phases, "S"), childCount: 1, teamsPerChild: 20 };
     this.dialog = "addPhase";
   }
 
   addPhase(): void {
     if (!this.compdataProject || !this.selectedTournamentId || !this.effectivePhaseKey || !this.phaseDraft.code.trim()) return;
-    const phase = this.createPhase(this.selectedTournamentId, this.effectivePhaseKey, this.phaseDraft.code.trim(), Math.max(0, Math.trunc(this.phaseDraft.childCount || 0)));
+    const phase = this.createPhase(this.selectedTournamentId, this.effectivePhaseKey, this.phaseDraft.code.trim(), Math.max(0, Math.trunc(this.phaseDraft.childCount || 0)), Math.max(0, Math.trunc(this.phaseDraft.teamsPerChild || 0)));
     this.afterStructureChange();
     this.dialog = undefined;
     this.openPhase(phase.id);
@@ -215,13 +254,16 @@ export class CompdataEditorPageComponent {
 
   openAddChild(): void {
     if (!this.compdataProject || !this.selectedPhase) return;
-    this.childDraft = { code: this.nextCode(this.tree.groups(this.compdataProject, this.selectedPhase.id), "G"), description: "" };
+    const isKnockout = this.display.isKnockoutPhase(this.selectedPhase);
+    this.childDraft = { code: this.nextCode(this.tree.groups(this.compdataProject, this.selectedPhase.id), "G"), description: "", teams: isKnockout ? 2 : 20 };
     this.dialog = "addChild";
   }
 
   addChild(): void {
     if (!this.compdataProject || !this.selectedPhase || !this.childDraft.code.trim()) return;
-    this.compdataProject.objects.push({ id: this.nextObjectId(), kind: 5, shortName: this.childDraft.code.trim(), description: this.childDraft.description.trim(), parentId: this.selectedPhase.id });
+    const groupId = this.nextObjectId();
+    this.compdataProject.objects.push({ id: groupId, kind: 5, shortName: this.childDraft.code.trim(), description: this.childDraft.description.trim(), parentId: this.selectedPhase.id });
+    this.tree.createStandingsForGroup(this.compdataProject, groupId, this.childDraft.teams);
     this.afterStructureChange();
     this.dialog = undefined;
   }
@@ -249,7 +291,7 @@ export class CompdataEditorPageComponent {
     if (!phase) return;
     this.editingObjectId = phase.id;
     const known = PHASE_OPTIONS.some((option) => option.key === phase.description);
-    this.phaseDraft = { key: known ? phase.description : "custom", customKey: known ? "" : phase.description, code: phase.shortName, childCount: 0 };
+    this.phaseDraft = { key: known ? phase.description : "custom", customKey: known ? "" : phase.description, code: phase.shortName, childCount: 0, teamsPerChild: 20 };
     this.dialog = "editPhase";
   }
 
@@ -262,11 +304,61 @@ export class CompdataEditorPageComponent {
     this.dialog = undefined;
   }
 
+  openEditPhaseQuantities(id = this.selectedPhaseId): void {
+    const phase = this.display.object(this.compdataProject, id);
+    if (!phase) return;
+    this.editingObjectId = phase.id;
+    const groups = this.tree.groups(this.compdataProject!, phase.id);
+    const groupsCount = groups.length;
+    let teamsCount = 0;
+    if (groupsCount > 0) {
+      teamsCount = this.tree.getPositionsCount(this.compdataProject!, groups[0].id);
+    } else {
+      teamsCount = this.display.isKnockoutPhase(phase) ? 2 : 20;
+    }
+    this.phaseQuantitiesDraft = { groups: groupsCount, teams: teamsCount };
+    this.dialog = "editPhaseQuantities";
+  }
+
+  savePhaseQuantitiesEdit(): void {
+    const phase = this.display.object(this.compdataProject, this.editingObjectId);
+    if (!phase || !this.compdataProject) return;
+    
+    const groups = this.tree.groups(this.compdataProject, phase.id);
+    const currentCount = groups.length;
+    const targetCount = Math.max(0, this.phaseQuantitiesDraft.groups);
+    const targetTeams = Math.max(0, this.phaseQuantitiesDraft.teams);
+
+    const groupsToKeep = groups.slice(0, Math.min(currentCount, targetCount));
+    for (const group of groupsToKeep) {
+      this.tree.updateStandingsForGroup(this.compdataProject, group.id, targetTeams);
+    }
+
+    if (targetCount > currentCount) {
+      let maxId = Math.max(0, ...this.compdataProject.objects.map(o => o.id));
+      for (let index = currentCount; index < targetCount; index++) {
+        maxId++;
+        const groupId = maxId;
+        this.compdataProject.objects.push({ id: groupId, kind: 5, shortName: `G${index + 1}`, description: "", parentId: phase.id });
+        this.tree.createStandingsForGroup(this.compdataProject, groupId, targetTeams);
+      }
+    } else if (targetCount < currentCount) {
+      const groupsToRemove = groups.slice(targetCount);
+      const idsToRemove = new Set(groupsToRemove.map(g => g.id));
+      this.compdataProject.objects = this.compdataProject.objects.filter(o => !idsToRemove.has(o.id));
+      this.compdataProject.standings = this.compdataProject.standings.filter(s => !idsToRemove.has(s.groupId));
+    }
+
+    this.afterStructureChange();
+    this.dialog = undefined;
+  }
+
   openEditChild(id: number): void {
     const child = this.display.object(this.compdataProject, id);
     if (!child) return;
     this.editingObjectId = child.id;
-    this.childDraft = { code: child.shortName, description: child.description };
+    const teamsCount = this.compdataProject!.standings.filter(s => s.groupId === id).length;
+    this.childDraft = { code: child.shortName, description: child.description, teams: teamsCount };
     this.dialog = "editChild";
   }
 
@@ -275,6 +367,9 @@ export class CompdataEditorPageComponent {
     if (!child || !this.childDraft.code.trim()) return;
     child.shortName = this.childDraft.code.trim();
     child.description = this.childDraft.description.trim();
+    
+    this.tree.updateStandingsForGroup(this.compdataProject!, child.id, this.childDraft.teams);
+
     this.afterStructureChange();
     this.dialog = undefined;
   }
@@ -293,6 +388,7 @@ export class CompdataEditorPageComponent {
     const ids = new Set(targets.map((target) => target.id));
     targets.forEach((target) => { if (target.originalRawLine) this.removedOriginalLines.push(target.originalRawLine); });
     this.compdataProject.objects = this.compdataProject.objects.filter((candidate) => !ids.has(candidate.id));
+    this.compdataProject.standings = this.compdataProject.standings.filter((s) => !ids.has(s.groupId));
     if (kind === "tournament") {
       this.compdataProject.compIds = this.compdataProject.compIds.filter((id) => id !== object.id);
       this.selectedTournamentId = 0;
@@ -383,12 +479,14 @@ export class CompdataEditorPageComponent {
     }
   }
 
-  private createPhase(tournamentId: number, key: string, code: string, childCount: number): CompdataObject {
+  private createPhase(tournamentId: number, key: string, code: string, childCount: number, teamsPerChild: number): CompdataObject {
     if (!this.compdataProject) throw new Error("No tournament files loaded.");
     const phase: CompdataObject = { id: this.nextObjectId(), kind: 4, shortName: code, description: key, parentId: tournamentId };
     this.compdataProject.objects.push(phase);
     for (let index = 0; index < childCount; index += 1) {
-      this.compdataProject.objects.push({ id: this.nextObjectId(), kind: 5, shortName: `G${index + 1}`, description: "", parentId: phase.id });
+      const groupId = this.nextObjectId();
+      this.compdataProject.objects.push({ id: groupId, kind: 5, shortName: `G${index + 1}`, description: "", parentId: phase.id });
+      this.tree.createStandingsForGroup(this.compdataProject, groupId, teamsPerChild);
     }
     return phase;
   }

@@ -350,6 +350,23 @@ export function saveCompdataProject(project: CompdataProject): { folderPath: str
     }
   ];
 
+  if (project.standings.length > 0) {
+    const sortedStandings = [...project.standings].sort((a, b) => {
+      if (a.groupId !== b.groupId) {
+        // Find the index of their group in the objects array to maintain compobj order
+        const idxA = project.objects.findIndex(o => o.id === a.groupId);
+        const idxB = project.objects.findIndex(o => o.id === b.groupId);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        return a.groupId - b.groupId; // fallback
+      }
+      return a.position - b.position;
+    });
+    writes.push({
+      fileName: "standings.txt",
+      content: sortedStandings.map(s => line([s.groupId, s.position])).join("\n") + "\n"
+    });
+  }
+
   for (const write of writes) {
     writeFileSync(join(project.folderPath, write.fileName), write.content, "utf8");
   }

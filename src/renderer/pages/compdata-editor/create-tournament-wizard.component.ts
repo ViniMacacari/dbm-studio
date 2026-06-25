@@ -11,7 +11,12 @@ export interface CreateTournamentRequest {
   locationId: number;
   internalCode: string;
   nameKey: string;
-  template: "league" | "cup" | "empty";
+  template: "league" | "groupStage" | "cup" | "empty";
+  leagueGroups?: number;
+  leagueTeams?: number;
+  groupStageGroups?: number;
+  groupStageTeams?: number;
+  cupInitialTeams?: number;
 }
 
 @Component({
@@ -78,8 +83,29 @@ export interface CreateTournamentRequest {
             <p>Choose the tournament structure.</p>
             <div class="tse-template-grid">
               <button type="button" [class.active]="template === 'league'" (click)="template = 'league'"><strong>League</strong><span>Best for points-table competitions.</span><small>League Phase<br />↳ Group 1</small></button>
+              <button type="button" [class.active]="template === 'groupStage'" (click)="template = 'groupStage'"><strong>Group Stage</strong><span>Multiple groups of teams.</span><small>Group Phase<br />↳ Group 1-8</small></button>
               <button type="button" [class.active]="template === 'cup'" (click)="template = 'cup'"><strong>Simple Cup</strong><span>Best for basic knockout cups.</span><small>Team Setup Phase<br />First Round<br />Quarter Finals<br />Semi Finals<br />Final</small></button>
               <button type="button" [class.active]="template === 'empty'" (click)="template = 'empty'"><strong>Empty</strong><span>Create only the tournament and add phases manually.</span><small>No phases yet.</small></button>
+            </div>
+            <div *ngIf="template === 'league'" class="tse-template-settings" style="margin-top: 16px;">
+              <strong>League settings</strong>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px;">
+                <label class="tse-field"><span>Number of groups</span><input type="number" min="1" [(ngModel)]="leagueGroups" /></label>
+                <label class="tse-field"><span>Teams per group</span><input type="number" min="2" [(ngModel)]="leagueTeams" /></label>
+              </div>
+            </div>
+            <div *ngIf="template === 'groupStage'" class="tse-template-settings" style="margin-top: 16px;">
+              <strong>Group Stage settings</strong>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px;">
+                <label class="tse-field"><span>Number of groups</span><input type="number" min="1" [(ngModel)]="groupStageGroups" /></label>
+                <label class="tse-field"><span>Teams per group</span><input type="number" min="2" [(ngModel)]="groupStageTeams" /></label>
+              </div>
+            </div>
+            <div *ngIf="template === 'cup'" class="tse-template-settings" style="margin-top: 16px;">
+              <strong>Cup settings</strong>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px;">
+                <label class="tse-field"><span>Initial teams</span><input type="number" min="2" [(ngModel)]="cupInitialTeams" /></label>
+              </div>
             </div>
           </ng-container>
 
@@ -103,6 +129,10 @@ export interface CreateTournamentRequest {
               <code *ngFor="let line of generatedLines">{{ line }}</code>
               <div style="margin-top: 16px; margin-bottom: 8px; font-weight: 500;">Generated compids line:</div>
               <code>{{ generatedCompidsLine }}</code>
+              <ng-container *ngIf="generatedStandingsLines.length">
+                <div style="margin-top: 16px; margin-bottom: 8px; font-weight: 500;">Generated standings lines:</div>
+                <code *ngFor="let line of generatedStandingsLines">{{ line }}</code>
+              </ng-container>
             </details>
           </ng-container>
         </div>
@@ -125,7 +155,12 @@ export class CreateTournamentWizardComponent implements OnInit {
   tournamentId: number | null = null;
   nameKey = "";
   internalCode = "";
-  template: "league" | "cup" | "empty" = "league";
+  template: "league" | "groupStage" | "cup" | "empty" = "league";
+  leagueGroups = 1;
+  leagueTeams = 20;
+  groupStageGroups = 8;
+  groupStageTeams = 4;
+  cupInitialTeams = 16;
   constructor(public readonly display: CompObjDisplayService) {}
 
   ngOnInit() {
@@ -206,7 +241,20 @@ export class CreateTournamentWizardComponent implements OnInit {
     return nation ? nation.name.substring(0, 4).toUpperCase() : "UNKN";
   }
 
-  get templatePhases(): string[] { return this.template === "league" ? ["League Phase"] : this.template === "cup" ? ["Team Setup Phase", "First Round", "Quarter Finals", "Semi Finals", "Final"] : []; }
+  get templatePhases(): string[] {
+    if (this.template === "league") return [`League Phase (${this.leagueGroups} group(s), ${this.leagueTeams} teams/pos)`];
+    if (this.template === "groupStage") return [`Group Phase (${this.groupStageGroups} group(s), ${this.groupStageTeams} teams/pos)`];
+    if (this.template === "cup") {
+      const p = [`Participant Setup (1 group, ${this.cupInitialTeams} teams/pos)`];
+      if (this.cupInitialTeams >= 16) p.push("Round of 16 (8 slots, 2 teams/pos)");
+      if (this.cupInitialTeams >= 8) p.push("Quarter Finals (4 slots, 2 teams/pos)");
+      if (this.cupInitialTeams >= 4) p.push("Semi Finals (2 slots, 2 teams/pos)");
+      if (this.cupInitialTeams >= 2) p.push("Final (1 slot, 2 teams/pos)");
+      return p;
+    }
+    return [];
+  }
+  
   get generatedLines(): string[] {
     let id = Math.max(0, ...this.project.objects.map((object) => object.id));
     const lines: string[] = [];
@@ -227,10 +275,76 @@ export class CreateTournamentWizardComponent implements OnInit {
     lines.push(`${id},3,${this.internalCode},${this.nameKey},${resolvedParentId}`);
     
     if (this.template === "league") {
-      lines.push(`${++id},4,S1,FCE_League_Stage,${compId}`, `${++id},5,G1,,${id - 1}`);
+      id++;
+      const phaseId = id;
+      lines.push(`${phaseId},4,S1,FCE_League_Stage,${compId}`);
+      for (let i = 0; i < this.leagueGroups; i++) {
+        lines.push(`${++id},5,G${i + 1},,${phaseId}`);
+      }
+    } else if (this.template === "groupStage") {
+      id++;
+      const phaseId = id;
+      lines.push(`${phaseId},4,S1,FCE_Group_Stage,${compId}`);
+      for (let i = 0; i < this.groupStageGroups; i++) {
+        lines.push(`${++id},5,G${i + 1},,${phaseId}`);
+      }
     } else if (this.template === "cup") {
-      ["FCE_Setup_Stage", "FCE_Round_1", "FCE_Quarter_Finals", "FCE_Semi_Finals", "FCE_Final"].forEach((key, index) => {
-        lines.push(`${++id},4,S${index + 1},${key},${compId}`);
+      const phasesToCreate: Array<{key: string, slots: number}> = [{ key: "FCE_Setup_Stage", slots: 1 }];
+      if (this.cupInitialTeams >= 16) phasesToCreate.push({ key: "FCE_Round_1", slots: 8 });
+      if (this.cupInitialTeams >= 8) phasesToCreate.push({ key: "FCE_Quarter_Finals", slots: 4 });
+      if (this.cupInitialTeams >= 4) phasesToCreate.push({ key: "FCE_Semi_Finals", slots: 2 });
+      if (this.cupInitialTeams >= 2) phasesToCreate.push({ key: "FCE_Final", slots: 1 });
+      
+      phasesToCreate.forEach((phase, index) => {
+        id++;
+        const phaseId = id;
+        lines.push(`${phaseId},4,S${index + 1},${phase.key},${compId}`);
+        for (let i = 0; i < phase.slots; i++) {
+          lines.push(`${++id},5,G${i + 1},,${phaseId}`);
+        }
+      });
+    }
+    return lines;
+  }
+
+  get generatedStandingsLines(): string[] {
+    let id = Math.max(0, ...this.project.objects.map((object) => object.id));
+    if (this.locationType === 2 && this.willCreateCountry) id++;
+    id++; // compId
+    const lines: string[] = [];
+    if (this.template === "league") {
+      id++; // phaseId
+      for (let i = 0; i < this.leagueGroups; i++) {
+        id++; // groupId
+        for (let t = 0; t < this.leagueTeams; t++) {
+          lines.push(`${id},${t}`);
+        }
+      }
+    } else if (this.template === "groupStage") {
+      id++; // phaseId
+      for (let i = 0; i < this.groupStageGroups; i++) {
+        id++; // groupId
+        for (let t = 0; t < this.groupStageTeams; t++) {
+          lines.push(`${id},${t}`);
+        }
+      }
+    } else if (this.template === "cup") {
+      const phasesToCreate: Array<{key: string, slots: number, teamsPerSlot: number}> = [
+        { key: "FCE_Setup_Stage", slots: 1, teamsPerSlot: this.cupInitialTeams }
+      ];
+      if (this.cupInitialTeams >= 16) phasesToCreate.push({ key: "FCE_Round_1", slots: 8, teamsPerSlot: 2 });
+      if (this.cupInitialTeams >= 8) phasesToCreate.push({ key: "FCE_Quarter_Finals", slots: 4, teamsPerSlot: 2 });
+      if (this.cupInitialTeams >= 4) phasesToCreate.push({ key: "FCE_Semi_Finals", slots: 2, teamsPerSlot: 2 });
+      if (this.cupInitialTeams >= 2) phasesToCreate.push({ key: "FCE_Final", slots: 1, teamsPerSlot: 2 });
+
+      phasesToCreate.forEach(phase => {
+        id++; // phaseId
+        for (let i = 0; i < phase.slots; i++) {
+          id++; // groupId
+          for (let t = 0; t < phase.teamsPerSlot; t++) {
+            lines.push(`${id},${t}`);
+          }
+        }
       });
     }
     return lines;
@@ -302,7 +416,12 @@ export class CreateTournamentWizardComponent implements OnInit {
         locationId: nation.id,
         internalCode: this.internalCode.trim(), 
         nameKey: this.nameKey.trim(), 
-        template: this.template 
+        template: this.template,
+        leagueGroups: this.leagueGroups,
+        leagueTeams: this.leagueTeams,
+        groupStageGroups: this.groupStageGroups,
+        groupStageTeams: this.groupStageTeams,
+        cupInitialTeams: this.cupInitialTeams
       });
       return;
     }
@@ -313,7 +432,12 @@ export class CreateTournamentWizardComponent implements OnInit {
       locationId: parent.id,
       internalCode: this.internalCode.trim(), 
       nameKey: this.nameKey.trim(), 
-      template: this.template 
+      template: this.template,
+      leagueGroups: this.leagueGroups,
+      leagueTeams: this.leagueTeams,
+      groupStageGroups: this.groupStageGroups,
+      groupStageTeams: this.groupStageTeams,
+      cupInitialTeams: this.cupInitialTeams
     });
   }
 }

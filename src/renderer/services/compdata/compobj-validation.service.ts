@@ -71,12 +71,63 @@ export class CompObjValidationService {
     phases.forEach((phase) => {
       this.validateObject(project, phase, issues);
       if (!this.tree.groups(project, phase.id).length) issues.push({ severity: "warning", message: `${this.display.phaseInfo(phase.description).label} has no groups or match slots.`, technical: `Stage ${phase.id} has no type 5 children.` });
-      this.tree.groups(project, phase.id).forEach((group) => this.validateObject(project, group, issues));
+      this.tree.groups(project, phase.id).forEach((group) => {
+        this.validateObject(project, group, issues);
+        
+        const groupStandings = project.standings.filter(s => s.groupId === group.id);
+        const positionCount = groupStandings.length;
+        
+        if (positionCount === 0) {
+          issues.push({ severity: "warning", message: "A group or match slot has no teams/positions defined in standings.", technical: `Group/Slot ${group.id} has no standings.` });
+        } else {
+          const uniquePositions = new Set(groupStandings.map(s => s.position));
+          if (uniquePositions.size !== positionCount) {
+            issues.push({ severity: "error", message: "This group has duplicated team positions.", technical: `duplicate position for group ${group.id}` });
+          }
+          
+          const sortedPositions = [...uniquePositions].sort((a, b) => a - b);
+          if (sortedPositions[0] !== 0) {
+            issues.push({ severity: "error", message: "Positions must start at 0.", technical: `Group/Slot ${group.id} positions start at ${sortedPositions[0]}.` });
+          } else if (sortedPositions[sortedPositions.length - 1] !== sortedPositions.length - 1) {
+            issues.push({ severity: "error", message: "Positions are not sequential.", technical: `Group/Slot ${group.id} positions are missing some numbers.` });
+          }
+        }
+        
+        const isKnockout = this.display.isKnockoutPhase(phase) || phase.description.includes("Final");
+        const isLeague = this.display.isGroupPhase(phase);
+        
+        if (isKnockout && positionCount !== 2 && positionCount > 0) {
+          issues.push({ severity: "warning", message: "Match slots should have exactly 2 positions.", technical: `Match slot ${group.id} has ${positionCount} positions.` });
+        }
+        
+        if (isLeague && positionCount < 2 && positionCount > 0) {
+          issues.push({ severity: "warning", message: "Groups should have at least 2 positions.", technical: `Group ${group.id} has ${positionCount} positions.` });
+        }
+      });
     });
 
     if (reference && tournament.description && !this.display.hasResolvedText(reference, tournament.description)) {
       issues.push({ severity: "warning", message: "The localization key was not found in the loaded language files.", technical: tournament.description });
     }
+
+    const allObjectIds = new Set(project.objects.map(o => o.id));
+    const allType5Ids = new Set(project.objects.filter(o => o.kind === 5).map(o => o.id));
+    const duplicateOrphanCheck = new Set<number>();
+    
+    project.standings.forEach(s => {
+      if (!allObjectIds.has(s.groupId)) {
+        if (!duplicateOrphanCheck.has(s.groupId)) {
+          duplicateOrphanCheck.add(s.groupId);
+          issues.push({ severity: "error", message: "This standings entry points to a group/slot that does not exist anymore.", technical: `standing groupObjectId ${s.groupId} not found` });
+        }
+      } else if (!allType5Ids.has(s.groupId)) {
+        if (!duplicateOrphanCheck.has(s.groupId)) {
+          duplicateOrphanCheck.add(s.groupId);
+          issues.push({ severity: "error", message: "This standings entry points to an object that is not a group/slot.", technical: `standing groupObjectId ${s.groupId} is not type 5` });
+        }
+      }
+    });
+
     cache.issuesByTournament.set(competition.id, issues);
     return issues;
   }

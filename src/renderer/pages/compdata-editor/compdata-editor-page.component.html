@@ -2,7 +2,9 @@
   <header class="tse-topbar">
     <div class="tse-topbar-title">
       <button type="button" (click)="showHome.emit()">Home</button>
-      <div><h1>Tournament Editor</h1><span>compobj.txt structure</span></div>
+      <div>
+        <h1>Tournament Editor</h1><span>compobj.txt structure</span>
+      </div>
     </div>
     <div class="tse-topbar-actions">
       <div class="tse-view-switch" *ngIf="compdataProject">
@@ -11,70 +13,57 @@
       </div>
       <button type="button" (click)="openCompdataFolder()">Open Tournament Files</button>
       <button type="button" [disabled]="!compdataProject" (click)="loadTranslatedNames()">Load Translated Names</button>
-      <button type="button" class="tse-primary" [disabled]="!compdataProject || !compdataDirty" (click)="saveCompdata()">Save Changes</button>
+      <button type="button" class="tse-primary" [disabled]="!compdataProject || !compdataDirty"
+        (click)="saveCompdata()">Save Changes</button>
     </div>
   </header>
 
-  <div class="tse-scope-note" *ngIf="compdataProject">Editing structure only. Teams, matches, calendar and progression are configured in other compdata files.</div>
+  <div class="tse-scope-note" *ngIf="compdataProject">Editing structure only. Teams, matches, calendar and progression
+    are configured in other compdata files.</div>
 
   <ng-container *ngIf="compdataProject as project; else noProject">
     <div class="tse-simple-layout" *ngIf="view === 'simple'; else advanced">
-      <app-tournament-sidebar
-        [project]="project"
-        [reference]="compdataReferenceProject"
-        [selectedId]="selectedTournamentId"
-        (selectTournament)="selectTournament($event)"
-        (createTournament)="openCreateWizard()"
-      ></app-tournament-sidebar>
+      <app-tournament-sidebar [project]="project" [reference]="compdataReferenceProject"
+        [selectedId]="selectedTournamentId" (selectTournament)="selectTournament($event)"
+        (createTournament)="openCreateWizard()"></app-tournament-sidebar>
 
       <main class="tse-main">
         <div class="tse-loc-note" *ngIf="!compdataReferenceProject">
-          <span><strong>Translated names not loaded.</strong> You can still edit the structure, but names may appear as localization keys.</span>
+          <span><strong>Translated names not loaded.</strong> You can still edit the structure, but names may appear as
+            localization keys.</span>
           <button type="button" (click)="loadTranslatedNames()">Load Translated Names</button>
         </div>
 
-        <app-tournament-phase-details
-          *ngIf="selectedPhase && selectedTournamentObject; else tournamentState"
-          [project]="project"
-          [reference]="compdataReferenceProject"
-          [tournament]="selectedTournamentObject"
-          [phase]="selectedPhase"
-          (back)="selectedPhaseId = 0"
-          (addChild)="openAddChild()"
-          (editPhase)="openEditPhase()"
-          (deletePhase)="requestDelete('phase', selectedPhaseId)"
+        <app-tournament-phase-details *ngIf="selectedPhase && selectedTournamentObject; else tournamentState"
+          [project]="project" [reference]="compdataReferenceProject" [tournament]="selectedTournamentObject"
+          [phase]="selectedPhase" (back)="selectedPhaseId = 0" (addChild)="openAddChild()" (editPhase)="openEditPhase()"
+          (editQuantities)="openEditPhaseQuantities()" (deletePhase)="requestDelete('phase', selectedPhaseId)"
           (editChild)="openEditChild($event)"
-          (deleteChild)="requestDelete('child', $event)"
-        ></app-tournament-phase-details>
+          (deleteChild)="requestDelete('child', $event)"></app-tournament-phase-details>
 
         <ng-template #tournamentState>
-          <app-tournament-overview
-            *ngIf="selectedCompetition; else selectTournamentState"
-            [project]="project"
-            [reference]="compdataReferenceProject"
-            [competition]="selectedCompetition"
-            (openPhase)="openPhase($event)"
-            (addPhase)="openAddPhase()"
-            (edit)="openEditTournament()"
-            (editPhase)="openEditPhase($event)"
+          <app-tournament-overview *ngIf="selectedCompetition; else selectTournamentState" [project]="project"
+            [reference]="compdataReferenceProject" [competition]="selectedCompetition" (openPhase)="openPhase($event)"
+            (addPhase)="openAddPhase()" (edit)="openEditTournament()" (editPhase)="openEditPhase($event)"
             (deleteTournament)="requestDelete('tournament', selectedTournamentId)"
-            (deletePhase)="requestDelete('phase', $event)"
-            (validate)="openValidation()"
-            (preview)="openPreview()"
-          ></app-tournament-overview>
+            (deletePhase)="requestDelete('phase', $event)" (validate)="openValidation()"
+            (preview)="openPreview()"></app-tournament-overview>
 
           <ng-template #selectTournamentState>
             <div class="tse-main-empty">
               <strong>{{ project.competitions.length ? 'Select a tournament' : 'No tournaments found' }}</strong>
-              <span>{{ project.competitions.length ? 'Choose a tournament from the list or create a new one.' : 'The compobj.txt file was loaded, but no competition objects were found.' }}</span>
-              <div><button type="button" class="tse-primary" (click)="openCreateWizard()">Create Tournament</button><button type="button" (click)="view = 'advanced'">Open Advanced View</button></div>
+              <span>{{ project.competitions.length ? 'Choose a tournament from the list or create a new one.' : 'The
+                compobj.txt file was loaded, but no competition objects were found.' }}</span>
+              <div><button type="button" class="tse-primary" (click)="openCreateWizard()">Create
+                  Tournament</button><button type="button" (click)="view = 'advanced'">Open Advanced View</button></div>
             </div>
           </ng-template>
         </ng-template>
       </main>
     </div>
 
-    <ng-template #advanced><app-compobj-advanced-view [project]="project" [reference]="compdataReferenceProject"></app-compobj-advanced-view></ng-template>
+    <ng-template #advanced><app-compobj-advanced-view [project]="project"
+        [reference]="compdataReferenceProject"></app-compobj-advanced-view></ng-template>
   </ng-container>
 
   <ng-template #noProject>
@@ -87,103 +76,213 @@
   </ng-template>
 </section>
 
-<app-create-tournament-wizard
-  *ngIf="dialog === 'create' && compdataProject"
-  [project]="compdataProject"
-  [reference]="compdataReferenceProject"
-  (create)="createTournament($event)"
-  (cancel)="closeDialog()"
-></app-create-tournament-wizard>
+<app-create-tournament-wizard *ngIf="dialog === 'create' && compdataProject" [project]="compdataProject"
+  [reference]="compdataReferenceProject" (create)="createTournament($event)"
+  (cancel)="closeDialog()"></app-create-tournament-wizard>
 
 <div class="tse-modal-backdrop" *ngIf="dialog === 'addPhase'">
   <section class="tse-modal" role="dialog" aria-modal="true">
-    <header class="tse-modal-header"><div><span>Tournament structure</span><h2>Add phase</h2></div><button type="button" (click)="closeDialog()">×</button></header>
+    <header class="tse-modal-header">
+      <div><span>Tournament structure</span>
+        <h2>Add phase</h2>
+      </div><button type="button" (click)="closeDialog()">×</button>
+    </header>
     <div class="tse-modal-body">
-      <label class="tse-field"><span>Phase type</span><select [(ngModel)]="phaseDraft.key"><option *ngFor="let option of phaseOptions" [value]="option.key">{{ option.label }}</option><option value="custom">Custom</option></select></label>
-      <label class="tse-field" *ngIf="phaseDraft.key === 'custom'"><span>Custom name key</span><input [(ngModel)]="phaseDraft.customKey" placeholder="FCE_Custom_Phase" /></label>
-      <label class="tse-field"><span>Internal code</span><input [(ngModel)]="phaseDraft.code" placeholder="S1" /></label>
-      <label class="tse-field"><span class="tse-capitalize">Number of {{ phaseDraftChildNoun }}</span><input type="number" min="0" [(ngModel)]="phaseDraft.childCount" /></label>
+      <label class="tse-field"><span>Phase type</span><select [(ngModel)]="phaseDraft.key">
+          <option *ngFor="let option of phaseOptions" [value]="option.key">{{ option.label }}</option>
+          <option value="custom">Custom</option>
+        </select></label>
+      <label class="tse-field" *ngIf="phaseDraft.key === 'custom'"><span>Custom name key</span><input
+          [(ngModel)]="phaseDraft.customKey" placeholder="FCE_Custom_Phase" /></label>
+      <label class="tse-field"><span>Internal code</span><input [(ngModel)]="phaseDraft.code"
+          placeholder="S1" /></label>
+      <label class="tse-field"><span class="tse-capitalize">Number of {{ phaseDraftChildNoun }}</span><input
+          type="number" min="0" [(ngModel)]="phaseDraft.childCount" /></label>
+      <label class="tse-field"><span>Teams per {{ display.childNoun({ id: 0, kind: 4, shortName: '', description:
+          phaseDraft.key, parentId: 0 }, 1) }}</span><input type="number" min="0"
+          [(ngModel)]="phaseDraft.teamsPerChild" /></label>
       <p class="tse-field-help">{{ phaseDraftInfo.description }}</p>
     </div>
-    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button" class="tse-primary" [disabled]="!effectivePhaseKey || !phaseDraft.code.trim()" (click)="addPhase()">Add phase</button></footer>
+    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button"
+        class="tse-primary" [disabled]="!effectivePhaseKey || !phaseDraft.code.trim()" (click)="addPhase()">Add
+        phase</button></footer>
   </section>
 </div>
 
 <div class="tse-modal-backdrop" *ngIf="dialog === 'addChild' && selectedPhase">
   <section class="tse-modal" role="dialog" aria-modal="true">
-    <header class="tse-modal-header"><div><span>{{ display.phaseInfo(selectedPhase.description).label }}</span><h2>Add {{ display.childNoun(selectedPhase, 1) }}</h2></div><button type="button" (click)="closeDialog()">×</button></header>
+    <header class="tse-modal-header">
+      <div><span>{{ display.phaseInfo(selectedPhase.description).label }}</span>
+        <h2>Add {{ display.childNoun(selectedPhase, 1) }}</h2>
+      </div><button type="button" (click)="closeDialog()">×</button>
+    </header>
     <div class="tse-modal-body">
-      <label class="tse-field"><span>{{ display.isGroupPhase(selectedPhase) ? 'Group code' : 'Slot code' }}</span><input [(ngModel)]="childDraft.code" placeholder="G1" /></label>
-      <label class="tse-field"><span>Name key (optional)</span><input [(ngModel)]="childDraft.description" placeholder="FCE_Group_A" /></label>
-      <p class="tse-field-help" *ngIf="display.isKnockoutPhase(selectedPhase)">Internally, match slots are still saved as Group type 5 objects.</p>
+      <label class="tse-field"><span>{{ display.isGroupPhase(selectedPhase) ? 'Group code' : 'Slot code' }}</span><input
+          [(ngModel)]="childDraft.code" placeholder="G1" /></label>
+      <label class="tse-field"><span>Name key (optional)</span><input [(ngModel)]="childDraft.description"
+          placeholder="FCE_Group_A" /></label>
+      <label class="tse-field"><span>Teams/positions</span><input type="number" min="0"
+          [(ngModel)]="childDraft.teams" /></label>
+      <p class="tse-field-help" *ngIf="display.isKnockoutPhase(selectedPhase)">Internally, match slots are still saved
+        as Group type 5 objects.</p>
     </div>
-    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button" class="tse-primary" [disabled]="!childDraft.code.trim()" (click)="addChild()">Add {{ display.childNoun(selectedPhase, 1) }}</button></footer>
+    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button"
+        class="tse-primary" [disabled]="!childDraft.code.trim()" (click)="addChild()">Add {{
+        display.childNoun(selectedPhase, 1) }}</button></footer>
   </section>
 </div>
 
 <div class="tse-modal-backdrop" *ngIf="dialog === 'editTournament' && compdataProject">
   <section class="tse-modal" role="dialog" aria-modal="true">
-    <header class="tse-modal-header"><div><span>Tournament</span><h2>Edit tournament</h2></div><button type="button" (click)="closeDialog()">×</button></header>
+    <header class="tse-modal-header">
+      <div><span>Tournament</span>
+        <h2>Edit tournament</h2>
+      </div><button type="button" (click)="closeDialog()">×</button>
+    </header>
     <div class="tse-modal-body">
       <label class="tse-field"><span>Tournament name key</span><input [(ngModel)]="tournamentDraft.nameKey" /></label>
       <label class="tse-field"><span>Internal code</span><input [(ngModel)]="tournamentDraft.code" /></label>
-      <label class="tse-field"><span>Belongs to</span><select [(ngModel)]="tournamentDraft.parentId"><option *ngFor="let object of locationOptions" [ngValue]="object.id">{{ display.objectName(object, compdataReferenceProject, compdataProject) }}</option></select></label>
+      <label class="tse-field"><span>Belongs to</span><select [(ngModel)]="tournamentDraft.parentId">
+          <option *ngFor="let object of locationOptions" [ngValue]="object.id">{{ display.objectName(object,
+            compdataReferenceProject, compdataProject) }}</option>
+        </select></label>
     </div>
-    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button" class="tse-primary" [disabled]="!tournamentDraft.nameKey.trim() || !tournamentDraft.code.trim()" (click)="saveTournamentEdit()">Save changes</button></footer>
+    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button"
+        class="tse-primary" [disabled]="!tournamentDraft.nameKey.trim() || !tournamentDraft.code.trim()"
+        (click)="saveTournamentEdit()">Save changes</button></footer>
   </section>
 </div>
 
 <div class="tse-modal-backdrop" *ngIf="dialog === 'editPhase'">
   <section class="tse-modal" role="dialog" aria-modal="true">
-    <header class="tse-modal-header"><div><span>Phase</span><h2>Edit phase</h2></div><button type="button" (click)="closeDialog()">×</button></header>
+    <header class="tse-modal-header">
+      <div><span>Phase</span>
+        <h2>Edit phase</h2>
+      </div><button type="button" (click)="closeDialog()">×</button>
+    </header>
     <div class="tse-modal-body">
-      <label class="tse-field"><span>Phase type</span><select [(ngModel)]="phaseDraft.key"><option *ngFor="let option of phaseOptions" [value]="option.key">{{ option.label }}</option><option value="custom">Custom</option></select></label>
-      <label class="tse-field" *ngIf="phaseDraft.key === 'custom'"><span>Custom name key</span><input [(ngModel)]="phaseDraft.customKey" /></label>
+      <label class="tse-field"><span>Phase type</span><select [(ngModel)]="phaseDraft.key">
+          <option *ngFor="let option of phaseOptions" [value]="option.key">{{ option.label }}</option>
+          <option value="custom">Custom</option>
+        </select></label>
+      <label class="tse-field" *ngIf="phaseDraft.key === 'custom'"><span>Custom name key</span><input
+          [(ngModel)]="phaseDraft.customKey" /></label>
       <label class="tse-field"><span>Internal code</span><input [(ngModel)]="phaseDraft.code" /></label>
-      <p class="tse-field-help">Belongs to: {{ selectedTournamentObject ? display.objectName(selectedTournamentObject, compdataReferenceProject, compdataProject) : '' }}</p>
+      <p class="tse-field-help">Belongs to: {{ selectedTournamentObject ? display.objectName(selectedTournamentObject,
+        compdataReferenceProject, compdataProject) : '' }}</p>
     </div>
-    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button" class="tse-primary" [disabled]="!effectivePhaseKey || !phaseDraft.code.trim()" (click)="savePhaseEdit()">Save changes</button></footer>
+    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button"
+        class="tse-primary" [disabled]="!effectivePhaseKey || !phaseDraft.code.trim()" (click)="savePhaseEdit()">Save
+        changes</button></footer>
+  </section>
+</div>
+
+<div class="tse-modal-backdrop" *ngIf="dialog === 'editPhaseQuantities'">
+  <section class="tse-modal" role="dialog" aria-modal="true">
+    <header class="tse-modal-header">
+      <div><span>Phase</span>
+        <h2>Edit quantities</h2>
+      </div><button type="button" (click)="closeDialog()">×</button>
+    </header>
+    <div class="tse-modal-body">
+      <label class="tse-field"><span class="tse-capitalize">Number of {{ selectedPhase ?
+          display.childNoun(selectedPhase, 2) : 'items' }}</span><input type="number" min="0"
+          [(ngModel)]="phaseQuantitiesDraft.groups" /></label>
+      <label class="tse-field"><span>Teams/positions per {{ selectedPhase ? display.childNoun(selectedPhase, 1) : 'item'
+          }}</span><input type="number" min="0" [(ngModel)]="phaseQuantitiesDraft.teams" /></label>
+      <p class="tse-field-help">DBM Studio will automatically create or remove objects and standings lines to match
+        these numbers.</p>
+    </div>
+    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button"
+        class="tse-primary" (click)="savePhaseQuantitiesEdit()">Save changes</button></footer>
   </section>
 </div>
 
 <div class="tse-modal-backdrop" *ngIf="dialog === 'editChild' && compdataProject">
   <section class="tse-modal" role="dialog" aria-modal="true">
-    <header class="tse-modal-header"><div><span>Group / match slot</span><h2>Edit item</h2></div><button type="button" (click)="closeDialog()">×</button></header>
-    <div class="tse-modal-body"><label class="tse-field"><span>Label / code</span><input [(ngModel)]="childDraft.code" /></label><label class="tse-field"><span>Name key (optional)</span><input [(ngModel)]="childDraft.description" /></label><p class="tse-field-help">Belongs to: {{ selectedPhase ? display.phaseInfo(selectedPhase.description).label : '' }}</p></div>
-    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button" class="tse-primary" [disabled]="!childDraft.code.trim()" (click)="saveChildEdit()">Save changes</button></footer>
+    <header class="tse-modal-header">
+      <div><span>Group / match slot</span>
+        <h2>Edit item</h2>
+      </div><button type="button" (click)="closeDialog()">×</button>
+    </header>
+    <div class="tse-modal-body">
+      <label class="tse-field"><span>Label / code</span><input [(ngModel)]="childDraft.code" /></label>
+      <label class="tse-field"><span>Name key (optional)</span><input [(ngModel)]="childDraft.description" /></label>
+      <label class="tse-field"><span>Teams/positions</span><input type="number" min="0"
+          [(ngModel)]="childDraft.teams" /></label>
+      <p class="tse-field-help">Belongs to: {{ selectedPhase ? display.phaseInfo(selectedPhase.description).label : ''
+        }}</p>
+    </div>
+    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button"
+        class="tse-primary" [disabled]="!childDraft.code.trim()" (click)="saveChildEdit()">Save changes</button>
+    </footer>
   </section>
 </div>
 
 <div class="tse-modal-backdrop" *ngIf="dialog === 'delete' && deleteTarget">
   <section class="tse-modal tse-confirm" role="alertdialog" aria-modal="true">
-    <header class="tse-modal-header"><div><span>Confirm deletion</span><h2>{{ deleteTarget.kind === 'tournament' ? 'Delete tournament structure?' : deleteTarget.kind === 'phase' ? 'Delete phase?' : 'Delete group / match slot?' }}</h2></div></header>
+    <header class="tse-modal-header">
+      <div><span>Confirm deletion</span>
+        <h2>{{ deleteTarget.kind === 'tournament' ? 'Delete tournament structure?' : deleteTarget.kind === 'phase' ?
+          'Delete phase?' : 'Delete group / match slot?' }}</h2>
+      </div>
+    </header>
     <div class="tse-modal-body">
-      <p *ngIf="deleteTarget.kind === 'tournament'">This will remove the tournament, its phases and its groups from compobj.txt. It will not remove teams, schedules or rules from other compdata files.</p>
+      <p *ngIf="deleteTarget.kind === 'tournament'">This will remove the tournament, its phases and its groups from
+        compobj.txt. It will not remove teams, schedules or rules from other compdata files.</p>
       <p *ngIf="deleteTarget.kind === 'phase'">This will remove this phase and all groups or match slots inside it.</p>
       <p *ngIf="deleteTarget.kind === 'child'">This will remove this group or match slot from the phase.</p>
     </div>
-    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button" class="tse-danger" (click)="confirmDelete()">Delete</button></footer>
+    <footer class="tse-modal-actions"><button type="button" (click)="closeDialog()">Cancel</button><button type="button"
+        class="tse-danger" (click)="confirmDelete()">Delete</button></footer>
   </section>
 </div>
 
 <div class="tse-modal-backdrop" *ngIf="dialog === 'validation'">
   <section class="tse-modal" role="dialog" aria-modal="true">
-    <header class="tse-modal-header"><div><span>Validation result</span><h2>{{ validationHeading }}</h2></div><button type="button" (click)="closeDialog()">×</button></header>
+    <header class="tse-modal-header">
+      <div><span>Validation result</span>
+        <h2>{{ validationHeading }}</h2>
+      </div><button type="button" (click)="closeDialog()">×</button>
+    </header>
     <div class="tse-modal-body tse-validation-list">
-      <ng-container *ngIf="validationIssues.length; else validStructure"><article *ngFor="let issue of validationIssues" [class.error]="issue.severity === 'error'"><strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}</strong><span>{{ issue.message }}</span><small *ngIf="issue.technical">Technical detail: {{ issue.technical }}</small></article></ng-container>
-      <ng-template #validStructure><ul class="tse-success-list"><li>IDs are unique</li><li>Parents are valid</li><li>Tournament has phases</li><li>Phases have groups or slots</li></ul></ng-template>
+      <ng-container *ngIf="validationIssues.length; else validStructure">
+        <article *ngFor="let issue of validationIssues" [class.error]="issue.severity === 'error'"><strong>{{
+            issue.severity === 'error' ? 'Error' : 'Warning' }}</strong><span>{{ issue.message }}</span><small
+            *ngIf="issue.technical">Technical detail: {{ issue.technical }}</small></article>
+      </ng-container>
+      <ng-template #validStructure>
+        <ul class="tse-success-list">
+          <li>IDs are unique</li>
+          <li>Parents are valid</li>
+          <li>Tournament has phases</li>
+          <li>Phases have groups or slots</li>
+        </ul>
+      </ng-template>
     </div>
-    <footer class="tse-modal-actions"><button type="button" class="tse-primary" (click)="closeDialog()">Done</button></footer>
+    <footer class="tse-modal-actions"><button type="button" class="tse-primary" (click)="closeDialog()">Done</button>
+    </footer>
   </section>
 </div>
 
 <div class="tse-modal-backdrop" *ngIf="dialog === 'preview'">
   <section class="tse-modal tse-preview-modal" role="dialog" aria-modal="true">
-    <header class="tse-modal-header"><div><span>compobj.txt preview</span><h2>Generated tournament lines</h2></div><button type="button" (click)="closeDialog()">×</button></header>
+    <header class="tse-modal-header">
+      <div><span>compobj.txt preview</span>
+        <h2>Generated tournament lines</h2>
+      </div><button type="button" (click)="closeDialog()">×</button>
+    </header>
     <div class="tse-modal-body">
-      <div class="tse-preview-summary"><div><strong>{{ previewAdded }}</strong><span>Added</span></div><div><strong>{{ previewEdited }}</strong><span>Edited</span></div><div><strong>{{ previewRemoved }}</strong><span>Removed</span></div><div><strong>{{ validationIssues.length }}</strong><span>Warnings</span></div></div>
-      <div class="tse-generated-lines"><code *ngFor="let object of previewObjects">{{ display.rawLine(object) }}</code></div>
+      <div class="tse-preview-summary">
+        <div><strong>{{ previewAdded }}</strong><span>Added</span></div>
+        <div><strong>{{ previewEdited }}</strong><span>Edited</span></div>
+        <div><strong>{{ previewRemoved }}</strong><span>Removed</span></div>
+        <div><strong>{{ validationIssues.length }}</strong><span>Warnings</span></div>
+      </div>
+      <div class="tse-generated-lines"><code *ngFor="let object of previewObjects">{{ display.rawLine(object) }}</code>
+      </div>
     </div>
-    <footer class="tse-modal-actions"><button type="button" class="tse-primary" (click)="closeDialog()">Close preview</button></footer>
+    <footer class="tse-modal-actions"><button type="button" class="tse-primary" (click)="closeDialog()">Close
+        preview</button></footer>
   </section>
 </div>
