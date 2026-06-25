@@ -4,6 +4,8 @@ import { FormsModule } from "@angular/forms";
 import type { CompdataProject, DbProject } from "../../../shared/types";
 import { InputListComponent, InputListOption } from "../../components/input-list/input-list.component";
 import { CompObjDisplayService } from "../../services/compdata/compobj-display.service";
+import { TeamEditorService } from "../../services/team-editor.service";
+import type { TeamSearchResult } from "../../services/team-editor.service";
 import { nations } from "../../../utils/get-nations/get-nations";
 
 export interface CreateTournamentRequest {
@@ -113,17 +115,49 @@ export interface CreateTournamentRequest {
           </ng-container>
 
           <ng-container *ngIf="step === 4">
-            <p>You can add initial teams now or leave this empty and configure them later.</p>
+            <p>Select the teams that will start in this tournament. The order below is used as the initial seed or previous-season ranking.</p>
             <div class="tse-choice-grid">
-              <button type="button" [class.active]="teamsChoice === 'skip'" (click)="teamsChoice = 'skip'"><strong>Skip for now</strong><span>Don't add teams yet.</span></button>
-              <button type="button" [class.active]="teamsChoice === 'paste'" (click)="teamsChoice = 'paste'"><strong>Paste team IDs</strong><span>Paste a list of Team IDs.</span></button>
+              <button type="button" [class.active]="teamsChoice === 'visual'" (click)="teamsChoice = 'visual'"><strong>Choose clubs</strong><span>Search and select clubs by name.</span></button>
+              <button type="button" [class.active]="teamsChoice === 'auto'" (click)="teamsChoice = 'auto'" disabled title="Auto-fill requires club country data."><strong>Auto-fill</strong><span>Fill with clubs from the selected country.</span></button>
+              <button type="button" [class.active]="teamsChoice === 'paste'" (click)="teamsChoice = 'paste'"><strong>Advanced import</strong><span>Paste Team IDs manually.</span></button>
+              <button type="button" [class.active]="teamsChoice === 'skip'" (click)="teamsChoice = 'skip'"><strong>Skip for now</strong><span>Configure teams later.</span></button>
             </div>
             
+            <div *ngIf="teamsChoice === 'visual'" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px;">
+              <div>
+                <strong>Add Team</strong>
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                  <label class="tse-field" style="flex: 1;">
+                    <input type="number" min="0" [(ngModel)]="teamIdInput" placeholder="Team ID (e.g. 241)" (keyup.enter)="addTeamById()" />
+                  </label>
+                  <button type="button" class="tse-primary" (click)="addTeamById()">Add</button>
+                </div>
+              </div>
+              <div>
+                <strong>Selected teams</strong>
+                <div class="tse-child-list" style="margin-top: 8px; max-height: 350px; overflow-y: auto;" *ngIf="selectedTeams.length > 0; else noSelectedTeams">
+                  <article *ngFor="let team of selectedTeams; let index = index" style="padding: 12px; gap: 8px;">
+                    <span class="tse-child-icon">{{ index + 1 }}</span>
+                    <div style="flex: 1;">
+                      <strong style="display: block;">{{ team.name }}</strong>
+                      <span style="font-size: 12px; color: var(--tse-text-muted);">teamId {{ team.teamId }}</span>
+                    </div>
+                    <button type="button" (click)="moveTeamUp(index)" [disabled]="index === 0" title="Move up">↑</button>
+                    <button type="button" (click)="moveTeamDown(index)" [disabled]="index === selectedTeams.length - 1" title="Move down">↓</button>
+                    <button type="button" class="tse-danger-link" (click)="removeTeam(index)" title="Remove">×</button>
+                  </article>
+                </div>
+                <ng-template #noSelectedTeams><div class="tse-inline-empty" style="margin-top: 8px;">No teams selected yet.</div></ng-template>
+                <div style="margin-top: 8px; font-weight: 500; font-size: 13px;">{{ selectedTeams.length }} teams selected</div>
+              </div>
+            </div>
+
             <div class="tse-template-settings" *ngIf="teamsChoice === 'paste'" style="margin-top: 16px;">
-              <strong>Paste Team IDs</strong>
+              <strong>Advanced: import by Team IDs</strong>
               <div style="margin-top: 8px;">
                 <label class="tse-field"><textarea [(ngModel)]="pastedTeamIds" rows="5" placeholder="191&#10;254&#10;111821" style="width: 100%; resize: vertical; font-family: monospace;"></textarea></label>
-                <small class="tse-entity-note">Enter one Team ID per line or comma-separated.</small>
+                <small class="tse-entity-note">Enter one Team ID per line or comma-separated. Use this only if you already know the internal team IDs.</small>
+                <button type="button" style="margin-top: 8px;" (click)="parsePastedTeamIds()">Preview and Convert to Visual List</button>
               </div>
             </div>
           </ng-container>
@@ -142,9 +176,26 @@ export interface CreateTournamentRequest {
                 </small>
               </div>
               <div><span>Structure</span><ul><li *ngFor="let phase of templatePhases">{{ phase }}</li><li *ngIf="!templatePhases.length">No phases yet</li></ul></div>
+              
+              <div>
+                <span>Starting teams</span>
+                <ul *ngIf="teamsChoice !== 'skip' && selectedTeams.length > 0; else skippedTeams">
+                  <li *ngFor="let team of selectedTeams; let index = index">{{ index + 1 }}. {{ team.name }} <small style="color: var(--tse-text-muted);">({{ team.teamId }})</small></li>
+                </ul>
+                <ng-template #skippedTeams>
+                  <div><strong>Not configured yet</strong><small style="display: block; color: var(--tse-text-muted); margin-top: 4px;">You can configure teams later in Teams / Seeding.</small></div>
+                </ng-template>
+              </div>
             </div>
             <details class="tse-technical">
-              <summary>Show generated lines</summary>
+              <summary>Show generated initteams lines</summary>
+              <ng-container *ngIf="generatedInitTeamsLines.length; else noInitTeams">
+                <code *ngFor="let line of generatedInitTeamsLines">{{ line }}</code>
+              </ng-container>
+              <ng-template #noInitTeams><p>No initteams lines generated.</p></ng-template>
+            </details>
+            <details class="tse-technical" style="margin-top: 8px;">
+              <summary>Show all other generated lines</summary>
               <div style="margin-bottom: 8px; font-weight: 500;">Generated compobj lines:</div>
               <code *ngFor="let line of generatedLines">{{ line }}</code>
               <div style="margin-top: 16px; margin-bottom: 8px; font-weight: 500;">Generated compids line:</div>
@@ -152,10 +203,6 @@ export interface CreateTournamentRequest {
               <ng-container *ngIf="generatedStandingsLines.length">
                 <div style="margin-top: 16px; margin-bottom: 8px; font-weight: 500;">Generated standings lines:</div>
                 <code *ngFor="let line of generatedStandingsLines">{{ line }}</code>
-              </ng-container>
-              <ng-container *ngIf="generatedInitTeamsLines.length">
-                <div style="margin-top: 16px; margin-bottom: 8px; font-weight: 500;">Generated initteams lines:</div>
-                <code *ngFor="let line of generatedInitTeamsLines">{{ line }}</code>
               </ng-container>
             </details>
           </ng-container>
@@ -186,9 +233,13 @@ export class CreateTournamentWizardComponent implements OnInit {
   groupStageGroups = 8;
   groupStageTeams = 4;
   cupInitialTeams = 16;
-  teamsChoice: "skip" | "paste" = "skip";
+  teamsChoice: "visual" | "auto" | "paste" | "skip" = "visual";
   pastedTeamIds = "";
-  constructor(public readonly display: CompObjDisplayService) {}
+  
+  teamIdInput = "";
+  selectedTeams: { teamId: string, name: string }[] = [];
+  
+  constructor(public readonly display: CompObjDisplayService, private teamEditor: TeamEditorService) {}
 
   ngOnInit() {
     this.tournamentId = this.suggestedTournamentId;
@@ -248,9 +299,60 @@ export class CreateTournamentWizardComponent implements OnInit {
       return Boolean(parent && parent.kind === this.locationType && parent.kind >= 0 && parent.kind <= 2);
     }
     if (this.step === 2) return Boolean(this.tournamentId && this.tournamentId > 0 && this.nameKey.trim() && this.internalCode.trim() && !this.isCodeAlreadyUsed);
-    if (this.step === 4) return this.teamsChoice === 'skip' || (this.teamsChoice === 'paste' && Boolean(this.pastedTeamIds.trim()));
+    if (this.step === 4) return this.teamsChoice === 'skip' || (this.teamsChoice === 'paste' && Boolean(this.pastedTeamIds.trim())) || this.selectedTeams.length > 0;
     return true;
   }
+
+  addTeamById() {
+    const tid = this.teamIdInput?.toString().trim();
+    if (!tid) return;
+    
+    // Attempt to resolve name if database is loaded
+    const results = this.teamEditor.findTeams(this.reference, tid, 1);
+    const exact = results.find(r => r.teamId === tid);
+    
+    this.selectedTeams.push({ 
+      teamId: tid, 
+      name: exact ? exact.displayName : "Unknown team" 
+    });
+    this.teamIdInput = "";
+  }
+
+  removeTeam(index: number) {
+    this.selectedTeams.splice(index, 1);
+  }
+
+  moveTeamUp(index: number) {
+    if (index > 0) {
+      const temp = this.selectedTeams[index - 1];
+      this.selectedTeams[index - 1] = this.selectedTeams[index];
+      this.selectedTeams[index] = temp;
+    }
+  }
+
+  moveTeamDown(index: number) {
+    if (index < this.selectedTeams.length - 1) {
+      const temp = this.selectedTeams[index + 1];
+      this.selectedTeams[index + 1] = this.selectedTeams[index];
+      this.selectedTeams[index] = temp;
+    }
+  }
+
+  parsePastedTeamIds() {
+    if (!this.pastedTeamIds.trim()) return;
+    const tokens = this.pastedTeamIds.split(/[\s,]+/).map(t => t.trim()).filter(t => t);
+    for (const token of tokens) {
+      const results = this.teamEditor.findTeams(this.reference, token, 1);
+      const exact = results.find(r => r.teamId === token);
+      this.selectedTeams.push({
+        teamId: token,
+        name: exact ? exact.displayName : "Unknown team"
+      });
+    }
+    this.pastedTeamIds = "";
+    this.teamsChoice = "visual"; // switch to visual view to see them
+  }
+
   get existingCountry() {
     if (this.locationType !== 2) return undefined;
     const targetDesc = `NationName_${this.parentId}`.toLowerCase();
@@ -389,16 +491,15 @@ export class CreateTournamentWizardComponent implements OnInit {
   }
 
   get generatedInitTeamsLines(): string[] {
-    if (this.teamsChoice !== 'paste' || !this.pastedTeamIds.trim()) return [];
+    if (this.selectedTeams.length === 0) return [];
     
     let id = Math.max(0, ...this.project.objects.map((object) => object.id));
     if (this.locationType === 2 && this.willCreateCountry) id++;
     id++; // compId
     
     const lines: string[] = [];
-    const rawIds = this.pastedTeamIds.split(/[\n,]/).map(s => s.trim()).filter(s => s);
-    rawIds.forEach((tid, i) => {
-      lines.push(`${id},${i},${tid}`);
+    this.selectedTeams.forEach((team, i) => {
+      lines.push(`${id},${i},${team.teamId}`);
     });
     return lines;
   }
@@ -464,9 +565,9 @@ export class CreateTournamentWizardComponent implements OnInit {
         leagueGroups: this.leagueGroups,
         leagueTeams: this.leagueTeams,
         groupStageGroups: this.groupStageGroups,
-        groupStageTeams: this.groupStageTeams,
-        cupInitialTeams: this.cupInitialTeams,
-        initialTeams: this.teamsChoice === 'paste' ? this.pastedTeamIds.split(/[\n,]/).map(s => s.trim()).filter(s => s) : []
+        groupStageTeams: this.template === "groupStage" ? this.groupStageTeams : undefined,
+        cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
+        initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined
       });
       return;
     }
@@ -482,9 +583,9 @@ export class CreateTournamentWizardComponent implements OnInit {
       leagueGroups: this.leagueGroups,
       leagueTeams: this.leagueTeams,
       groupStageGroups: this.groupStageGroups,
-      groupStageTeams: this.groupStageTeams,
-      cupInitialTeams: this.cupInitialTeams,
-      initialTeams: this.teamsChoice === 'paste' ? this.pastedTeamIds.split(/[\n,]/).map(s => s.trim()).filter(s => s) : []
+      groupStageTeams: this.template === "groupStage" ? this.groupStageTeams : undefined,
+      cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
+      initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined
     });
   }
 }
