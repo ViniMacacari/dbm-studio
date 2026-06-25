@@ -5,7 +5,10 @@ import type { CompdataProject, DbProject } from "../../../shared/types";
 import { InputListComponent, InputListOption } from "../../components/input-list/input-list.component";
 import { CompObjDisplayService } from "../../services/compdata/compobj-display.service";
 import { TeamEditorService } from "../../services/team-editor.service";
+import { AdvancementService } from "../../services/compdata/advancement.service";
+import { AdvancementDisplayService } from "../../services/compdata/advancement-display.service";
 import type { TeamSearchResult } from "../../services/team-editor.service";
+import type { CompdataAdvancement, CompdataObject } from "../../../shared/types";
 import { nations } from "../../../utils/get-nations/get-nations";
 
 export interface CreateTournamentRequest {
@@ -21,6 +24,7 @@ export interface CreateTournamentRequest {
   groupStageTeams?: number;
   cupInitialTeams?: number;
   initialTeams?: string[];
+  advancements?: CompdataAdvancement[];
 }
 
 @Component({
@@ -30,8 +34,8 @@ export interface CreateTournamentRequest {
   template: `
     <div class="tse-modal-backdrop">
       <section class="tse-modal tse-wizard" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
-        <header class="tse-modal-header"><div><span>Step {{ step }} of 5</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
-        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4,5]" [class.active]="item <= step"></span></div>
+        <header class="tse-modal-header"><div><span>Step {{ step }} of 6</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
+        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4,5,6]" [class.active]="item <= step"></span></div>
         <div class="tse-modal-body">
           <ng-container *ngIf="step === 1">
             <p>Choose where this tournament will be placed in the compobj structure.</p>
@@ -163,6 +167,28 @@ export interface CreateTournamentRequest {
           </ng-container>
 
           <ng-container *ngIf="step === 5">
+            <p>Choose how teams move between phases. DBM Studio can generate this automatically for simple structures.</p>
+            <div class="tse-choice-grid">
+              <button type="button" [class.active]="advancementChoice === 'auto'" (click)="advancementChoice = 'auto'; generateAdvancementPreview()"><strong>Auto-generate</strong><span>Recommended for simple cups and knockout tournaments.</span></button>
+              <button type="button" [class.active]="advancementChoice === 'skip'" (click)="advancementChoice = 'skip'"><strong>Skip for now</strong><span>Leave advancement empty and configure later.</span></button>
+            </div>
+            
+            <div *ngIf="advancementChoice === 'auto'" style="margin-top: 24px;">
+              <div *ngIf="generatedAdvancementRules.length > 0; else noAutoAdv" style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="font-weight: 500; margin-bottom: 8px;">Auto-generated rules ({{ generatedAdvancementRules.length }}):</div>
+                <article *ngFor="let rule of generatedAdvancementRules" style="padding: 12px; border: 1px solid var(--tse-border); border-radius: 6px; background: var(--tse-bg-subtle);">
+                  <div style="font-size: 14px;">{{ describeMockRule(rule) }}</div>
+                </article>
+              </div>
+              <ng-template #noAutoAdv>
+                <div class="tse-inline-empty" style="margin-top: 16px;">
+                  No obvious knockout phase connections could be detected for this template.
+                </div>
+              </ng-template>
+            </div>
+          </ng-container>
+
+          <ng-container *ngIf="step === 6">
             <div class="tse-review">
               <div><span>Tournament ID</span><strong>{{ tournamentId }}</strong></div>
               <div><span>Generated internal code</span><strong>{{ internalCode }}</strong></div>
@@ -195,6 +221,13 @@ export interface CreateTournamentRequest {
               <ng-template #noInitTeams><p>No initteams lines generated.</p></ng-template>
             </details>
             <details class="tse-technical" style="margin-top: 8px;">
+              <summary>Show generated advancement lines</summary>
+              <ng-container *ngIf="generatedAdvancementRules.length > 0 && advancementChoice !== 'skip'; else noAdvLines">
+                <code *ngFor="let rule of generatedAdvancementRules">{{ rule.fromGroupId }},{{ rule.fromPosition }},{{ rule.toGroupId }},{{ rule.toPosition }}</code>
+              </ng-container>
+              <ng-template #noAdvLines><p>No advancement lines generated.</p></ng-template>
+            </details>
+            <details class="tse-technical" style="margin-top: 8px;">
               <summary>Show all other generated lines</summary>
               <div style="margin-bottom: 8px; font-weight: 500;">Generated compobj lines:</div>
               <code *ngFor="let line of generatedLines">{{ line }}</code>
@@ -207,7 +240,7 @@ export interface CreateTournamentRequest {
             </details>
           </ng-container>
         </div>
-        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 5" [disabled]="!canContinue" (click)="step = step + 1">Continue</button><button type="button" class="tse-primary" *ngIf="step === 5" (click)="submit()">Create tournament</button></footer>
+        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 6" [disabled]="!canContinue" (click)="onContinue()">Continue</button><button type="button" class="tse-primary" *ngIf="step === 6" (click)="submit()">Create tournament</button></footer>
       </section>
     </div>
   `
@@ -239,7 +272,16 @@ export class CreateTournamentWizardComponent implements OnInit {
   teamIdInput = "";
   selectedTeams: { teamId: string, name: string }[] = [];
   
-  constructor(public readonly display: CompObjDisplayService, private teamEditor: TeamEditorService) {}
+  advancementChoice: "auto" | "skip" = "skip";
+  generatedAdvancementRules: CompdataAdvancement[] = [];
+  mockObjectsForAdvancement: CompdataObject[] = [];
+
+  constructor(
+    public readonly display: CompObjDisplayService, 
+    private teamEditor: TeamEditorService,
+    private advService: AdvancementService,
+    private advDisplay: AdvancementDisplayService
+  ) {}
 
   ngOnInit() {
     this.tournamentId = this.suggestedTournamentId;
@@ -278,7 +320,7 @@ export class CreateTournamentWizardComponent implements OnInit {
     );
   }
 
-  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Choose initial teams", "Review"][this.step]; }
+  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Choose initial teams", "Configure advancement", "Review"][this.step]; }
   get locationTypeLabel(): string { return this.locationType === 2 ? "Country" : this.locationType === 1 ? "Confederation" : "World/FIFA"; }
   get locationPickerPlaceholder(): string { return `Choose ${this.locationType === 2 ? "a country" : this.locationType === 1 ? "a confederation" : "World/FIFA"}...`; }
   get locationSearchPlaceholder(): string { return `Search ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA"}...`; }
@@ -301,6 +343,80 @@ export class CreateTournamentWizardComponent implements OnInit {
     if (this.step === 2) return Boolean(this.tournamentId && this.tournamentId > 0 && this.nameKey.trim() && this.internalCode.trim() && !this.isCodeAlreadyUsed);
     if (this.step === 4) return this.teamsChoice === 'skip' || (this.teamsChoice === 'paste' && Boolean(this.pastedTeamIds.trim())) || this.selectedTeams.length > 0;
     return true;
+  }
+
+  onContinue() {
+    this.step++;
+    if (this.step === 5) {
+      if (this.template === "cup") {
+        this.advancementChoice = "auto";
+        this.generateAdvancementPreview();
+      } else {
+        this.advancementChoice = "skip";
+      }
+    }
+  }
+
+  generateAdvancementPreview() {
+    this.mockObjectsForAdvancement = this.generateMockObjects();
+    const mockPhases = this.mockObjectsForAdvancement.filter(o => o.kind === 4).sort((a, b) => a.id - b.id);
+    const mockProject: CompdataProject = {
+      ...this.project,
+      objects: this.mockObjectsForAdvancement
+    };
+    this.generatedAdvancementRules = this.advService.autoGenerateKnockoutRules(mockPhases, mockProject);
+  }
+
+  describeMockRule(rule: CompdataAdvancement): string {
+    const mockProject: CompdataProject = { ...this.project, objects: this.mockObjectsForAdvancement };
+    return this.advDisplay.describeRule(rule, mockProject, this.reference);
+  }
+
+  generateMockObjects(): CompdataObject[] {
+    const objects: CompdataObject[] = [];
+    let id = Math.max(0, ...this.project.objects.map((object) => object.id));
+    let resolvedParentId = this.parentId;
+    
+    if (this.locationType === 2 && this.willCreateCountry) {
+      id++;
+      resolvedParentId = id;
+    }
+    
+    id++;
+    const compId = id;
+    objects.push({ id: compId, kind: 3, shortName: this.internalCode, description: this.nameKey, parentId: resolvedParentId });
+    
+    if (this.template === "league") {
+      id++;
+      const phaseId = id;
+      objects.push({ id: phaseId, kind: 4, shortName: "S1", description: "FCE_League_Stage", parentId: compId });
+      for (let i = 0; i < this.leagueGroups; i++) {
+        objects.push({ id: ++id, kind: 5, shortName: `G${i + 1}`, description: "", parentId: phaseId });
+      }
+    } else if (this.template === "groupStage") {
+      id++;
+      const phaseId = id;
+      objects.push({ id: phaseId, kind: 4, shortName: "S1", description: "FCE_Group_Stage", parentId: compId });
+      for (let i = 0; i < this.groupStageGroups; i++) {
+        objects.push({ id: ++id, kind: 5, shortName: `G${i + 1}`, description: "", parentId: phaseId });
+      }
+    } else if (this.template === "cup") {
+      const phasesToCreate: Array<{key: string, slots: number}> = [{ key: "FCE_Setup_Stage", slots: 1 }];
+      if (this.cupInitialTeams >= 16) phasesToCreate.push({ key: "FCE_Round_1", slots: 8 });
+      if (this.cupInitialTeams >= 8) phasesToCreate.push({ key: "FCE_Quarter_Finals", slots: 4 });
+      if (this.cupInitialTeams >= 4) phasesToCreate.push({ key: "FCE_Semi_Finals", slots: 2 });
+      if (this.cupInitialTeams >= 2) phasesToCreate.push({ key: "FCE_Final", slots: 1 });
+      
+      phasesToCreate.forEach((phase, index) => {
+        id++;
+        const phaseId = id;
+        objects.push({ id: phaseId, kind: 4, shortName: `S${index + 1}`, description: phase.key, parentId: compId });
+        for (let i = 0; i < phase.slots; i++) {
+          objects.push({ id: ++id, kind: 5, shortName: `G${i + 1}`, description: "", parentId: phaseId });
+        }
+      });
+    }
+    return objects;
   }
 
   addTeamById() {
@@ -567,7 +683,8 @@ export class CreateTournamentWizardComponent implements OnInit {
         groupStageGroups: this.groupStageGroups,
         groupStageTeams: this.template === "groupStage" ? this.groupStageTeams : undefined,
         cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
-        initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined
+        initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined,
+        advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined
       });
       return;
     }
@@ -585,7 +702,8 @@ export class CreateTournamentWizardComponent implements OnInit {
       groupStageGroups: this.groupStageGroups,
       groupStageTeams: this.template === "groupStage" ? this.groupStageTeams : undefined,
       cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
-      initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined
+      initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined,
+      advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined
     });
   }
 }

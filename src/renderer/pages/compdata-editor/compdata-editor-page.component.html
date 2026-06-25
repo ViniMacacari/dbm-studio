@@ -47,6 +47,8 @@
               (click)="activeTab = 'structure'">Structure</button>
             <button type="button" class="tse-tab" [class.active]="activeTab === 'teams'"
               (click)="activeTab = 'teams'">Teams / Seeding</button>
+            <button type="button" class="tse-tab" [class.active]="activeTab === 'advancement'"
+              (click)="activeTab = 'advancement'">Advancement</button>
           </div>
 
           <ng-container *ngIf="selectedCompetition; else selectTournamentState">
@@ -60,6 +62,10 @@
             <app-tournament-teams-setup *ngIf="activeTab === 'teams'" [project]="project"
               [referenceProject]="compdataReferenceProject" [competition]="selectedCompetition"
               (structureChanged)="compdataDirty = true"></app-tournament-teams-setup>
+
+            <app-tournament-advancement *ngIf="activeTab === 'advancement'" [project]="project"
+              [referenceProject]="compdataReferenceProject" [competition]="selectedCompetition"
+              (structureChanged)="compdataDirty = true"></app-tournament-advancement>
           </ng-container>
 
           <ng-template #selectTournamentState>

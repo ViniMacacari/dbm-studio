@@ -383,6 +383,23 @@ export function saveCompdataProject(project: CompdataProject): { folderPath: str
     });
   }
 
+  if (project.advancements && project.advancements.length > 0) {
+    const sortedAdvancements = [...project.advancements].sort((a, b) => {
+      // Sort by fromGroupId, then fromPosition
+      if (a.fromGroupId !== b.fromGroupId) {
+        const idxA = project.objects.findIndex(o => o.id === a.fromGroupId);
+        const idxB = project.objects.findIndex(o => o.id === b.fromGroupId);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        return a.fromGroupId - b.fromGroupId;
+      }
+      return a.fromPosition - b.fromPosition;
+    });
+    writes.push({
+      fileName: "advancement.txt",
+      content: sortedAdvancements.map(a => line([a.fromGroupId, a.fromPosition, a.toGroupId, a.toPosition])).join("\n") + "\n"
+    });
+  }
+
   for (const write of writes) {
     writeFileSync(join(project.folderPath, write.fileName), write.content, "utf8");
   }

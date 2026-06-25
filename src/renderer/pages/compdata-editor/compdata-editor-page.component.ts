@@ -14,6 +14,7 @@ import { TournamentOverviewComponent } from "./tournament-overview.component";
 import { TournamentPhaseDetailsComponent } from "./tournament-phase-details.component";
 import { TournamentSidebarComponent } from "./tournament-sidebar.component";
 import { TournamentTeamsSetupComponent } from "./tournament-teams-setup.component";
+import { TournamentAdvancementComponent } from "./tournament-advancement.component";
 import { nations } from "../../../utils/get-nations/get-nations";
 
 type EditorDialog = "create" | "addPhase" | "addChild" | "editTournament" | "editPhase" | "editPhaseQuantities" | "editChild" | "delete" | "validation" | "preview" | undefined;
@@ -29,6 +30,7 @@ type DeleteTarget = { kind: "tournament" | "phase" | "child"; object: CompdataOb
     TournamentOverviewComponent,
     TournamentPhaseDetailsComponent,
     TournamentTeamsSetupComponent,
+    TournamentAdvancementComponent,
     CompObjAdvancedViewComponent,
     CreateTournamentWizardComponent
   ],
@@ -44,7 +46,7 @@ export class CompdataEditorPageComponent {
   compdataReferenceProject?: DbProject;
   compdataDirty = false;
   view: "simple" | "advanced" = "simple";
-  activeTab: "structure" | "teams" = "structure";
+  activeTab: "structure" | "teams" | "advancement" = "structure";
   selectedTournamentId = 0;
   selectedPhaseId = 0;
   dialog: EditorDialog;
@@ -245,6 +247,10 @@ export class CompdataEditorPageComponent {
           teamId: tid
         });
       });
+    }
+
+    if (request.advancements && request.advancements.length > 0) {
+      this.compdataProject!.advancements.push(...request.advancements);
     }
 
     this.originalObjectIds.clear();
