@@ -11,12 +11,14 @@ export interface CreateTournamentRequest {
   locationId: number;
   internalCode: string;
   nameKey: string;
+  customName?: string;
   template: "league" | "groupStage" | "cup" | "empty";
   leagueGroups?: number;
   leagueTeams?: number;
   groupStageGroups?: number;
   groupStageTeams?: number;
   cupInitialTeams?: number;
+  initialTeams?: string[];
 }
 
 @Component({
@@ -26,8 +28,8 @@ export interface CreateTournamentRequest {
   template: `
     <div class="tse-modal-backdrop">
       <section class="tse-modal tse-wizard" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
-        <header class="tse-modal-header"><div><span>Step {{ step }} of 4</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
-        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4]" [class.active]="item <= step"></span></div>
+        <header class="tse-modal-header"><div><span>Step {{ step }} of 5</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
+        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4,5]" [class.active]="item <= step"></span></div>
         <div class="tse-modal-body">
           <ng-container *ngIf="step === 1">
             <p>Choose where this tournament will be placed in the compobj structure.</p>
@@ -58,23 +60,24 @@ export interface CreateTournamentRequest {
           </ng-container>
 
           <ng-container *ngIf="step === 2">
-            <p>Choose a tournament ID. DBM Studio will generate the internal code and localization key automatically.</p>
-            <label class="tse-field"><span>Tournament ID <span title="This is not the compobj objectId. The compobj objectId is generated automatically.">ⓘ</span></span><input type="number" min="1" [(ngModel)]="tournamentId" (ngModelChange)="onTournamentIdChange()" /></label>
-            <div class="tse-field-error" *ngIf="isCodeAlreadyUsed" style="color: var(--tse-danger); font-size: 13px; margin-top: -12px; margin-bottom: 16px;">This tournament ID is already used by another competition.</div>
-            <div class="tse-resolved">
-              <span>Generated internal data</span>
-              <div style="margin-top: 8px;"><small>Internal code:</small><div><strong>{{ internalCode || 'None' }}</strong></div></div>
-              <div style="margin-top: 8px;"><small>Localization key:</small><div><strong>{{ nameKey || 'None' }}</strong></div></div>
-              <div style="margin-top: 8px;">
-                <small>Resolved name:</small>
-                <div *ngIf="nameKeyFound"><strong>{{ resolvedName }}</strong></div>
-                <div *ngIf="!nameKeyFound"><strong>Not found in loaded language files</strong></div>
-              </div>
+            <p>Define the tournament ID and name.</p>
+            <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px;">
+              <label class="tse-field"><span>Tournament ID <span title="This is not the compobj objectId. The compobj objectId is generated automatically.">ⓘ</span></span><input type="number" min="1" [(ngModel)]="tournamentId" (ngModelChange)="onTournamentIdChange()" /></label>
+              <label class="tse-field"><span>Tournament Name</span><input type="text" [(ngModel)]="customName" placeholder="e.g. Copa Inter. Masculina" /></label>
             </div>
+            <div class="tse-field-error" *ngIf="isCodeAlreadyUsed" style="color: var(--tse-danger); font-size: 13px; margin-top: -12px; margin-bottom: 16px;">This tournament ID is already used by another competition.</div>
+            
+            <div class="tse-resolved">
+              <small>Localization Key (Fixed):</small>
+              <div style="margin-top: 4px; font-family: monospace;"><strong>{{ nameKey }}</strong></div>
+              <ng-container *ngIf="nameKeyFound">
+                <small style="display: block; margin-top: 8px;">Current name in language files:</small>
+                <div style="margin-top: 4px; color: var(--tse-text-muted);"><strong>{{ resolvedName }}</strong></div>
+              </ng-container>
+            </div>
+
             <details class="tse-technical" style="margin-top: 16px;">
               <summary>Show advanced fields</summary>
-              <p style="color: var(--tse-warning); font-size: 13px; margin-bottom: 12px;">Changing these fields manually can break localization or make the tournament harder to identify.</p>
-              <label class="tse-field"><span>Name key</span><input [(ngModel)]="nameKey" /></label>
               <label class="tse-field"><span>Internal code</span><input [(ngModel)]="internalCode" /></label>
             </details>
           </ng-container>
@@ -110,10 +113,27 @@ export interface CreateTournamentRequest {
           </ng-container>
 
           <ng-container *ngIf="step === 4">
+            <p>You can add initial teams now or leave this empty and configure them later.</p>
+            <div class="tse-choice-grid">
+              <button type="button" [class.active]="teamsChoice === 'skip'" (click)="teamsChoice = 'skip'"><strong>Skip for now</strong><span>Don't add teams yet.</span></button>
+              <button type="button" [class.active]="teamsChoice === 'paste'" (click)="teamsChoice = 'paste'"><strong>Paste team IDs</strong><span>Paste a list of Team IDs.</span></button>
+            </div>
+            
+            <div class="tse-template-settings" *ngIf="teamsChoice === 'paste'" style="margin-top: 16px;">
+              <strong>Paste Team IDs</strong>
+              <div style="margin-top: 8px;">
+                <label class="tse-field"><textarea [(ngModel)]="pastedTeamIds" rows="5" placeholder="191&#10;254&#10;111821" style="width: 100%; resize: vertical; font-family: monospace;"></textarea></label>
+                <small class="tse-entity-note">Enter one Team ID per line or comma-separated.</small>
+              </div>
+            </div>
+          </ng-container>
+
+          <ng-container *ngIf="step === 5">
             <div class="tse-review">
               <div><span>Tournament ID</span><strong>{{ tournamentId }}</strong></div>
               <div><span>Generated internal code</span><strong>{{ internalCode }}</strong></div>
-              <div><span>Generated localization key</span><strong>{{ nameKey }}</strong></div>
+              <div><span>Tournament Name</span><strong>{{ customName || 'None' }}</strong></div>
+              <div><span>Localization key</span><strong>{{ nameKey }}</strong></div>
               <div>
                 <span>Belongs to</span>
                 <strong>{{ selectedParentName }}</strong>
@@ -133,10 +153,14 @@ export interface CreateTournamentRequest {
                 <div style="margin-top: 16px; margin-bottom: 8px; font-weight: 500;">Generated standings lines:</div>
                 <code *ngFor="let line of generatedStandingsLines">{{ line }}</code>
               </ng-container>
+              <ng-container *ngIf="generatedInitTeamsLines.length">
+                <div style="margin-top: 16px; margin-bottom: 8px; font-weight: 500;">Generated initteams lines:</div>
+                <code *ngFor="let line of generatedInitTeamsLines">{{ line }}</code>
+              </ng-container>
             </details>
           </ng-container>
         </div>
-        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 4" [disabled]="!canContinue" (click)="step = step + 1">Continue</button><button type="button" class="tse-primary" *ngIf="step === 4" (click)="submit()">Create tournament</button></footer>
+        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 5" [disabled]="!canContinue" (click)="step = step + 1">Continue</button><button type="button" class="tse-primary" *ngIf="step === 5" (click)="submit()">Create tournament</button></footer>
       </section>
     </div>
   `
@@ -154,6 +178,7 @@ export class CreateTournamentWizardComponent implements OnInit {
   locationPickerOptions: InputListOption[] = [];
   tournamentId: number | null = null;
   nameKey = "";
+  customName = "";
   internalCode = "";
   template: "league" | "groupStage" | "cup" | "empty" = "league";
   leagueGroups = 1;
@@ -161,6 +186,8 @@ export class CreateTournamentWizardComponent implements OnInit {
   groupStageGroups = 8;
   groupStageTeams = 4;
   cupInitialTeams = 16;
+  teamsChoice: "skip" | "paste" = "skip";
+  pastedTeamIds = "";
   constructor(public readonly display: CompObjDisplayService) {}
 
   ngOnInit() {
@@ -200,7 +227,7 @@ export class CreateTournamentWizardComponent implements OnInit {
     );
   }
 
-  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Review"][this.step]; }
+  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Choose initial teams", "Review"][this.step]; }
   get locationTypeLabel(): string { return this.locationType === 2 ? "Country" : this.locationType === 1 ? "Confederation" : "World/FIFA"; }
   get locationPickerPlaceholder(): string { return `Choose ${this.locationType === 2 ? "a country" : this.locationType === 1 ? "a confederation" : "World/FIFA"}...`; }
   get locationSearchPlaceholder(): string { return `Search ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA"}...`; }
@@ -220,7 +247,9 @@ export class CreateTournamentWizardComponent implements OnInit {
       const parent = this.display.object(this.project, this.parentId);
       return Boolean(parent && parent.kind === this.locationType && parent.kind >= 0 && parent.kind <= 2);
     }
-    return this.step === 2 ? Boolean(this.tournamentId && this.tournamentId > 0 && this.nameKey.trim() && this.internalCode.trim() && !this.isCodeAlreadyUsed) : true;
+    if (this.step === 2) return Boolean(this.tournamentId && this.tournamentId > 0 && this.nameKey.trim() && this.internalCode.trim() && !this.isCodeAlreadyUsed);
+    if (this.step === 4) return this.teamsChoice === 'skip' || (this.teamsChoice === 'paste' && Boolean(this.pastedTeamIds.trim()));
+    return true;
   }
   get existingCountry() {
     if (this.locationType !== 2) return undefined;
@@ -359,6 +388,21 @@ export class CreateTournamentWizardComponent implements OnInit {
     return String(id);
   }
 
+  get generatedInitTeamsLines(): string[] {
+    if (this.teamsChoice !== 'paste' || !this.pastedTeamIds.trim()) return [];
+    
+    let id = Math.max(0, ...this.project.objects.map((object) => object.id));
+    if (this.locationType === 2 && this.willCreateCountry) id++;
+    id++; // compId
+    
+    const lines: string[] = [];
+    const rawIds = this.pastedTeamIds.split(/[\n,]/).map(s => s.trim()).filter(s => s);
+    rawIds.forEach((tid, i) => {
+      lines.push(`${id},${i},${tid}`);
+    });
+    return lines;
+  }
+
   chooseLocationType(type: 0 | 1 | 2): void {
     if (this.locationType === type && this.locationPickerOptions.length > 0) return;
     this.locationType = type;
@@ -421,7 +465,8 @@ export class CreateTournamentWizardComponent implements OnInit {
         leagueTeams: this.leagueTeams,
         groupStageGroups: this.groupStageGroups,
         groupStageTeams: this.groupStageTeams,
-        cupInitialTeams: this.cupInitialTeams
+        cupInitialTeams: this.cupInitialTeams,
+        initialTeams: this.teamsChoice === 'paste' ? this.pastedTeamIds.split(/[\n,]/).map(s => s.trim()).filter(s => s) : []
       });
       return;
     }
@@ -429,15 +474,17 @@ export class CreateTournamentWizardComponent implements OnInit {
     if (!parent || parent.kind !== this.locationType || parent.kind < 0 || parent.kind > 2) return;
     this.create.emit({ 
       locationType: this.locationType,
-      locationId: parent.id,
+      locationId: this.parentId,
       internalCode: this.internalCode.trim(), 
       nameKey: this.nameKey.trim(), 
+      customName: this.customName.trim(),
       template: this.template,
       leagueGroups: this.leagueGroups,
       leagueTeams: this.leagueTeams,
       groupStageGroups: this.groupStageGroups,
       groupStageTeams: this.groupStageTeams,
-      cupInitialTeams: this.cupInitialTeams
+      cupInitialTeams: this.cupInitialTeams,
+      initialTeams: this.teamsChoice === 'paste' ? this.pastedTeamIds.split(/[\n,]/).map(s => s.trim()).filter(s => s) : []
     });
   }
 }

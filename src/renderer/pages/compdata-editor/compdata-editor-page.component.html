@@ -42,12 +42,25 @@
           (deleteChild)="requestDelete('child', $event)"></app-tournament-phase-details>
 
         <ng-template #tournamentState>
-          <app-tournament-overview *ngIf="selectedCompetition; else selectTournamentState" [project]="project"
-            [reference]="compdataReferenceProject" [competition]="selectedCompetition" (openPhase)="openPhase($event)"
-            (addPhase)="openAddPhase()" (edit)="openEditTournament()" (editPhase)="openEditPhase($event)"
-            (deleteTournament)="requestDelete('tournament', selectedTournamentId)"
-            (deletePhase)="requestDelete('phase', $event)" (validate)="openValidation()"
-            (preview)="openPreview()"></app-tournament-overview>
+          <div class="tse-tab-bar" *ngIf="selectedCompetition">
+            <button type="button" class="tse-tab" [class.active]="activeTab === 'structure'"
+              (click)="activeTab = 'structure'">Structure</button>
+            <button type="button" class="tse-tab" [class.active]="activeTab === 'teams'"
+              (click)="activeTab = 'teams'">Teams / Seeding</button>
+          </div>
+
+          <ng-container *ngIf="selectedCompetition; else selectTournamentState">
+            <app-tournament-overview *ngIf="activeTab === 'structure'" [project]="project"
+              [reference]="compdataReferenceProject" [competition]="selectedCompetition" (openPhase)="openPhase($event)"
+              (addPhase)="openAddPhase()" (edit)="openEditTournament()" (editPhase)="openEditPhase($event)"
+              (deleteTournament)="requestDelete('tournament', selectedTournamentId)"
+              (deletePhase)="requestDelete('phase', $event)" (validate)="openValidation()"
+              (preview)="openPreview()"></app-tournament-overview>
+
+            <app-tournament-teams-setup *ngIf="activeTab === 'teams'" [project]="project"
+              [referenceProject]="compdataReferenceProject" [competition]="selectedCompetition"
+              (structureChanged)="compdataDirty = true"></app-tournament-teams-setup>
+          </ng-container>
 
           <ng-template #selectTournamentState>
             <div class="tse-main-empty">
@@ -98,7 +111,7 @@
           placeholder="S1" /></label>
       <label class="tse-field"><span class="tse-capitalize">Number of {{ phaseDraftChildNoun }}</span><input
           type="number" min="0" [(ngModel)]="phaseDraft.childCount" /></label>
-      <label class="tse-field"><span>Teams per {{ display.childNoun({ id: 0, kind: 4, shortName: '', description:
+      <label class="tse-field"><span>Clubs per {{ display.childNoun({ id: 0, kind: 4, shortName: '', description:
           phaseDraft.key, parentId: 0 }, 1) }}</span><input type="number" min="0"
           [(ngModel)]="phaseDraft.teamsPerChild" /></label>
       <p class="tse-field-help">{{ phaseDraftInfo.description }}</p>
@@ -121,8 +134,7 @@
           [(ngModel)]="childDraft.code" placeholder="G1" /></label>
       <label class="tse-field"><span>Name key (optional)</span><input [(ngModel)]="childDraft.description"
           placeholder="FCE_Group_A" /></label>
-      <label class="tse-field"><span>Teams/positions</span><input type="number" min="0"
-          [(ngModel)]="childDraft.teams" /></label>
+      <label class="tse-field"><span>Clubs</span><input type="number" min="0" [(ngModel)]="childDraft.teams" /></label>
       <p class="tse-field-help" *ngIf="display.isKnockoutPhase(selectedPhase)">Internally, match slots are still saved
         as Group type 5 objects.</p>
     </div>
@@ -188,7 +200,7 @@
       <label class="tse-field"><span class="tse-capitalize">Number of {{ selectedPhase ?
           display.childNoun(selectedPhase, 2) : 'items' }}</span><input type="number" min="0"
           [(ngModel)]="phaseQuantitiesDraft.groups" /></label>
-      <label class="tse-field"><span>Teams/positions per {{ selectedPhase ? display.childNoun(selectedPhase, 1) : 'item'
+      <label class="tse-field"><span>Clubs per {{ selectedPhase ? display.childNoun(selectedPhase, 1) : 'item'
           }}</span><input type="number" min="0" [(ngModel)]="phaseQuantitiesDraft.teams" /></label>
       <p class="tse-field-help">DBM Studio will automatically create or remove objects and standings lines to match
         these numbers.</p>
@@ -208,8 +220,7 @@
     <div class="tse-modal-body">
       <label class="tse-field"><span>Label / code</span><input [(ngModel)]="childDraft.code" /></label>
       <label class="tse-field"><span>Name key (optional)</span><input [(ngModel)]="childDraft.description" /></label>
-      <label class="tse-field"><span>Teams/positions</span><input type="number" min="0"
-          [(ngModel)]="childDraft.teams" /></label>
+      <label class="tse-field"><span>Clubs</span><input type="number" min="0" [(ngModel)]="childDraft.teams" /></label>
       <p class="tse-field-help">Belongs to: {{ selectedPhase ? display.phaseInfo(selectedPhase.description).label : ''
         }}</p>
     </div>

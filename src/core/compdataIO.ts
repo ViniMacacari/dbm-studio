@@ -211,8 +211,8 @@ function competitionSummaries(
     const obj = byId.get(id);
     if (!obj) {
       warnings.push(`compids.txt references missing object ${id}.`);
-    } else if (obj.kind !== 3) {
-      warnings.push(`compids.txt references object ${id} which is not a Competition (type 3).`);
+    } else if (obj.kind !== 3 && obj.kind !== 6) {
+      warnings.push(`compids.txt references object ${id} which is not a valid competition type (type 3 or 6).`);
     }
   }
 
@@ -227,7 +227,7 @@ function competitionSummaries(
   return ids
     .map((id) => {
       const competition = byId.get(id);
-      if (!competition || competition.kind !== 3) {
+      if (!competition || (competition.kind !== 3 && competition.kind !== 6)) {
         return undefined;
       }
       const descendantIds = collectDescendantIds(id, byParent);
@@ -364,6 +364,22 @@ export function saveCompdataProject(project: CompdataProject): { folderPath: str
     writes.push({
       fileName: "standings.txt",
       content: sortedStandings.map(s => line([s.groupId, s.position])).join("\n") + "\n"
+    });
+  }
+
+  if (project.initTeams.length > 0) {
+    const sortedInitTeams = [...project.initTeams].sort((a, b) => {
+      if (a.competitionId !== b.competitionId) {
+        const idxA = project.objects.findIndex(o => o.id === a.competitionId);
+        const idxB = project.objects.findIndex(o => o.id === b.competitionId);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        return a.competitionId - b.competitionId;
+      }
+      return a.position - b.position;
+    });
+    writes.push({
+      fileName: "initteams.txt",
+      content: sortedInitTeams.map(t => line([t.competitionId, t.position, t.teamId])).join("\n") + "\n"
     });
   }
 

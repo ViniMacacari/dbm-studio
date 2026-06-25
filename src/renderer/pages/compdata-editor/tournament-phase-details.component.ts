@@ -21,7 +21,7 @@ import { CompObjTreeService } from "../../services/compdata/compobj-tree.service
 
       <div class="tse-summary-grid three">
         <div><strong>{{ groups.length }}</strong><span><span class="tse-capitalize">{{ display.childNoun(phase, groups.length) }}</span></span></div>
-        <div><strong>{{ totalPositions }}</strong><span>Total positions/teams</span></div>
+        <div><strong>{{ totalPositions }}</strong><span>Total clubs</span></div>
         <div [class.warn]="groups.length === 0"><strong>{{ groups.length ? 'OK' : 'Warning' }}</strong><span>Validation status</span></div>
       </div>
       <p class="tse-phase-description">{{ info.description }}</p>

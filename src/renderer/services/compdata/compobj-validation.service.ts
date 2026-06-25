@@ -93,18 +93,28 @@ export class CompObjValidationService {
           }
         }
         
-        const isKnockout = this.display.isKnockoutPhase(phase) || phase.description.includes("Final");
         const isLeague = this.display.isGroupPhase(phase);
-        
-        if (isKnockout && positionCount !== 2 && positionCount > 0) {
-          issues.push({ severity: "warning", message: "Match slots should have exactly 2 positions.", technical: `Match slot ${group.id} has ${positionCount} positions.` });
-        }
         
         if (isLeague && positionCount < 2 && positionCount > 0) {
           issues.push({ severity: "warning", message: "Groups should have at least 2 positions.", technical: `Group ${group.id} has ${positionCount} positions.` });
         }
       });
     });
+
+    const tournamentInitTeams = project.initTeams.filter(t => t.competitionId === tournament.id);
+    if (tournamentInitTeams.length > 0) {
+      const positionCount = tournamentInitTeams.length;
+      const uniquePositions = new Set(tournamentInitTeams.map(t => t.position));
+      if (uniquePositions.size !== positionCount) {
+        issues.push({ severity: "error", message: "Initial teams setup has duplicated positions.", technical: `duplicate position for initteams competition ${tournament.id}` });
+      }
+      const sortedPositions = [...uniquePositions].sort((a, b) => a - b);
+      if (sortedPositions[0] !== 0) {
+        issues.push({ severity: "error", message: "Initial teams positions must start at 1.", technical: `InitTeams competition ${tournament.id} positions start at ${sortedPositions[0]}.` });
+      } else if (sortedPositions[sortedPositions.length - 1] !== sortedPositions.length - 1) {
+        issues.push({ severity: "warning", message: "Initial teams positions are not sequential.", technical: `InitTeams competition ${tournament.id} positions are missing some numbers.` });
+      }
+    }
 
     if (reference && tournament.description && !this.display.hasResolvedText(reference, tournament.description)) {
       issues.push({ severity: "warning", message: "The localization key was not found in the loaded language files.", technical: tournament.description });
@@ -124,6 +134,16 @@ export class CompObjValidationService {
         if (!duplicateOrphanCheck.has(s.groupId)) {
           duplicateOrphanCheck.add(s.groupId);
           issues.push({ severity: "error", message: "This standings entry points to an object that is not a group/slot.", technical: `standing groupObjectId ${s.groupId} is not type 5` });
+        }
+      }
+    });
+
+    const duplicateOrphanCheckInitTeams = new Set<number>();
+    project.initTeams.forEach(t => {
+      if (!allObjectIds.has(t.competitionId)) {
+        if (!duplicateOrphanCheckInitTeams.has(t.competitionId)) {
+          duplicateOrphanCheckInitTeams.add(t.competitionId);
+          issues.push({ severity: "error", message: "An initial teams setup points to a tournament that does not exist.", technical: `initteams competitionId ${t.competitionId} not found` });
         }
       }
     });

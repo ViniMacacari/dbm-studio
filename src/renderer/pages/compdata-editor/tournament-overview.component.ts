@@ -24,7 +24,7 @@ import { CompObjValidationService } from "../../services/compdata/compobj-valida
       <div class="tse-summary-grid">
         <div><strong>{{ phases.length }}</strong><span>Phases</span></div>
         <div><strong>{{ competition.groups.length }}</strong><span>Groups / slots</span></div>
-        <div><strong>{{ totalPositions }}</strong><span>Total positions</span></div>
+        <div><strong>{{ totalPositions }}</strong><span>Total clubs</span></div>
         <div [class.warn]="status !== 'OK'"><strong>{{ status }}</strong><span>Validation status</span></div>
       </div>
 

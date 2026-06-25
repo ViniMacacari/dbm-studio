@@ -111,6 +111,29 @@ export class CompObjTreeService {
     project.standings = project.standings.filter(s => s.groupId !== groupId);
   }
 
+  getInitTeams(project: CompdataProject, competitionId: number): import("../../../shared/types").CompdataInitTeam[] {
+    return project.initTeams.filter(t => t.competitionId === competitionId).sort((a, b) => a.position - b.position);
+  }
+
+  addInitTeam(project: CompdataProject, competitionId: number, position: number, teamId: string): void {
+    project.initTeams.push({ competitionId, position, teamId });
+  }
+
+  removeInitTeam(project: CompdataProject, competitionId: number, position: number): void {
+    project.initTeams = project.initTeams.filter(t => !(t.competitionId === competitionId && t.position === position));
+  }
+
+  clearInitTeams(project: CompdataProject, competitionId: number): void {
+    project.initTeams = project.initTeams.filter(t => t.competitionId !== competitionId);
+  }
+
+  normalizeInitTeamsOrder(project: CompdataProject, competitionId: number): void {
+    const teams = this.getInitTeams(project, competitionId);
+    teams.forEach((t, i) => {
+      t.position = i;
+    });
+  }
+
   private index(project: CompdataProject): CompObjIndex {
     const cached = this.indexes.get(project);
     if (cached && cached.objectsReference === project.objects && cached.objectCount === project.objects.length) return cached;

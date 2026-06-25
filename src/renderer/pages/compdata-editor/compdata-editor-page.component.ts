@@ -13,6 +13,7 @@ import { CreateTournamentRequest, CreateTournamentWizardComponent } from "./crea
 import { TournamentOverviewComponent } from "./tournament-overview.component";
 import { TournamentPhaseDetailsComponent } from "./tournament-phase-details.component";
 import { TournamentSidebarComponent } from "./tournament-sidebar.component";
+import { TournamentTeamsSetupComponent } from "./tournament-teams-setup.component";
 import { nations } from "../../../utils/get-nations/get-nations";
 
 type EditorDialog = "create" | "addPhase" | "addChild" | "editTournament" | "editPhase" | "editPhaseQuantities" | "editChild" | "delete" | "validation" | "preview" | undefined;
@@ -27,6 +28,7 @@ type DeleteTarget = { kind: "tournament" | "phase" | "child"; object: CompdataOb
     TournamentSidebarComponent,
     TournamentOverviewComponent,
     TournamentPhaseDetailsComponent,
+    TournamentTeamsSetupComponent,
     CompObjAdvancedViewComponent,
     CreateTournamentWizardComponent
   ],
@@ -42,6 +44,7 @@ export class CompdataEditorPageComponent {
   compdataReferenceProject?: DbProject;
   compdataDirty = false;
   view: "simple" | "advanced" = "simple";
+  activeTab: "structure" | "teams" = "structure";
   selectedTournamentId = 0;
   selectedPhaseId = 0;
   dialog: EditorDialog;
@@ -131,6 +134,7 @@ export class CompdataEditorPageComponent {
   selectTournament(id: number): void {
     this.selectedTournamentId = id;
     this.selectedPhaseId = 0;
+    this.activeTab = "structure";
   }
 
   openPhase(id: number): void {
@@ -194,6 +198,8 @@ export class CompdataEditorPageComponent {
         this.compdataProject.objects.push({ id: groupId, kind: 5, shortName: `G${i + 1}`, description: "", parentId: phaseId });
         this.tree.createStandingsForGroup(this.compdataProject, groupId, leagueTeams);
       }
+    } else if (request.template === "empty") {
+      // no phases
     } else if (request.template === "groupStage") {
       maxId++;
       const phaseId = maxId;
@@ -231,7 +237,23 @@ export class CompdataEditorPageComponent {
       });
     }
 
-    this.afterStructureChange();
+    if (request.initialTeams && request.initialTeams.length > 0) {
+      request.initialTeams.forEach((tid, index) => {
+        this.compdataProject!.initTeams.push({
+          competitionId: tournamentId,
+          position: index,
+          teamId: tid
+        });
+      });
+    }
+
+    this.originalObjectIds.clear();
+    
+    // Add missing custom name implementation if there was one
+    if (request.customName) {
+      // Could push to a queue for .loc saving later, 
+      // but UI handles it as warning for now.
+    }
     this.selectTournament(tournamentId);
     this.dialog = undefined;
     this.statusChanged.emit(newCountryCreated ? "Country and tournament structure created" : "Tournament structure created");
@@ -326,8 +348,8 @@ export class CompdataEditorPageComponent {
     
     const groups = this.tree.groups(this.compdataProject, phase.id);
     const currentCount = groups.length;
-    const targetCount = Math.max(0, this.phaseQuantitiesDraft.groups);
-    const targetTeams = Math.max(0, this.phaseQuantitiesDraft.teams);
+    const targetCount = Math.max(0, Number(this.phaseQuantitiesDraft.groups));
+    const targetTeams = Math.max(0, Number(this.phaseQuantitiesDraft.teams));
 
     const groupsToKeep = groups.slice(0, Math.min(currentCount, targetCount));
     for (const group of groupsToKeep) {
@@ -368,7 +390,7 @@ export class CompdataEditorPageComponent {
     child.shortName = this.childDraft.code.trim();
     child.description = this.childDraft.description.trim();
     
-    this.tree.updateStandingsForGroup(this.compdataProject!, child.id, this.childDraft.teams);
+    this.tree.updateStandingsForGroup(this.compdataProject!, child.id, Number(this.childDraft.teams));
 
     this.afterStructureChange();
     this.dialog = undefined;

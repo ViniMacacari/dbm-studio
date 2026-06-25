@@ -49,6 +49,14 @@ import { CompObjTreeService } from "../../services/compdata/compobj-tree.service
             <code *ngIf="!standingsPreview.length">No standings found.</code>
           </div>
         </details>
+        <details class="tse-technical tse-full-preview">
+          <summary>Preview initteams.txt</summary>
+          <div class="tse-warning" *ngFor="let warning of initteamsWarnings" style="margin-bottom: 8px;">{{ warning }}</div>
+          <div class="tse-generated-lines">
+            <code *ngFor="let team of initteamsPreview">{{ team }}</code>
+            <code *ngIf="!initteamsPreview.length">No initial teams found.</code>
+          </div>
+        </details>
       </main>
       <ng-template #selectObject><main class="tse-main-empty"><strong>Select an object</strong><span>Choose an object from the technical tree.</span></main></ng-template>
     </div>
@@ -116,6 +124,38 @@ export class CompObjAdvancedViewComponent {
         if (!duplicateOrphanCheck.has(s.groupId)) {
           duplicateOrphanCheck.add(s.groupId);
           warnings.push(`standing groupObjectId ${s.groupId} points to an object that is not a group/slot (type 5)`);
+        }
+      }
+    });
+
+    return warnings;
+  }
+
+  get initteamsPreview(): string[] {
+    return this.project.initTeams
+      .slice()
+      .sort((a, b) => {
+        if (a.competitionId !== b.competitionId) {
+          const idxA = this.project.objects.findIndex(o => o.id === a.competitionId);
+          const idxB = this.project.objects.findIndex(o => o.id === b.competitionId);
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          return a.competitionId - b.competitionId;
+        }
+        return a.position - b.position;
+      })
+      .map(t => `${t.competitionId},${t.position},${t.teamId}`);
+  }
+
+  get initteamsWarnings(): string[] {
+    const warnings: string[] = [];
+    const allObjectIds = new Set(this.project.objects.map(o => o.id));
+    const duplicateOrphanCheck = new Set<number>();
+    
+    this.project.initTeams.forEach(t => {
+      if (!allObjectIds.has(t.competitionId)) {
+        if (!duplicateOrphanCheck.has(t.competitionId)) {
+          duplicateOrphanCheck.add(t.competitionId);
+          warnings.push(`initteams competitionId ${t.competitionId} not found in compobj`);
         }
       }
     });
