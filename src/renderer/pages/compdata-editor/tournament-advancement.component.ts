@@ -6,11 +6,12 @@ import { AdvancementDisplayService } from "../../services/compdata/advancement-d
 import { AdvancementService, AdvancementValidationResult } from "../../services/compdata/advancement.service";
 import { CompObjDisplayService } from "../../services/compdata/compobj-display.service";
 import { InputListComponent, InputListOption } from "../../components/input-list/input-list.component";
+import { DecisionModalComponent, DecisionOption } from "../../components/decision-modal/decision-modal.component";
 
 @Component({
   selector: "app-tournament-advancement",
   standalone: true,
-  imports: [CommonModule, FormsModule, InputListComponent],
+  imports: [CommonModule, FormsModule, InputListComponent, DecisionModalComponent],
   template: `
     <div class="tse-panel" style="padding: 24px;">
       <header style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start;">
@@ -142,6 +143,15 @@ import { InputListComponent, InputListOption } from "../../components/input-list
         </footer>
       </section>
     </div>
+
+    <!-- Decision Modal -->
+    <app-decision-modal
+      *ngIf="decisionType"
+      [title]="decisionTitle"
+      [text]="decisionText"
+      [options]="decisionOptions"
+      (action)="onDecisionAction($event)"
+    ></app-decision-modal>
   `
 })
 export class TournamentAdvancementComponent implements OnChanges {
@@ -192,6 +202,11 @@ export class TournamentAdvancementComponent implements OnChanges {
     { value: "8", label: "Position 8" }
   ];
 
+  decisionType: "clear" | "autoGenerate" | "alert" | null = null;
+  decisionTitle = "";
+  decisionText = "";
+  decisionOptions: DecisionOption[] = [];
+
   constructor(
     public readonly display: CompObjDisplayService,
     private advDisplay: AdvancementDisplayService,
@@ -239,8 +254,16 @@ export class TournamentAdvancementComponent implements OnChanges {
   }
 
   clearRules() {
-    if (!confirm("Are you sure you want to delete all advancement rules for this tournament?")) return;
-    
+    this.decisionType = "clear";
+    this.decisionTitle = "Clear advancement rules";
+    this.decisionText = "Are you sure you want to delete all advancement rules for this tournament?";
+    this.decisionOptions = [
+      { value: "cancel", label: "Cancel" },
+      { value: "confirm", label: "Clear rules", danger: true }
+    ];
+  }
+
+  executeClearRules() {
     // Find rules belonging to this competition and remove them
     for (const rule of this.rules) {
       const globalIndex = this.project.advancements.findIndex(r => 
@@ -260,17 +283,41 @@ export class TournamentAdvancementComponent implements OnChanges {
 
   autoGenerate() {
     if (this.rules.length > 0) {
-      if (!confirm("This will add new generated rules to your existing ones. Continue?")) return;
+      this.decisionType = "autoGenerate";
+      this.decisionTitle = "Auto-generate rules";
+      this.decisionText = "This will add new generated rules to your existing ones. Continue?";
+      this.decisionOptions = [
+        { value: "cancel", label: "Cancel" },
+        { value: "confirm", label: "Continue", primary: true }
+      ];
+      return;
     }
+    this.executeAutoGenerate();
+  }
+
+  executeAutoGenerate() {
     const newRules = this.advService.autoGenerateKnockoutRules(this.phases, this.project);
     if (newRules.length === 0) {
-      alert("No obvious knockout phase connections could be detected.");
+      this.decisionType = "alert";
+      this.decisionTitle = "Cannot auto-generate";
+      this.decisionText = "No obvious knockout phase connections could be detected.";
+      this.decisionOptions = [{ value: "cancel", label: "OK", primary: true }];
       return;
     }
     
     this.project.advancements.push(...newRules);
     this.loadData();
     this.structureChanged.emit();
+  }
+
+  onDecisionAction(action: string) {
+    const type = this.decisionType;
+    this.decisionType = null;
+    
+    if (action === "confirm") {
+      if (type === "clear") this.executeClearRules();
+      else if (type === "autoGenerate") this.executeAutoGenerate();
+    }
   }
 
   openAddModal() {

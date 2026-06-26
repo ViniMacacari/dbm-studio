@@ -7,9 +7,37 @@ import { CompObjDisplayService } from "../../services/compdata/compobj-display.s
 import { TeamEditorService } from "../../services/team-editor.service";
 import { AdvancementService } from "../../services/compdata/advancement.service";
 import { AdvancementDisplayService } from "../../services/compdata/advancement-display.service";
+import { ScheduleDateService } from "../../services/compdata/schedule-date.service";
 import type { TeamSearchResult } from "../../services/team-editor.service";
 import type { CompdataAdvancement, CompdataObject } from "../../../shared/types";
 import { nations } from "../../../utils/get-nations/get-nations";
+
+export interface CreateTournamentCalendarRuleRequest {
+  phaseCode: string;
+  roundNumber: number;
+  month: number;
+  day: number;
+  time: string;
+  minGames: number;
+  maxGames: number;
+}
+
+export interface CreateTournamentFixtureRequest {
+  phaseCode: string;
+  year: number;
+  month: number;
+  day: number;
+  time: string;
+  homeTeamId: string;
+  awayTeamId: string;
+}
+
+export interface CreateTournamentCalendarRequest {
+  mode: "generated" | "manual" | "fixtures" | "skip";
+  seasonBaseDate: string;
+  rules: CreateTournamentCalendarRuleRequest[];
+  fixtures: CreateTournamentFixtureRequest[];
+}
 
 export interface CreateTournamentRequest {
   locationType: 0 | 1 | 2;
@@ -25,6 +53,7 @@ export interface CreateTournamentRequest {
   cupInitialTeams?: number;
   initialTeams?: string[];
   advancements?: CompdataAdvancement[];
+  calendar?: CreateTournamentCalendarRequest;
 }
 
 @Component({
@@ -33,9 +62,9 @@ export interface CreateTournamentRequest {
   imports: [CommonModule, FormsModule, InputListComponent],
   template: `
     <div class="tse-modal-backdrop">
-      <section class="tse-modal tse-wizard" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
-        <header class="tse-modal-header"><div><span>Step {{ step }} of 6</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
-        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4,5,6]" [class.active]="item <= step"></span></div>
+      <section class="tse-modal tse-wizard" style="width: 800px; max-width: 90vw;" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+        <header class="tse-modal-header"><div><span>Step {{ step }} of 7</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
+        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4,5,6,7]" [class.active]="item <= step"></span></div>
         <div class="tse-modal-body">
           <ng-container *ngIf="step === 1">
             <p>Choose where this tournament will be placed in the compobj structure.</p>
@@ -189,6 +218,109 @@ export interface CreateTournamentRequest {
           </ng-container>
 
           <ng-container *ngIf="step === 6">
+            <p>Set when the tournament will be played. You can create generic matchday rules or exact fixtures.</p>
+            <div class="tse-choice-grid">
+              <button type="button" [class.active]="calendarChoice === 'generate'" (click)="calendarChoice = 'generate'; buildCalendarPreview()"><strong>Generate simple calendar</strong><span>Create matchdays from a start date and interval.</span></button>
+              <button type="button" [class.active]="calendarChoice === 'manual'" (click)="calendarChoice = 'manual'"><strong>Add matchday rules manually</strong><span>Build rounds and dates yourself.</span></button>
+              <button type="button" [class.active]="calendarChoice === 'fixtures'" (click)="calendarChoice = 'fixtures'"><strong>Add exact fixtures</strong><span>Use home and away teams for each match.</span></button>
+              <button type="button" [class.active]="calendarChoice === 'skip'" (click)="calendarChoice = 'skip'"><strong>Skip for now</strong><span>Configure Calendar later.</span></button>
+            </div>
+
+            <ng-container *ngIf="calendarChoice === 'generate' || calendarChoice === 'manual'">
+              <ng-container *ngIf="calendarChoice === 'generate'">
+                <div *ngIf="template === 'cup'; else leagueCalendarFields" style="margin-top: 16px;">
+                  <strong>Cup calendar</strong>
+                  <div class="tse-form-grid three" style="margin-top: 8px;">
+                    <label class="tse-field"><span>First round month</span><select [(ngModel)]="calendarStartMonth" (ngModelChange)="buildCalendarPreview()"><option *ngFor="let month of monthOptions" [ngValue]="month.value">{{ month.label }}</option></select></label>
+                    <label class="tse-field"><span>First round day</span><input type="number" min="1" max="31" [(ngModel)]="calendarStartDay" (ngModelChange)="buildCalendarPreview()" /></label>
+                    <label class="tse-field"><span>Days between rounds</span><input type="number" min="1" [(ngModel)]="calendarIntervalDays" (ngModelChange)="buildCalendarPreview()" /></label>
+                  </div>
+                  <div class="tse-form-grid two" style="margin-top: 8px;">
+                    <label class="tse-field"><span>Default kick-off time</span><input type="time" [(ngModel)]="calendarDefaultTime" (ngModelChange)="buildCalendarPreview()" /></label>
+                  </div>
+                  <label class="tse-checkline" style="margin-top: 8px;"><input type="checkbox" [(ngModel)]="calendarIncludeSetupPhase" (ngModelChange)="buildCalendarPreview()" /> Include setup phase in calendar</label>
+                </div>
+                <ng-template #leagueCalendarFields>
+                  <div style="margin-top: 16px;">
+                    <strong>{{ template === 'groupStage' ? 'Group stage calendar' : 'League schedule' }}</strong>
+                    <div class="tse-form-grid three" style="margin-top: 8px;">
+                      <label class="tse-field"><span>First matchday month</span><select [(ngModel)]="calendarStartMonth" (ngModelChange)="buildCalendarPreview()"><option *ngFor="let month of monthOptions" [ngValue]="month.value">{{ month.label }}</option></select></label>
+                      <label class="tse-field"><span>First matchday day</span><input type="number" min="1" max="31" [(ngModel)]="calendarStartDay" (ngModelChange)="buildCalendarPreview()" /></label>
+                      <label class="tse-field"><span>Default kick-off time</span><input type="time" [(ngModel)]="calendarDefaultTime" (ngModelChange)="buildCalendarPreview()" /></label>
+                    </div>
+                    <div class="tse-form-grid three" style="margin-top: 8px;">
+                      <label class="tse-field"><span>{{ template === 'groupStage' ? 'Rounds' : 'Matchdays' }}</span><input type="number" min="1" [(ngModel)]="calendarRounds" (ngModelChange)="buildCalendarPreview()" /></label>
+                      <label class="tse-field"><span>Interval</span><input type="number" min="1" [(ngModel)]="calendarIntervalDays" (ngModelChange)="buildCalendarPreview()" /></label>
+                      <label class="tse-field"><span>Matches per matchday</span><input type="number" min="0" [(ngModel)]="calendarMatches" (ngModelChange)="buildCalendarPreview()" /></label>
+                    </div>
+                  </div>
+                </ng-template>
+              </ng-container>
+
+              <div class="tse-section-heading" style="margin-top: 16px;">
+                <div><h2>Calendar preview</h2><p>Review and edit matchdays before creating the tournament.</p></div>
+                <button type="button" (click)="addCalendarMatchday()">Add matchday</button>
+              </div>
+              <div class="tse-data-table preview" *ngIf="calendarRules.length; else noCalendarRules">
+                <div class="head"><span>Phase</span><span>Round</span><span>Date</span><span>Time</span><span>Min</span><span>Max</span><span></span></div>
+                <div class="row" *ngFor="let rule of calendarRules; let i = index">
+                  <span>{{ calendarPhaseLabel(rule.phaseCode) }}</span>
+                  <span><input type="number" min="1" [(ngModel)]="rule.roundNumber" /></span>
+                  <span class="tse-season-date-edit"><select [(ngModel)]="rule.month"><option *ngFor="let month of monthOptions" [ngValue]="month.value">{{ month.label }}</option></select><input type="number" min="1" max="31" [(ngModel)]="rule.day" /></span>
+                  <span><input type="time" [(ngModel)]="rule.time" /></span>
+                  <span><input type="number" min="0" [(ngModel)]="rule.minGames" /></span>
+                  <span><input type="number" min="0" [(ngModel)]="rule.maxGames" /></span>
+                  <span><button type="button" class="tse-danger-link" (click)="calendarRules.splice(i, 1)">Delete</button></span>
+                </div>
+              </div>
+              <ng-template #noCalendarRules><div class="tse-inline-empty"><strong>No matchdays yet</strong><span>Add a matchday or generate a preview.</span></div></ng-template>
+              <details class="tse-technical" style="margin-top: 8px;">
+                <summary>Advanced date conversion</summary>
+                <p>Used only to convert day/month into schedule.txt day offsets.</p>
+                <label class="tse-field"><span>Preview base year</span><input type="number" [ngModel]="dates.previewBaseYear(calendarBaseDate)" disabled /></label>
+                <label class="tse-field"><span>Base date</span><input type="date" [(ngModel)]="calendarBaseDate" /></label>
+                <code *ngFor="let line of calendarTechnicalPreviewLines">{{ line }}</code>
+              </details>
+            </ng-container>
+
+            <ng-container *ngIf="calendarChoice === 'fixtures'">
+              <div class="tse-section-heading" style="margin-top: 16px;">
+                <div><h2>Exact fixtures</h2><p>Add fixtures with date, time, home team and away team.</p></div>
+              </div>
+              <div class="tse-form-grid three">
+                <label class="tse-field"><span>Phase</span><select [(ngModel)]="fixturePhaseCode"><option *ngFor="let phase of calendarPhaseOptions" [value]="phase.code">{{ phase.label }}</option></select></label>
+                <label class="tse-field"><span>Month</span><select [(ngModel)]="fixtureMonth"><option *ngFor="let month of monthOptions" [ngValue]="month.value">{{ month.label }}</option></select></label>
+                <label class="tse-field"><span>Day</span><input type="number" min="1" max="31" [(ngModel)]="fixtureDay" /></label>
+              </div>
+              <div class="tse-form-grid two" style="margin-top: 8px;">
+                <label class="tse-field"><span>Kick-off time</span><input type="time" [(ngModel)]="fixtureTime" /></label>
+              </div>
+              <div class="tse-form-grid two" style="margin-top: 8px;">
+                <label class="tse-field"><span>Home team</span><input [(ngModel)]="fixtureHomeTeamId" placeholder="Team ID 1" /></label>
+                <label class="tse-field"><span>Away team</span><input [(ngModel)]="fixtureAwayTeamId" placeholder="Team ID 106" /></label>
+              </div>
+              <div class="tse-actions" style="margin: 12px 0;"><button type="button" class="tse-primary" [disabled]="!canAddWizardFixture" (click)="addWizardFixture()">Add fixture</button><button type="button" disabled title="Advanced import will be available after creating the tournament.">Import fixtures</button><button type="button" (click)="calendarFixtures = []" [disabled]="!calendarFixtures.length">Clear fixtures</button></div>
+              <div class="tse-data-table fixture" *ngIf="calendarFixtures.length; else noWizardFixtures">
+                <div class="head"><span>Date</span><span>Time</span><span>Phase</span><span>Home</span><span>Away</span><span>File</span><span>Actions</span></div>
+                <div class="row" *ngFor="let fixture of calendarFixtures; let i = index">
+                  <span>{{ dates.formatMonthDay(fixture.month, fixture.day) }}</span>
+                  <span>{{ dates.formatTimeHHMM(fixture.time) }}</span>
+                  <span>{{ calendarPhaseLabel(fixture.phaseCode) }}</span>
+                  <span>{{ teamLabel(fixture.homeTeamId) }}</span>
+                  <span>{{ teamLabel(fixture.awayTeamId) }}</span>
+                  <span><small class="tse-muted">{{ wizardFixtureFileName(fixture) }}</small></span>
+                  <span><button type="button" class="tse-danger-link" (click)="calendarFixtures.splice(i, 1)">Delete</button></span>
+                </div>
+              </div>
+              <ng-template #noWizardFixtures><div class="tse-inline-empty"><strong>No fixtures yet</strong><span>Add fixtures manually or skip for now.</span></div></ng-template>
+              <details class="tse-technical" style="margin-top: 8px;">
+                <summary>Show technical details</summary>
+                <label class="tse-field"><span>Schedule file year</span><input type="number" min="1900" [(ngModel)]="fixtureYear" /></label>
+              </details>
+            </ng-container>
+          </ng-container>
+
+          <ng-container *ngIf="step === 7">
             <div class="tse-review">
               <div><span>Tournament ID</span><strong>{{ tournamentId }}</strong></div>
               <div><span>Generated internal code</span><strong>{{ internalCode }}</strong></div>
@@ -212,7 +344,30 @@ export interface CreateTournamentRequest {
                   <div><strong>Not configured yet</strong><small style="display: block; color: var(--tse-text-muted); margin-top: 4px;">You can configure teams later in Teams / Seeding.</small></div>
                 </ng-template>
               </div>
+              <div>
+                <span>Calendar</span>
+                <strong>{{ calendarReviewTitle }}</strong>
+                <small style="display: block; color: var(--tse-text-muted); margin-top: 4px;">Matchday rules: {{ calendarRules.length }} · Specific fixtures: {{ calendarFixtures.length }}</small>
+                <small *ngIf="calendarRules.length" style="display: block; color: var(--tse-text-muted); margin-top: 4px;">First matchday: {{ dates.formatMonthDay(calendarRules[0].month, calendarRules[0].day) }} · Last matchday: {{ dates.formatMonthDay(calendarRules[calendarRules.length - 1].month, calendarRules[calendarRules.length - 1].day) }}</small>
+              </div>
             </div>
+            <details class="tse-technical" style="margin-top: 8px;">
+              <summary>Show generated schedule lines</summary>
+              <ng-container *ngIf="calendarTechnicalPreviewLines.length; else noCalendarLines">
+                <code *ngFor="let line of calendarTechnicalPreviewLines">{{ line }}</code>
+              </ng-container>
+              <ng-template #noCalendarLines><p>No schedule.txt lines generated.</p></ng-template>
+            </details>
+            <details class="tse-technical" style="margin-top: 8px;">
+              <summary>Show generated specific schedule files</summary>
+              <ng-container *ngIf="calendarFixtures.length; else noSpecificCalendarLines">
+                <div *ngFor="let fixture of calendarFixtures" style="margin-bottom: 8px;">
+                  <div style="font-weight: 500;">File: {{ wizardFixtureFileName(fixture) }}</div>
+                  <code>{{ dates.dateInputToSpecific(wizardFixtureDateInput(fixture)) }},{{ dates.parseTimeToHHMM(fixture.time) }},{{ fixture.homeTeamId }},{{ fixture.awayTeamId }}</code>
+                </div>
+              </ng-container>
+              <ng-template #noSpecificCalendarLines><p>No specific fixture lines generated.</p></ng-template>
+            </details>
             <details class="tse-technical">
               <summary>Show generated initteams lines</summary>
               <ng-container *ngIf="generatedInitTeamsLines.length; else noInitTeams">
@@ -240,7 +395,7 @@ export interface CreateTournamentRequest {
             </details>
           </ng-container>
         </div>
-        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 6" [disabled]="!canContinue" (click)="onContinue()">Continue</button><button type="button" class="tse-primary" *ngIf="step === 6" (click)="submit()">Create tournament</button></footer>
+        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 7" [disabled]="!canContinue" (click)="onContinue()">Continue</button><button type="button" class="tse-primary" *ngIf="step === 7" (click)="submit()">Create tournament</button></footer>
       </section>
     </div>
   `
@@ -275,15 +430,39 @@ export class CreateTournamentWizardComponent implements OnInit {
   advancementChoice: "auto" | "skip" = "skip";
   generatedAdvancementRules: CompdataAdvancement[] = [];
   mockObjectsForAdvancement: CompdataObject[] = [];
+  readonly monthOptions = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map((label, index) => ({ value: index + 1, label }));
+
+  calendarChoice: "generate" | "manual" | "fixtures" | "skip" = "generate";
+  calendarStartMonth = 8;
+  calendarStartDay = 18;
+  calendarDefaultTime = "20:00";
+  calendarRounds = 38;
+  calendarIntervalDays = 7;
+  calendarMatches = 10;
+  calendarIncludeSetupPhase = false;
+  calendarBaseDate = "2011-12-25";
+  calendarRules: CreateTournamentCalendarRuleRequest[] = [];
+  calendarFixtures: CreateTournamentFixtureRequest[] = [];
+  fixturePhaseCode = "S1";
+  fixtureYear = new Date().getFullYear();
+  fixtureMonth = 8;
+  fixtureDay = 18;
+  fixtureTime = "15:00";
+  fixtureHomeTeamId = "";
+  fixtureAwayTeamId = "";
 
   constructor(
     public readonly display: CompObjDisplayService, 
     private teamEditor: TeamEditorService,
     private advService: AdvancementService,
-    private advDisplay: AdvancementDisplayService
+    private advDisplay: AdvancementDisplayService,
+    public readonly dates: ScheduleDateService
   ) {}
 
   ngOnInit() {
+    const year = new Date().getFullYear();
+    this.calendarBaseDate = this.dates.defaultSeasonBaseDate;
+    this.fixtureYear = year;
     this.tournamentId = this.suggestedTournamentId;
     this.onTournamentIdChange();
   }
@@ -320,7 +499,7 @@ export class CreateTournamentWizardComponent implements OnInit {
     );
   }
 
-  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Choose initial teams", "Configure advancement", "Review"][this.step]; }
+  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Choose initial teams", "Configure advancement", "Configure calendar", "Review"][this.step]; }
   get locationTypeLabel(): string { return this.locationType === 2 ? "Country" : this.locationType === 1 ? "Confederation" : "World/FIFA"; }
   get locationPickerPlaceholder(): string { return `Choose ${this.locationType === 2 ? "a country" : this.locationType === 1 ? "a confederation" : "World/FIFA"}...`; }
   get locationSearchPlaceholder(): string { return `Search ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA"}...`; }
@@ -342,6 +521,7 @@ export class CreateTournamentWizardComponent implements OnInit {
     }
     if (this.step === 2) return Boolean(this.tournamentId && this.tournamentId > 0 && this.nameKey.trim() && this.internalCode.trim() && !this.isCodeAlreadyUsed);
     if (this.step === 4) return this.teamsChoice === 'skip' || (this.teamsChoice === 'paste' && Boolean(this.pastedTeamIds.trim())) || this.selectedTeams.length > 0;
+    if (this.step === 6) return this.calendarChoice === "skip" || (this.calendarChoice === "fixtures" ? this.calendarFixturesValid : this.calendarRulesValid);
     return true;
   }
 
@@ -354,6 +534,9 @@ export class CreateTournamentWizardComponent implements OnInit {
       } else {
         this.advancementChoice = "skip";
       }
+    }
+    if (this.step === 6) {
+      this.initializeCalendarStep();
     }
   }
 
@@ -370,6 +553,211 @@ export class CreateTournamentWizardComponent implements OnInit {
   describeMockRule(rule: CompdataAdvancement): string {
     const mockProject: CompdataProject = { ...this.project, objects: this.mockObjectsForAdvancement };
     return this.advDisplay.describeRule(rule, mockProject, this.reference);
+  }
+
+  get calendarPhaseOptions(): Array<{ code: string; label: string; matches: number; setup?: boolean }> {
+    if (this.template === "league") {
+      return [{ code: "S1", label: "League Phase", matches: Math.max(1, this.leagueGroups * Math.floor(this.leagueTeams / 2)) }];
+    }
+    if (this.template === "groupStage") {
+      return [{ code: "S1", label: "Group Phase", matches: Math.max(1, this.groupStageGroups * Math.floor(this.groupStageTeams / 2)) }];
+    }
+    if (this.template === "cup") {
+      const phases: Array<{ code: string; label: string; matches: number; setup?: boolean }> = [
+        { code: "S1", label: "Participant Setup", matches: 1, setup: true }
+      ];
+      let index = 2;
+      if (this.cupInitialTeams >= 16) phases.push({ code: `S${index++}`, label: "Round of 16", matches: 8 });
+      if (this.cupInitialTeams >= 8) phases.push({ code: `S${index++}`, label: "Quarter Finals", matches: 4 });
+      if (this.cupInitialTeams >= 4) phases.push({ code: `S${index++}`, label: "Semi Finals", matches: 2 });
+      if (this.cupInitialTeams >= 2) phases.push({ code: `S${index++}`, label: "Final", matches: 1 });
+      return phases;
+    }
+    return [];
+  }
+
+  get calendarTechnicalPreviewLines(): string[] {
+    const mockObjects = this.generateMockObjects();
+    const phaseIds = new Map(mockObjects.filter((object) => object.kind === 4).map((phase) => [phase.shortName.toUpperCase(), phase.id]));
+    return this.calendarRules.map((rule) => {
+      const phaseId = phaseIds.get(rule.phaseCode.toUpperCase()) ?? rule.phaseCode;
+      const time = this.dates.parseTimeToHHMM(rule.time);
+      const date = this.wizardRuleDateInput(rule);
+      const dayOffset = date && this.dates.isValidDateInput(this.calendarBaseDate) ? this.dates.dateToDayOffset(date, this.calendarBaseDate) : "dayOffset";
+      return [phaseId, dayOffset, rule.roundNumber, rule.minGames, rule.maxGames, time || "time"].join(",");
+    });
+  }
+
+  get calendarReviewTitle(): string {
+    if (this.calendarChoice === "skip") return "Not configured yet";
+    if (this.calendarChoice === "fixtures") return "Exact fixtures";
+    if (this.calendarChoice === "manual") return "Manual matchday rules";
+    return "Generated simple calendar";
+  }
+
+  get canAddWizardFixture(): boolean {
+    return Boolean(
+      this.fixturePhaseCode &&
+      Boolean(this.wizardFixtureDateInput({ phaseCode: this.fixturePhaseCode, year: this.fixtureYear, month: this.fixtureMonth, day: this.fixtureDay, time: this.fixtureTime, homeTeamId: this.fixtureHomeTeamId, awayTeamId: this.fixtureAwayTeamId })) &&
+      this.dates.isValidHHMM(this.fixtureTime) &&
+      String(this.fixtureHomeTeamId).trim() &&
+      String(this.fixtureAwayTeamId).trim() &&
+      String(this.fixtureHomeTeamId).trim() !== String(this.fixtureAwayTeamId).trim()
+    );
+  }
+
+  get calendarRulesValid(): boolean {
+    return this.calendarRules.length > 0 && this.calendarRules.every((rule) =>
+      this.calendarPhaseOptions.some((phase) => phase.code === rule.phaseCode) &&
+      Number(rule.roundNumber) >= 1 &&
+      Boolean(this.wizardRuleDateInput(rule)) &&
+      this.dates.isValidHHMM(rule.time) &&
+      Number(rule.minGames) >= 0 &&
+      Number(rule.maxGames) >= Number(rule.minGames)
+    );
+  }
+
+  get calendarFixturesValid(): boolean {
+    return this.calendarFixtures.length > 0 && this.calendarFixtures.every((fixture) =>
+      this.calendarPhaseOptions.some((phase) => phase.code === fixture.phaseCode) &&
+      Number(fixture.year) > 1900 &&
+      Boolean(this.wizardFixtureDateInput(fixture)) &&
+      this.dates.isValidHHMM(fixture.time) &&
+      Boolean(fixture.homeTeamId.trim()) &&
+      Boolean(fixture.awayTeamId.trim()) &&
+      fixture.homeTeamId.trim() !== fixture.awayTeamId.trim()
+    );
+  }
+
+  initializeCalendarStep(): void {
+    this.calendarChoice = this.template === "empty" ? "skip" : "generate";
+    const year = new Date().getFullYear();
+    this.calendarStartMonth = 8;
+    this.calendarStartDay = 18;
+    this.calendarDefaultTime = "20:00";
+    this.calendarIntervalDays = 7;
+    this.calendarRounds = this.defaultCalendarRounds();
+    this.calendarMatches = this.defaultCalendarMatches();
+    this.calendarBaseDate = this.dates.defaultSeasonBaseDate;
+    this.fixturePhaseCode = this.calendarPhaseOptions[0]?.code ?? "S1";
+    this.fixtureYear = year;
+    this.fixtureMonth = this.calendarStartMonth;
+    this.fixtureDay = this.calendarStartDay;
+    this.fixtureTime = "15:00";
+    this.fixtureHomeTeamId = this.selectedTeams[0]?.teamId ?? "";
+    this.fixtureAwayTeamId = this.selectedTeams[1]?.teamId ?? "";
+    this.buildCalendarPreview();
+  }
+
+  buildCalendarPreview(): void {
+    if (this.calendarChoice !== "generate") return;
+    const startDate = this.dates.monthDayToDateInput(Number(this.calendarStartMonth), Number(this.calendarStartDay), this.calendarBaseDate);
+    if (!startDate) return;
+    this.calendarRules = [];
+    const phases = this.template === "cup"
+      ? this.calendarPhaseOptions.filter((phase) => this.calendarIncludeSetupPhase || !phase.setup)
+      : this.calendarPhaseOptions.slice(0, 1);
+
+    if (this.template === "cup") {
+      phases.forEach((phase, index) => {
+        const monthDay = this.dates.dateInputToMonthDay(this.dates.addDays(startDate, index * Number(this.calendarIntervalDays || 7)));
+        this.calendarRules.push({
+          phaseCode: phase.code,
+          roundNumber: 1,
+          month: monthDay.month,
+          day: monthDay.day,
+          time: this.calendarDefaultTime,
+          minGames: phase.matches,
+          maxGames: phase.matches
+        });
+      });
+      return;
+    }
+
+    const phaseCode = phases[0]?.code ?? "S1";
+    for (let round = 1; round <= Number(this.calendarRounds || 1); round += 1) {
+      const monthDay = this.dates.dateInputToMonthDay(this.dates.addDays(startDate, (round - 1) * Number(this.calendarIntervalDays || 7)));
+      this.calendarRules.push({
+        phaseCode,
+        roundNumber: round,
+        month: monthDay.month,
+        day: monthDay.day,
+        time: this.calendarDefaultTime,
+        minGames: Number(this.calendarMatches || 0),
+        maxGames: Number(this.calendarMatches || 0)
+      });
+    }
+  }
+
+  addCalendarMatchday(): void {
+    const last = this.calendarRules[this.calendarRules.length - 1];
+    const phaseCode = last?.phaseCode ?? this.calendarPhaseOptions[0]?.code ?? "S1";
+    const monthDay = last
+      ? this.dates.addDaysToMonthDay(last.month, last.day, Number(this.calendarIntervalDays || 7), this.calendarBaseDate)
+      : { month: this.calendarStartMonth, day: this.calendarStartDay };
+    this.calendarRules.push({
+      phaseCode,
+      roundNumber: (last?.roundNumber ?? 0) + 1,
+      month: monthDay.month,
+      day: monthDay.day,
+      time: last?.time ?? this.calendarDefaultTime,
+      minGames: last?.minGames ?? this.defaultCalendarMatches(),
+      maxGames: last?.maxGames ?? this.defaultCalendarMatches()
+    });
+    if (this.calendarChoice === "generate") this.calendarChoice = "manual";
+  }
+
+  addWizardFixture(): void {
+    if (!this.canAddWizardFixture) return;
+    this.calendarFixtures.push({
+      phaseCode: this.fixturePhaseCode,
+      year: Number(this.fixtureYear) || new Date().getFullYear(),
+      month: Number(this.fixtureMonth),
+      day: Number(this.fixtureDay),
+      time: this.fixtureTime,
+      homeTeamId: String(this.fixtureHomeTeamId).trim(),
+      awayTeamId: String(this.fixtureAwayTeamId).trim()
+    });
+    this.fixtureHomeTeamId = "";
+    this.fixtureAwayTeamId = "";
+  }
+
+  calendarPhaseLabel(code: string): string {
+    return this.calendarPhaseOptions.find((phase) => phase.code === code)?.label ?? code;
+  }
+
+  wizardFixtureFileName(fixture: CreateTournamentFixtureRequest): string {
+    return `${this.internalCode}_${fixture.phaseCode}_${fixture.year}`.toLowerCase();
+  }
+
+  teamLabel(teamId: string): string {
+    const selected = this.selectedTeams.find((team) => team.teamId === teamId);
+    if (selected) return selected.name;
+    const exact = this.teamEditor.findTeams(this.reference, teamId, 5).find((team) => team.teamId === teamId);
+    return exact?.displayName ?? `Team ID ${teamId}`;
+  }
+
+  numberValue(value: string): number {
+    return Number(value) || 0;
+  }
+
+  wizardRuleDateInput(rule: CreateTournamentCalendarRuleRequest): string {
+    return this.dates.monthDayToDateInput(Number(rule.month), Number(rule.day), this.calendarBaseDate);
+  }
+
+  wizardFixtureDateInput(fixture: CreateTournamentFixtureRequest): string {
+    return this.dates.dateFromParts(Number(fixture.year), Number(fixture.month), Number(fixture.day));
+  }
+
+  private defaultCalendarRounds(): number {
+    if (this.template === "league") return Math.max(1, (Number(this.leagueTeams) - 1) * 2);
+    if (this.template === "groupStage") return Number(this.groupStageTeams) <= 4 ? 6 : Math.max(1, Number(this.groupStageTeams) - 1);
+    if (this.template === "cup") return Math.max(1, this.calendarPhaseOptions.filter((phase) => !phase.setup).length);
+    return 1;
+  }
+
+  private defaultCalendarMatches(): number {
+    return this.calendarPhaseOptions[0]?.matches ?? 1;
   }
 
   generateMockObjects(): CompdataObject[] {
@@ -429,7 +817,7 @@ export class CreateTournamentWizardComponent implements OnInit {
     
     this.selectedTeams.push({ 
       teamId: tid, 
-      name: exact ? exact.displayName : "Unknown team" 
+      name: exact ? exact.displayName : `Team ID ${tid}` 
     });
     this.teamIdInput = "";
   }
@@ -462,7 +850,7 @@ export class CreateTournamentWizardComponent implements OnInit {
       const exact = results.find(r => r.teamId === token);
       this.selectedTeams.push({
         teamId: token,
-        name: exact ? exact.displayName : "Unknown team"
+        name: exact ? exact.displayName : `Team ID ${token}`
       });
     }
     this.pastedTeamIds = "";
@@ -684,7 +1072,8 @@ export class CreateTournamentWizardComponent implements OnInit {
         groupStageTeams: this.template === "groupStage" ? this.groupStageTeams : undefined,
         cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
         initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined,
-        advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined
+        advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined,
+        calendar: this.createCalendarRequest()
       });
       return;
     }
@@ -703,7 +1092,18 @@ export class CreateTournamentWizardComponent implements OnInit {
       groupStageTeams: this.template === "groupStage" ? this.groupStageTeams : undefined,
       cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
       initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined,
-      advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined
+      advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined,
+      calendar: this.createCalendarRequest()
     });
+  }
+
+  private createCalendarRequest(): CreateTournamentCalendarRequest | undefined {
+    if (this.calendarChoice === "skip") return undefined;
+    return {
+      mode: this.calendarChoice === "generate" ? "generated" : this.calendarChoice,
+      seasonBaseDate: this.calendarBaseDate,
+      rules: this.calendarChoice === "fixtures" ? [] : [...this.calendarRules],
+      fixtures: this.calendarChoice === "fixtures" ? [...this.calendarFixtures] : []
+    };
   }
 }
