@@ -14,6 +14,7 @@ import { TournamentOverviewComponent } from "./tournament-overview.component";
 import { TournamentPhaseDetailsComponent } from "./tournament-phase-details.component";
 import { TournamentSidebarComponent } from "./tournament-sidebar.component";
 import { TournamentTeamsSetupComponent } from "./tournament-teams-setup.component";
+import { TournamentTeamSourcesComponent } from "./tournament-team-sources.component";
 import { TournamentAdvancementComponent } from "./tournament-advancement.component";
 import { TournamentCalendarComponent } from "./tournament-calendar.component";
 import { CountryWeatherComponent } from "./country-weather.component";
@@ -35,6 +36,7 @@ type DeleteTarget = { kind: "tournament" | "phase" | "child"; object: CompdataOb
     TournamentOverviewComponent,
     TournamentPhaseDetailsComponent,
     TournamentTeamsSetupComponent,
+    TournamentTeamSourcesComponent,
     TournamentAdvancementComponent,
     TournamentCalendarComponent,
     CountryWeatherComponent,
@@ -53,7 +55,7 @@ export class CompdataEditorPageComponent {
   compdataReferenceProject?: DbProject;
   compdataDirty = false;
   view: "simple" | "advanced" = "simple";
-  activeTab: "structure" | "teams" | "advancement" | "calendar" | "weather" = "structure";
+  activeTab: "structure" | "teams" | "sources" | "advancement" | "calendar" | "weather" = "structure";
   selectedTournamentId = 0;
   selectedPhaseId = 0;
   dialog: EditorDialog;
@@ -261,6 +263,20 @@ export class CompdataEditorPageComponent {
           teamId: tid
         });
       });
+    }
+
+    if (request.teamSources?.rules.length) {
+      for (const rule of request.teamSources.rules) {
+        this.compdataProject.tasks.push({
+          competitionId: tournamentId,
+          timing: rule.timing,
+          action: rule.action,
+          targetId: rule.targetId,
+          param1: rule.param1,
+          param2: rule.param2,
+          param3: rule.param3
+        });
+      }
     }
 
     if (request.advancements && request.advancements.length > 0) {
@@ -510,7 +526,9 @@ export class CompdataEditorPageComponent {
         return;
       }
       this.compdataProject = JSON.parse(result.projectJson) as CompdataProject;
+      this.compdataProject.tasks ??= [];
       this.compdataProject.specificSchedules ??= [];
+      this.compdataProject.taskInvalidLines ??= [];
       this.compdataProject.weatherEntries ??= [];
       this.compdataProject.weatherInvalidLines ??= [];
       this.compdataReferenceProject = undefined;
@@ -564,6 +582,7 @@ export class CompdataEditorPageComponent {
       this.compdataDirty = false;
       this.originalObjectIds = new Set(this.compdataProject.objects.map((object) => object.id));
       this.compdataProject.objects.forEach((object) => object.originalRawLine = this.display.rawLine(object));
+      this.compdataProject.tasks.forEach((task) => task.originalRawLine = [task.competitionId, task.timing, task.action, task.targetId, task.param1, task.param2, task.param3].join(","));
       this.compdataProject.schedules.forEach((schedule) => schedule.originalRawLine = [schedule.objectId, schedule.day, schedule.round, schedule.minGames, schedule.maxGames, schedule.time].join(","));
       this.compdataProject.specificSchedules?.forEach((file) => file.fixtures.forEach((fixture) => fixture.originalRawLine = [fixture.date, fixture.time, fixture.homeTeamId, fixture.awayTeamId].join(",")));
       this.compdataProject.weatherEntries?.forEach((weather) => weather.originalRawLine = [weather.countryObjectId, weather.month, weather.dryChance, weather.rainChance, weather.snowChance, weather.overcastChance, weather.sunsetTime, weather.nightTime].join(","));

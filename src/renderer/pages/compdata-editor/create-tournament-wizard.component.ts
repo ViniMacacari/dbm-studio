@@ -8,8 +8,11 @@ import { TeamEditorService } from "../../services/team-editor.service";
 import { AdvancementService } from "../../services/compdata/advancement.service";
 import { AdvancementDisplayService } from "../../services/compdata/advancement-display.service";
 import { ScheduleDateService } from "../../services/compdata/schedule-date.service";
+import { TasksDisplayService } from "../../services/compdata/tasks-display.service";
+import { KnownTaskAction, TasksService } from "../../services/compdata/tasks.service";
 import { WeatherDisplayService } from "../../services/compdata/weather-display.service";
 import { WeatherPresetKey, WeatherService } from "../../services/compdata/weather.service";
+import { LeagueEditorService } from "../../services/league-editor.service";
 import type { TeamSearchResult } from "../../services/team-editor.service";
 import type { CompdataAdvancement, CompdataObject } from "../../../shared/types";
 import { nations } from "../../../utils/get-nations/get-nations";
@@ -47,6 +50,19 @@ export interface CreateTournamentCountryWeatherRequest {
   sourceCountryObjectId?: number;
 }
 
+export interface CreateTournamentTaskRuleRequest {
+  timing: "start" | "end";
+  action: KnownTaskAction;
+  targetId: number;
+  param1: string;
+  param2: string;
+  param3: string;
+}
+
+export interface CreateTournamentTeamSourcesRequest {
+  rules: CreateTournamentTaskRuleRequest[];
+}
+
 export interface CreateTournamentRequest {
   locationType: 0 | 1 | 2;
   locationId: number;
@@ -60,6 +76,7 @@ export interface CreateTournamentRequest {
   groupStageTeams?: number;
   cupInitialTeams?: number;
   initialTeams?: string[];
+  teamSources?: CreateTournamentTeamSourcesRequest;
   advancements?: CompdataAdvancement[];
   countryWeather?: CreateTournamentCountryWeatherRequest;
   calendar?: CreateTournamentCalendarRequest;
@@ -72,8 +89,8 @@ export interface CreateTournamentRequest {
   template: `
     <div class="tse-modal-backdrop">
       <section class="tse-modal tse-wizard" style="width: 800px; max-width: 90vw;" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
-        <header class="tse-modal-header"><div><span>Step {{ step }} of 8</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
-        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4,5,6,7,8]" [class.active]="item <= step"></span></div>
+        <header class="tse-modal-header"><div><span>Step {{ step }} of 9</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
+        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4,5,6,7,8,9]" [class.active]="item <= step"></span></div>
         <div class="tse-modal-body">
           <ng-container *ngIf="step === 1">
             <p>Choose where this tournament belongs.</p>
@@ -205,6 +222,60 @@ export interface CreateTournamentRequest {
           </ng-container>
 
           <ng-container *ngIf="step === 5">
+            <p>Choose how teams enter this tournament and what should be updated after the season.</p>
+            <div class="tse-choice-grid">
+              <button type="button" [class.active]="teamSourceDraft.action === 'FillWithTeam'" (click)="setTeamSourceAction('FillWithTeam')"><strong>Fill manually with selected clubs</strong><span>Use specific clubs.</span></button>
+              <button type="button" [class.active]="teamSourceDraft.action === 'FillFromLeague'" (click)="setTeamSourceAction('FillFromLeague')"><strong>Fill from a league</strong><span>Add clubs from a league.</span></button>
+              <button type="button" [class.active]="teamSourceDraft.action === 'FillFromCompTable'" (click)="setTeamSourceAction('FillFromCompTable')"><strong>Fill from another tournament</strong><span>Use qualified teams from another competition.</span></button>
+              <button type="button" [class.active]="teamSourceDraft.action === 'FillFromCompTableBackupLeague'" (click)="setTeamSourceAction('FillFromCompTableBackupLeague')"><strong>Add backup qualification rule</strong><span>Use backup teams if a qualified team is already used.</span></button>
+              <button type="button" [class.active]="teamSourceDraft.action === 'UpdateLeagueTable'" (click)="setTeamSourceAction('UpdateLeagueTable')"><strong>Update league table</strong><span>Update a league after the season.</span></button>
+              <button type="button" [class.active]="teamSourcesChoice === 'skip'" (click)="teamSourcesChoice = 'skip'"><strong>Skip for now</strong><span>Configure later.</span></button>
+            </div>
+
+            <ng-container *ngIf="teamSourcesChoice !== 'skip'">
+              <label class="tse-field" *ngIf="teamSourceDraft.timing === 'start'"><span>Target</span><select [(ngModel)]="teamSourceDraft.targetId" (ngModelChange)="onTeamSourceTargetChange()"><option *ngFor="let option of teamSourceGroupOptions" [ngValue]="numberValue(option.value)">{{ option.label }}</option></select></label>
+              <ng-container [ngSwitch]="teamSourceDraft.action">
+                <label class="tse-field" *ngSwitchCase="'FillWithTeam'"><span>Club</span><select [(ngModel)]="teamSourceDraft.param2"><option value="">Choose club...</option><option *ngFor="let team of teamSourceTeamOptions" [value]="team.value">{{ team.label }} · {{ team.detail }}</option></select></label>
+                <label class="tse-field" *ngSwitchCase="'FillFromLeague'"><span>League</span><select [(ngModel)]="teamSourceDraft.param1"><option value="">Choose league...</option><option *ngFor="let league of teamSourceLeagueOptions" [value]="league.value">{{ league.label }} · {{ league.detail }}</option></select></label>
+                <ng-container *ngSwitchCase="'FillFromCompTable'">
+                  <label class="tse-field"><span>Source tournament</span><select [(ngModel)]="teamSourceDraft.param1"><option value="">Choose tournament...</option><option *ngFor="let tournament of teamSourceCompetitionOptions" [value]="tournament.value">{{ tournament.label }}</option></select></label>
+                  <label class="tse-field"><span>Number of teams</span><input type="number" min="1" [(ngModel)]="teamSourceDraft.param2" /></label>
+                </ng-container>
+                <ng-container *ngSwitchCase="'FillFromCompTableBackupLeague'">
+                  <label class="tse-field"><span>Source tournament</span><select [(ngModel)]="teamSourceDraft.param1"><option value="">Choose tournament...</option><option *ngFor="let tournament of teamSourceCompetitionOptions" [value]="tournament.value">{{ tournament.label }}</option></select></label>
+                  <label class="tse-field"><span>Backup league</span><select [(ngModel)]="teamSourceDraft.param2"><option value="">Choose league...</option><option *ngFor="let league of teamSourceLeagueOptions" [value]="league.value">{{ league.label }} · {{ league.detail }}</option></select></label>
+                  <label class="tse-field"><span>Number of teams</span><input type="number" min="1" [(ngModel)]="teamSourceDraft.param3" /></label>
+                </ng-container>
+                <ng-container *ngSwitchCase="'UpdateLeagueTable'">
+                  <label class="tse-field"><span>League phase</span><select [(ngModel)]="teamSourceDraft.targetId"><option *ngFor="let option of teamSourceStageOptions" [ngValue]="numberValue(option.value)">{{ option.label }}</option></select></label>
+                  <label class="tse-field"><span>League</span><select [(ngModel)]="teamSourceDraft.param1"><option value="">Choose league...</option><option *ngFor="let league of teamSourceLeagueOptions" [value]="league.value">{{ league.label }} · {{ league.detail }}</option></select></label>
+                </ng-container>
+              </ng-container>
+              <div class="tse-resolved" *ngIf="canAddTeamSourceRule"><small>Preview</small><strong>{{ teamSourceFriendlyPreview }}</strong></div>
+              <div class="tse-actions" style="margin: 12px 0;"><button type="button" class="tse-primary" [disabled]="!canAddTeamSourceRule" (click)="addTeamSourceRule()">Add rule</button><button type="button" (click)="teamSourceRules = []" [disabled]="!teamSourceRules.length">Clear rules</button></div>
+            </ng-container>
+
+            <div class="tse-section-heading" style="margin-top: 16px;">
+              <div><h2>Rules added</h2><p>You can add several rules before continuing.</p></div>
+            </div>
+            <div class="tse-data-table tasks" *ngIf="teamSourceRules.length; else noTeamSourceRules">
+              <div class="head"><span>When</span><span>Rule</span><span>Details</span><span>Actions</span></div>
+              <div class="row" *ngFor="let rule of teamSourceRules; let i = index">
+                <span>{{ rule.timing === 'start' ? 'Start of tournament' : 'End of tournament' }}</span>
+                <span>{{ teamSourceRuleLabel(rule.action) }}</span>
+                <span>{{ teamSourceRuleSummary(rule) }}</span>
+                <span><button type="button" class="tse-danger-link" (click)="teamSourceRules.splice(i, 1)">Delete</button></span>
+              </div>
+            </div>
+            <ng-template #noTeamSourceRules><div class="tse-inline-empty"><strong>No team source rules added</strong><span>Skip this step or add a rule above.</span></div></ng-template>
+            <details class="tse-technical" style="margin-top: 8px;">
+              <summary>Show generated tasks.txt lines</summary>
+              <code *ngFor="let line of teamSourceTechnicalPreviewLines">{{ line }}</code>
+              <p *ngIf="!teamSourceTechnicalPreviewLines.length">No tasks.txt lines generated.</p>
+            </details>
+          </ng-container>
+
+          <ng-container *ngIf="step === 7">
             <p>Choose how teams move between phases. DBM Studio can generate this automatically for simple structures.</p>
             <div class="tse-choice-grid">
               <button type="button" [class.active]="advancementChoice === 'auto'" (click)="advancementChoice = 'auto'; generateAdvancementPreview()"><strong>Auto-generate</strong><span>Recommended for simple cups and knockout tournaments.</span></button>
@@ -273,7 +344,7 @@ export interface CreateTournamentRequest {
             </ng-template>
           </ng-container>
 
-          <ng-container *ngIf="step === 7">
+          <ng-container *ngIf="step === 8">
             <p>Set when the tournament will be played. You can create generic matchday rules or exact fixtures.</p>
             <div class="tse-choice-grid">
               <button type="button" [class.active]="calendarChoice === 'generate'" (click)="calendarChoice = 'generate'; buildCalendarPreview()"><strong>Generate simple calendar</strong><span>Create matchdays from a start date and interval.</span></button>
@@ -376,7 +447,7 @@ export interface CreateTournamentRequest {
             </ng-container>
           </ng-container>
 
-          <ng-container *ngIf="step === 8">
+          <ng-container *ngIf="step === 9">
             <div class="tse-review">
               <div><span>Tournament ID</span><strong>{{ tournamentId }}</strong></div>
               <div><span>Generated internal code</span><strong>{{ internalCode }}</strong></div>
@@ -399,6 +470,13 @@ export interface CreateTournamentRequest {
                 <ng-template #skippedTeams>
                   <div><strong>Not configured yet</strong><small style="display: block; color: var(--tse-text-muted); margin-top: 4px;">You can configure teams later in Teams / Seeding.</small></div>
                 </ng-template>
+              </div>
+              <div>
+                <span>Team Sources</span>
+                <strong>{{ teamSourceRules.length ? teamSourceRules.length + ' rule(s)' : 'Not configured yet' }}</strong>
+                <ul *ngIf="teamSourceRules.length">
+                  <li *ngFor="let rule of teamSourceRules">{{ teamSourceRuleSummary(rule) }}</li>
+                </ul>
               </div>
               <div>
                 <span>Country weather</span>
@@ -430,6 +508,13 @@ export interface CreateTournamentRequest {
               <ng-template #noSpecificCalendarLines><p>No specific fixture lines generated.</p></ng-template>
             </details>
             <details class="tse-technical">
+              <summary>Show generated tasks.txt lines</summary>
+              <ng-container *ngIf="teamSourceTechnicalPreviewLines.length; else noTaskLines">
+                <code *ngFor="let line of teamSourceTechnicalPreviewLines">{{ line }}</code>
+              </ng-container>
+              <ng-template #noTaskLines><p>No tasks.txt lines generated.</p></ng-template>
+            </details>
+            <details class="tse-technical" style="margin-top: 8px;">
               <summary>Show generated initteams lines</summary>
               <ng-container *ngIf="generatedInitTeamsLines.length; else noInitTeams">
                 <code *ngFor="let line of generatedInitTeamsLines">{{ line }}</code>
@@ -456,7 +541,7 @@ export interface CreateTournamentRequest {
             </details>
           </ng-container>
         </div>
-        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 8" [disabled]="!canContinue" (click)="onContinue()">Continue</button><button type="button" class="tse-primary" *ngIf="step === 8" (click)="submit()">Create tournament</button></footer>
+        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 9" [disabled]="!canContinue" (click)="onContinue()">Continue</button><button type="button" class="tse-primary" *ngIf="step === 9" (click)="submit()">Create tournament</button></footer>
       </section>
     </div>
   `
@@ -488,6 +573,10 @@ export class CreateTournamentWizardComponent implements OnInit {
   teamIdInput = "";
   selectedTeams: { teamId: string, name: string }[] = [];
   
+  teamSourcesChoice: "rules" | "skip" = "skip";
+  teamSourceDraft: CreateTournamentTaskRuleRequest = { timing: "start", action: "FillWithTeam", targetId: 0, param1: "1", param2: "", param3: "0" };
+  teamSourceRules: CreateTournamentTaskRuleRequest[] = [];
+
   advancementChoice: "auto" | "skip" = "skip";
   generatedAdvancementRules: CompdataAdvancement[] = [];
   mockObjectsForAdvancement: CompdataObject[] = [];
@@ -519,9 +608,12 @@ export class CreateTournamentWizardComponent implements OnInit {
   constructor(
     public readonly display: CompObjDisplayService, 
     private teamEditor: TeamEditorService,
+    private leagueEditor: LeagueEditorService,
     private advService: AdvancementService,
     private advDisplay: AdvancementDisplayService,
     public readonly dates: ScheduleDateService,
+    public readonly tasks: TasksService,
+    public readonly tasksDisplay: TasksDisplayService,
     public readonly weather: WeatherService,
     public readonly weatherDisplay: WeatherDisplayService
   ) {}
@@ -566,7 +658,7 @@ export class CreateTournamentWizardComponent implements OnInit {
     );
   }
 
-  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Choose initial teams", "Configure advancement", "Configure country weather", "Configure calendar", "Review"][this.step]; }
+  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Choose initial teams", "Team sources and season updates", "Configure advancement", "Configure country weather", "Configure calendar", "Review"][this.step]; }
   get locationTypeLabel(): string { return this.locationType === 2 ? "Country" : this.locationType === 1 ? "Confederation" : "World/FIFA"; }
   get locationPickerPlaceholder(): string { return `Choose ${this.locationType === 2 ? "a country" : this.locationType === 1 ? "a confederation" : "World/FIFA"}...`; }
   get locationSearchPlaceholder(): string { return `Search ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA"}...`; }
@@ -588,14 +680,17 @@ export class CreateTournamentWizardComponent implements OnInit {
     }
     if (this.step === 2) return Boolean(this.tournamentId && this.tournamentId > 0 && this.nameKey.trim() && this.internalCode.trim() && !this.isCodeAlreadyUsed);
     if (this.step === 4) return this.teamsChoice === 'skip' || (this.teamsChoice === 'paste' && Boolean(this.pastedTeamIds.trim())) || this.selectedTeams.length > 0;
-    if (this.step === 6) return this.countryWeatherChoice !== "copy" || this.countryWeatherSourceId > 0;
-    if (this.step === 7) return this.calendarChoice === "skip" || (this.calendarChoice === "fixtures" ? this.calendarFixturesValid : this.calendarRulesValid);
+    if (this.step === 7) return this.countryWeatherChoice !== "copy" || this.countryWeatherSourceId > 0;
+    if (this.step === 8) return this.calendarChoice === "skip" || (this.calendarChoice === "fixtures" ? this.calendarFixturesValid : this.calendarRulesValid);
     return true;
   }
 
   onContinue() {
     this.step++;
     if (this.step === 5) {
+      this.initializeTeamSourcesStep();
+    }
+    if (this.step === 6) {
       if (this.template === "cup") {
         this.advancementChoice = "auto";
         this.generateAdvancementPreview();
@@ -603,10 +698,10 @@ export class CreateTournamentWizardComponent implements OnInit {
         this.advancementChoice = "skip";
       }
     }
-    if (this.step === 6) {
+    if (this.step === 7) {
       this.initializeCountryWeatherStep();
     }
-    if (this.step === 7) {
+    if (this.step === 8) {
       this.initializeCalendarStep();
     }
   }
@@ -619,6 +714,139 @@ export class CreateTournamentWizardComponent implements OnInit {
     this.countryWeatherChoice = this.countryHasCompleteWeather ? "skip" : "default";
     this.countryWeatherPreset = "temperate";
     this.countryWeatherSourceId = this.countryWeatherSourceOptions[0]?.id ?? 0;
+  }
+
+  initializeTeamSourcesStep(): void {
+    this.teamSourcesChoice = this.teamSourceRules.length ? "rules" : "skip";
+    this.setTeamSourceAction("FillWithTeam");
+  }
+
+  get mockTeamSourceObjects(): CompdataObject[] {
+    return this.generateMockObjects();
+  }
+
+  get mockTeamSourceCompetitionId(): number {
+    return this.mockTeamSourceObjects.find((object) => object.kind === 3)?.id ?? 0;
+  }
+
+  get mockTeamSourceProject(): CompdataProject {
+    return {
+      ...this.project,
+      objects: [...this.project.objects, ...this.mockTeamSourceObjects],
+      competitions: [
+        ...this.project.competitions,
+        {
+          id: this.mockTeamSourceCompetitionId,
+          shortName: this.internalCode,
+          description: this.nameKey,
+          parentId: this.parentId,
+          stages: [],
+          groups: [],
+          settingsCount: 0,
+          tasksCount: 0,
+          scheduleCount: 0,
+          standingsCount: 0,
+          advancementCount: 0,
+          initTeamsCount: 0
+        }
+      ]
+    };
+  }
+
+  get teamSourceGroupOptions(): InputListOption[] {
+    return this.tasksDisplay.groupOptions(this.mockTeamSourceProject, this.mockTeamSourceCompetitionId, this.reference);
+  }
+
+  get teamSourceStageOptions(): InputListOption[] {
+    return this.tasksDisplay.stageOptions(this.mockTeamSourceProject, this.mockTeamSourceCompetitionId, this.reference);
+  }
+
+  get teamSourceCompetitionOptions(): InputListOption[] {
+    return this.tasksDisplay.competitionOptions(this.mockTeamSourceProject, this.mockTeamSourceCompetitionId, this.reference);
+  }
+
+  get teamSourceTeamOptions(): InputListOption[] {
+    return this.reference ? this.teamEditor.findTeams(this.reference, "", 5000).map((team) => ({ value: team.teamId, label: team.displayName, detail: `teamId ${team.teamId}`, searchText: `${team.displayName} ${team.teamId}` })) : [];
+  }
+
+  get teamSourceLeagueOptions(): InputListOption[] {
+    return this.reference ? this.leagueEditor.findLeagues(this.reference, "", "", 5000).map((league) => ({ value: league.leagueId, label: league.displayName, detail: `leagueId ${league.leagueId}`, searchText: `${league.displayName} ${league.leagueId}` })) : [];
+  }
+
+  get canAddTeamSourceRule(): boolean {
+    const draft = this.teamSourceDraft;
+    if (draft.timing === "start" && Number(draft.targetId) <= 0) return false;
+    if (draft.action === "UpdateLeagueTable" && Number(draft.targetId) <= 0) return false;
+    if (draft.action === "FillWithTeam") return this.positiveNumber(draft.param1) && this.positiveNumber(draft.param2);
+    if (draft.action === "FillFromLeague") return this.positiveNumber(draft.param1);
+    if (draft.action === "FillFromCompTable") return this.positiveNumber(draft.param1) && this.positiveNumber(draft.param2);
+    if (draft.action === "FillFromCompTableBackupLeague") return this.positiveNumber(draft.param1) && this.positiveNumber(draft.param2) && this.positiveNumber(draft.param3);
+    if (draft.action === "UpdateLeagueTable") return this.positiveNumber(draft.param1);
+    return false;
+  }
+
+  get teamSourceFriendlyPreview(): string {
+    if (!this.canAddTeamSourceRule) return "Choose the rule details first.";
+    const task = this.tasks.taskFromDraft(this.mockTeamSourceCompetitionId, this.teamSourceDraft);
+    return this.tasksDisplay.friendlySentence(this.mockTeamSourceProject, task, this.reference);
+  }
+
+  get teamSourceTechnicalPreviewLines(): string[] {
+    return this.teamSourceRules.map((rule) => this.tasks.rawLine(this.tasks.taskFromDraft(this.mockTeamSourceCompetitionId, rule)));
+  }
+
+  setTeamSourceAction(action: KnownTaskAction): void {
+    this.teamSourcesChoice = "rules";
+    const timing: "start" | "end" = action === "UpdateLeagueTable" || action === "UpdateTable" ? "end" : "start";
+    this.teamSourceDraft = { timing, action, targetId: 0, param1: "1", param2: "0", param3: "0" };
+    if (timing === "start") this.teamSourceDraft.targetId = Number(this.teamSourceGroupOptions[0]?.value ?? 0);
+    if (action === "UpdateLeagueTable") this.teamSourceDraft.targetId = Number(this.teamSourceStageOptions[0]?.value ?? 0);
+    if (action === "FillWithTeam") {
+      this.teamSourceDraft.param1 = String(this.nextWizardFillWithTeamOrder(this.teamSourceDraft.targetId));
+      this.teamSourceDraft.param2 = this.selectedTeams[0]?.teamId ?? this.teamSourceTeamOptions[0]?.value ?? "";
+      this.teamSourceDraft.param3 = "0";
+    } else if (action === "FillFromLeague") {
+      this.teamSourceDraft.param1 = this.teamSourceLeagueOptions[0]?.value ?? "";
+    } else if (action === "FillFromCompTable") {
+      this.teamSourceDraft.param1 = this.teamSourceCompetitionOptions[0]?.value ?? "";
+      this.teamSourceDraft.param2 = "1";
+    } else if (action === "FillFromCompTableBackupLeague") {
+      this.teamSourceDraft.param1 = this.teamSourceCompetitionOptions[0]?.value ?? "";
+      this.teamSourceDraft.param2 = this.teamSourceLeagueOptions[0]?.value ?? "";
+      this.teamSourceDraft.param3 = "1";
+    } else if (action === "UpdateLeagueTable") {
+      this.teamSourceDraft.param1 = this.teamSourceLeagueOptions[0]?.value ?? "";
+      this.teamSourceDraft.param2 = "0";
+      this.teamSourceDraft.param3 = "0";
+    }
+  }
+
+  onTeamSourceTargetChange(): void {
+    if (this.teamSourceDraft.action === "FillWithTeam") {
+      this.teamSourceDraft.param1 = String(this.nextWizardFillWithTeamOrder(this.teamSourceDraft.targetId));
+    }
+  }
+
+  addTeamSourceRule(): void {
+    if (!this.canAddTeamSourceRule) return;
+    this.teamSourceRules.push({ ...this.teamSourceDraft });
+    this.setTeamSourceAction(this.teamSourceDraft.action);
+  }
+
+  teamSourceRuleLabel(action: KnownTaskAction): string {
+    return this.tasksDisplay.actionLabel(this.tasks.taskFromDraft(this.mockTeamSourceCompetitionId, { timing: "start", action, targetId: 0, param1: "0", param2: "0", param3: "0" }));
+  }
+
+  teamSourceRuleSummary(rule: CreateTournamentTaskRuleRequest): string {
+    return this.tasksDisplay.friendlySentence(this.mockTeamSourceProject, this.tasks.taskFromDraft(this.mockTeamSourceCompetitionId, rule), this.reference);
+  }
+
+  private nextWizardFillWithTeamOrder(targetId: number): number {
+    const used = this.teamSourceRules
+      .filter((rule) => rule.action === "FillWithTeam" && rule.targetId === targetId)
+      .map((rule) => Number(rule.param1))
+      .filter((value) => Number.isInteger(value) && value > 0);
+    return Math.max(0, ...used) + 1;
   }
 
   generateAdvancementPreview() {
@@ -868,6 +1096,10 @@ export class CreateTournamentWizardComponent implements OnInit {
 
   numberValue(value: string): number {
     return Number(value) || 0;
+  }
+
+  private positiveNumber(value: string | number): boolean {
+    return /^\d+$/.test(String(value).trim()) && Number(value) > 0;
   }
 
   wizardRuleDateInput(rule: CreateTournamentCalendarRuleRequest): string {
@@ -1201,6 +1433,7 @@ export class CreateTournamentWizardComponent implements OnInit {
         groupStageTeams: this.template === "groupStage" ? this.groupStageTeams : undefined,
         cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
         initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined,
+        teamSources: this.createTeamSourcesRequest(),
         advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined,
         countryWeather: this.createCountryWeatherRequest(),
         calendar: this.createCalendarRequest()
@@ -1222,6 +1455,7 @@ export class CreateTournamentWizardComponent implements OnInit {
       groupStageTeams: this.template === "groupStage" ? this.groupStageTeams : undefined,
       cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
       initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined,
+      teamSources: this.createTeamSourcesRequest(),
       advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined,
       countryWeather: this.createCountryWeatherRequest(),
       calendar: this.createCalendarRequest()
@@ -1238,6 +1472,11 @@ export class CreateTournamentWizardComponent implements OnInit {
       return { mode: "preset", preset: this.countryWeatherPreset };
     }
     return { mode: "default", preset: "temperate" };
+  }
+
+  private createTeamSourcesRequest(): CreateTournamentTeamSourcesRequest | undefined {
+    if (this.teamSourcesChoice === "skip" || this.teamSourceRules.length === 0) return undefined;
+    return { rules: this.teamSourceRules.map((rule) => ({ ...rule })) };
   }
 
   private createCalendarRequest(): CreateTournamentCalendarRequest | undefined {

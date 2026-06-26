@@ -3,6 +3,8 @@ import { Component, Input } from "@angular/core";
 import type { CompdataObject, CompdataProject, DbProject } from "../../../shared/types";
 import { CompObjDisplayService } from "../../services/compdata/compobj-display.service";
 import { CompObjTreeService } from "../../services/compdata/compobj-tree.service";
+import { TasksDisplayService } from "../../services/compdata/tasks-display.service";
+import { TasksValidationService } from "../../services/compdata/tasks-validation.service";
 import { WeatherDisplayService } from "../../services/compdata/weather-display.service";
 import { WeatherValidationService } from "../../services/compdata/weather-validation.service";
 
@@ -57,6 +59,31 @@ import { WeatherValidationService } from "../../services/compdata/weather-valida
           <div class="tse-generated-lines">
             <code *ngFor="let team of initteamsPreview">{{ team }}</code>
             <code *ngIf="!initteamsPreview.length">No initial teams found.</code>
+          </div>
+        </details>
+        <details class="tse-technical tse-full-preview">
+          <summary>Preview tasks.txt</summary>
+          <div class="tse-generated-lines">
+            <code *ngFor="let task of tasksPreview">{{ task }}</code>
+            <code *ngIf="!tasksPreview.length">No task lines found.</code>
+          </div>
+          <div class="tse-warning" *ngFor="let invalid of project.taskInvalidLines" style="margin-top: 8px;">
+            Invalid preserved line {{ invalid.lineNumber }}: {{ invalid.rawLine }}
+          </div>
+        </details>
+        <details class="tse-technical tse-full-preview">
+          <summary>tasks.txt technical table</summary>
+          <div class="tse-data-table tasks-advanced">
+            <div class="head"><span>Tournament</span><span>When</span><span>Action</span><span>Target</span><span>Source / details</span><span>Raw line</span><span>Status</span></div>
+            <div class="row" *ngFor="let task of taskRows">
+              <span>{{ tasksDisplay.competitionName(project, task.competitionId, reference) }}</span>
+              <span>{{ task.timing }}</span>
+              <span>{{ tasksDisplay.actionLabel(task) }}</span>
+              <span>{{ tasksDisplay.targetLabel(project, task.targetId, reference) }}</span>
+              <span>{{ tasksDisplay.sourceSummary(project, task, reference) }}</span>
+              <span>{{ taskRawLine(task) }}</span>
+              <span>{{ taskStatus(task) }}</span>
+            </div>
           </div>
         </details>
         <details class="tse-technical tse-full-preview">
@@ -117,6 +144,8 @@ export class CompObjAdvancedViewComponent {
   constructor(
     public readonly display: CompObjDisplayService,
     private readonly tree: CompObjTreeService,
+    public readonly tasksDisplay: TasksDisplayService,
+    private readonly tasksValidation: TasksValidationService,
     public readonly weatherDisplay: WeatherDisplayService,
     private readonly weatherValidation: WeatherValidationService
   ) {}
@@ -225,6 +254,26 @@ export class CompObjAdvancedViewComponent {
       fileName: `schedules/${file.fileName}`,
       lines: file.fixtures.map((fixture) => [fixture.date, fixture.time, fixture.homeTeamId, fixture.awayTeamId].join(","))
     }));
+  }
+
+  get tasksPreview(): string[] {
+    return (this.project.tasks ?? []).map((task) => this.taskRawLine(task));
+  }
+
+  get taskRows() {
+    return this.project.tasks ?? [];
+  }
+
+  taskRawLine(task: { competitionId: number; timing: string; action: string; targetId: number; param1: string; param2: string; param3: string }): string {
+    return [task.competitionId, task.timing, task.action, task.targetId, task.param1, task.param2, task.param3].join(",");
+  }
+
+  taskStatus(task: { competitionId: number; timing: string; action: string; targetId: number; param1: string; param2: string; param3: string }): string {
+    const competition = this.project.competitions.find((candidate) => candidate.id === task.competitionId);
+    if (!competition) return "Warning";
+    const issues = this.tasksValidation.validateTask(this.project, competition, task, this.reference);
+    if (issues.some((issue) => issue.severity === "error")) return "Error";
+    return issues.length ? "Warning" : "OK";
   }
 
   get weatherPreview(): string[] {
