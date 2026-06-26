@@ -10,6 +10,8 @@ import { ScheduleDateService } from "../../services/compdata/schedule-date.servi
 import { ScheduleDisplayService } from "../../services/compdata/schedule-display.service";
 import { MatchdayRuleRow, ScheduleService, SpecificFixtureRow } from "../../services/compdata/schedule.service";
 import { ScheduleValidationIssue, ScheduleValidationService } from "../../services/compdata/schedule-validation.service";
+import { WeatherDisplayService } from "../../services/compdata/weather-display.service";
+import { WeatherService } from "../../services/compdata/weather.service";
 import { TeamEditorService } from "../../services/team-editor.service";
 
 interface RuleDraft {
@@ -77,6 +79,10 @@ interface GeneratedRulePreview {
         <button type="button" (click)="openPreview()">Preview schedule files</button>
       </div>
       <div class="tse-field-help">Season calendar · dates shown without year.</div>
+      <div class="tse-field-help" *ngIf="countryWeatherContext">
+        Country weather: {{ countryWeatherContext }}.
+        <button type="button" style="margin-left: 8px;" (click)="openCountryWeather.emit()">Open country weather</button>
+      </div>
 
       <div class="tse-main-empty" *ngIf="rules.length === 0 && fixtures.length === 0">
         <strong>No calendar configured</strong>
@@ -339,6 +345,7 @@ export class TournamentCalendarComponent implements OnChanges {
   @Input({ required: true }) competition!: CompdataCompetitionSummary;
   @Input() referenceProject?: DbProject;
   @Output() structureChanged = new EventEmitter<void>();
+  @Output() openCountryWeather = new EventEmitter<void>();
 
   rules: MatchdayRuleRow[] = [];
   fixtures: SpecificFixtureRow[] = [];
@@ -386,7 +393,9 @@ export class TournamentCalendarComponent implements OnChanges {
     public readonly display: CompObjDisplayService,
     private readonly tree: CompObjTreeService,
     private readonly validation: ScheduleValidationService,
-    private readonly teamEditor: TeamEditorService
+    private readonly teamEditor: TeamEditorService,
+    private readonly weather: WeatherService,
+    private readonly weatherDisplay: WeatherDisplayService
   ) {}
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -409,6 +418,16 @@ export class TournamentCalendarComponent implements OnChanges {
   get specificFilesForTournament() {
     const phaseCodes = new Set(this.phases.map((phase) => phase.shortName.toLowerCase()));
     return (this.project.specificSchedules ?? []).filter((file) => file.competitionCode.toLowerCase() === this.competition.shortName.toLowerCase() && phaseCodes.has(file.stageCode.toLowerCase()));
+  }
+
+  get countryWeatherContext(): string {
+    const country = this.project.objects.find((object) => object.id === this.competition.parentId);
+    if (!country || country.kind !== 2) {
+      return "weather depends on match country or stadium";
+    }
+    const configured = this.weather.configuredMonths(this.project, country.id).size;
+    const label = this.weatherDisplay.countryObjectName(country, this.project, this.referenceProject);
+    return configured === 12 ? `${label} configured` : `${label} has ${configured} of 12 months configured`;
   }
 
   get ruleFriendlyPreview(): string {

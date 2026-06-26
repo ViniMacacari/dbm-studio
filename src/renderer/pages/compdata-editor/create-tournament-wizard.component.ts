@@ -8,6 +8,8 @@ import { TeamEditorService } from "../../services/team-editor.service";
 import { AdvancementService } from "../../services/compdata/advancement.service";
 import { AdvancementDisplayService } from "../../services/compdata/advancement-display.service";
 import { ScheduleDateService } from "../../services/compdata/schedule-date.service";
+import { WeatherDisplayService } from "../../services/compdata/weather-display.service";
+import { WeatherPresetKey, WeatherService } from "../../services/compdata/weather.service";
 import type { TeamSearchResult } from "../../services/team-editor.service";
 import type { CompdataAdvancement, CompdataObject } from "../../../shared/types";
 import { nations } from "../../../utils/get-nations/get-nations";
@@ -39,6 +41,12 @@ export interface CreateTournamentCalendarRequest {
   fixtures: CreateTournamentFixtureRequest[];
 }
 
+export interface CreateTournamentCountryWeatherRequest {
+  mode: "default" | "copy" | "preset" | "skip";
+  preset?: WeatherPresetKey;
+  sourceCountryObjectId?: number;
+}
+
 export interface CreateTournamentRequest {
   locationType: 0 | 1 | 2;
   locationId: number;
@@ -53,6 +61,7 @@ export interface CreateTournamentRequest {
   cupInitialTeams?: number;
   initialTeams?: string[];
   advancements?: CompdataAdvancement[];
+  countryWeather?: CreateTournamentCountryWeatherRequest;
   calendar?: CreateTournamentCalendarRequest;
 }
 
@@ -63,11 +72,11 @@ export interface CreateTournamentRequest {
   template: `
     <div class="tse-modal-backdrop">
       <section class="tse-modal tse-wizard" style="width: 800px; max-width: 90vw;" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
-        <header class="tse-modal-header"><div><span>Step {{ step }} of 7</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
-        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4,5,6,7]" [class.active]="item <= step"></span></div>
+        <header class="tse-modal-header"><div><span>Step {{ step }} of 8</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
+        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4,5,6,7,8]" [class.active]="item <= step"></span></div>
         <div class="tse-modal-body">
           <ng-container *ngIf="step === 1">
-            <p>Choose where this tournament will be placed in the compobj structure.</p>
+            <p>Choose where this tournament belongs.</p>
             <div class="tse-choice-grid">
               <button type="button" [class.active]="locationType === 2" (click)="chooseLocationType(2)"><strong>Country</strong><span>For national leagues and cups.</span></button>
               <button type="button" [class.active]="locationType === 1" (click)="chooseLocationType(1)"><strong>Confederation</strong><span>For continental tournaments.</span></button>
@@ -88,7 +97,7 @@ export interface CreateTournamentRequest {
               <div class="tse-selected-location" *ngIf="selectedParentName">
                 <span>Selected</span><strong>{{ selectedParentName }}</strong>
                 <small *ngIf="locationType === 2" [class.tse-warning]="willCreateCountry" [class.tse-success]="!willCreateCountry" style="display: block; margin-top: 4px;">
-                  {{ willCreateCountry ? 'Will be added to compobj' : 'Already in compobj' }}
+                  {{ willCreateCountry ? 'Will be added to tournament files' : 'Already available' }}
                 </small>
               </div>
             </div>
@@ -97,7 +106,7 @@ export interface CreateTournamentRequest {
           <ng-container *ngIf="step === 2">
             <p>Define the tournament ID and name.</p>
             <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px;">
-              <label class="tse-field"><span>Tournament ID <span title="This is not the compobj objectId. The compobj objectId is generated automatically.">ⓘ</span></span><input type="number" min="1" [(ngModel)]="tournamentId" (ngModelChange)="onTournamentIdChange()" /></label>
+              <label class="tse-field"><span>Tournament ID <span title="A stable tournament number. Internal file IDs are generated automatically.">ⓘ</span></span><input type="number" min="1" [(ngModel)]="tournamentId" (ngModelChange)="onTournamentIdChange()" /></label>
               <label class="tse-field"><span>Tournament Name</span><input type="text" [(ngModel)]="customName" placeholder="e.g. Copa Inter. Masculina" /></label>
             </div>
             <div class="tse-field-error" *ngIf="isCodeAlreadyUsed" style="color: var(--tse-danger); font-size: 13px; margin-top: -12px; margin-bottom: 16px;">This tournament ID is already used by another competition.</div>
@@ -218,6 +227,53 @@ export interface CreateTournamentRequest {
           </ng-container>
 
           <ng-container *ngIf="step === 6">
+            <p>Country weather is a global country setting. It can affect every competition played in that country.</p>
+            <ng-container *ngIf="locationType === 2; else noCountryWeatherStep">
+              <div class="tse-resolved">
+                <small>Global country setting</small>
+                <strong>{{ selectedParentName }}</strong>
+                <span>{{ countryWeatherStatusText }}</span>
+              </div>
+              <div class="tse-choice-grid">
+                <button type="button" [class.active]="countryWeatherChoice === 'default'" (click)="countryWeatherChoice = 'default'"><strong>Use default weather</strong><span>Create a complete temperate profile for this country.</span></button>
+                <button type="button" [class.active]="countryWeatherChoice === 'copy'" (click)="countryWeatherChoice = 'copy'" [disabled]="!countryWeatherSourceOptions.length"><strong>Copy from another country</strong><span>Useful when this country should match an existing climate.</span></button>
+                <button type="button" [class.active]="countryWeatherChoice === 'preset'" (click)="countryWeatherChoice = 'preset'"><strong>Choose climate preset</strong><span>Pick temperate, cold, tropical, dry or rainy.</span></button>
+                <button type="button" [class.active]="countryWeatherChoice === 'skip'" (click)="countryWeatherChoice = 'skip'"><strong>Skip for now</strong><span>Configure this later in Global Weather.</span></button>
+              </div>
+              <label class="tse-field" *ngIf="countryWeatherChoice === 'copy'"><span>Select source country</span><select [(ngModel)]="countryWeatherSourceId"><option *ngFor="let country of countryWeatherSourceOptions" [ngValue]="country.id">{{ weatherDisplay.countryObjectName(country, project, reference) }}</option></select></label>
+              <div *ngIf="countryWeatherChoice === 'preset'" class="tse-choice-grid">
+                <button type="button" *ngFor="let preset of weather.presets" [class.active]="countryWeatherPreset === preset.key" (click)="countryWeatherPreset = preset.key"><strong>{{ preset.label }}</strong><span>{{ preset.description }}</span></button>
+              </div>
+              <div class="tse-section-heading" *ngIf="countryWeatherChoice !== 'skip'">
+                <div><h2>Weather preview</h2><p>Review the monthly climate before creating the tournament.</p></div>
+              </div>
+              <div class="tse-data-table weather compact" *ngIf="countryWeatherChoice !== 'skip'">
+                <div class="head"><span>Month</span><span>Dry</span><span>Rain</span><span>Snow</span><span>Overcast</span><span>Sunset</span><span>Night</span><span></span></div>
+                <div class="row" *ngFor="let entry of countryWeatherPreviewEntries">
+                  <span>{{ weatherDisplay.monthName(entry.month) }}</span>
+                  <span>{{ entry.dryChance }}%</span>
+                  <span>{{ entry.rainChance }}%</span>
+                  <span>{{ entry.snowChance }}%</span>
+                  <span>{{ entry.overcastChance }}%</span>
+                  <span>{{ weatherDisplay.formatTime(entry.sunsetTime) }}</span>
+                  <span>{{ weatherDisplay.formatTime(entry.nightTime) }}</span>
+                  <span></span>
+                </div>
+              </div>
+              <details class="tse-technical" *ngIf="countryWeatherChoice !== 'skip'">
+                <summary>Preview generated weather.txt lines</summary>
+                <code *ngFor="let line of countryWeatherTechnicalPreviewLines">{{ line }}</code>
+              </details>
+            </ng-container>
+            <ng-template #noCountryWeatherStep>
+              <div class="tse-inline-empty">
+                <strong>No single country weather profile</strong>
+                <span>Weather depends on match country or stadium for continental and world tournaments. Use Global Weather after creation to edit countries.</span>
+              </div>
+            </ng-template>
+          </ng-container>
+
+          <ng-container *ngIf="step === 7">
             <p>Set when the tournament will be played. You can create generic matchday rules or exact fixtures.</p>
             <div class="tse-choice-grid">
               <button type="button" [class.active]="calendarChoice === 'generate'" (click)="calendarChoice = 'generate'; buildCalendarPreview()"><strong>Generate simple calendar</strong><span>Create matchdays from a start date and interval.</span></button>
@@ -320,7 +376,7 @@ export interface CreateTournamentRequest {
             </ng-container>
           </ng-container>
 
-          <ng-container *ngIf="step === 7">
+          <ng-container *ngIf="step === 8">
             <div class="tse-review">
               <div><span>Tournament ID</span><strong>{{ tournamentId }}</strong></div>
               <div><span>Generated internal code</span><strong>{{ internalCode }}</strong></div>
@@ -330,7 +386,7 @@ export interface CreateTournamentRequest {
                 <span>Belongs to</span>
                 <strong>{{ selectedParentName }}</strong>
                 <small *ngIf="locationType === 2" style="display: block; opacity: 0.8; margin-top: 4px;">
-                  Status: {{ willCreateCountry ? selectedParentName + ' will be added to compobj' : selectedParentName + ' already exists in compobj with objectId ' + (existingCountry?.id || '') }}
+                  Status: {{ willCreateCountry ? selectedParentName + ' will be added to tournament files' : selectedParentName + ' already exists in the country list' }}
                 </small>
               </div>
               <div><span>Structure</span><ul><li *ngFor="let phase of templatePhases">{{ phase }}</li><li *ngIf="!templatePhases.length">No phases yet</li></ul></div>
@@ -343,6 +399,11 @@ export interface CreateTournamentRequest {
                 <ng-template #skippedTeams>
                   <div><strong>Not configured yet</strong><small style="display: block; color: var(--tse-text-muted); margin-top: 4px;">You can configure teams later in Teams / Seeding.</small></div>
                 </ng-template>
+              </div>
+              <div>
+                <span>Country weather</span>
+                <strong>{{ countryWeatherReviewTitle }}</strong>
+                <small *ngIf="locationType === 2" style="display: block; color: var(--tse-text-muted); margin-top: 4px;">Global country setting for {{ selectedParentName }}.</small>
               </div>
               <div>
                 <span>Calendar</span>
@@ -395,7 +456,7 @@ export interface CreateTournamentRequest {
             </details>
           </ng-container>
         </div>
-        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 7" [disabled]="!canContinue" (click)="onContinue()">Continue</button><button type="button" class="tse-primary" *ngIf="step === 7" (click)="submit()">Create tournament</button></footer>
+        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 8" [disabled]="!canContinue" (click)="onContinue()">Continue</button><button type="button" class="tse-primary" *ngIf="step === 8" (click)="submit()">Create tournament</button></footer>
       </section>
     </div>
   `
@@ -432,6 +493,10 @@ export class CreateTournamentWizardComponent implements OnInit {
   mockObjectsForAdvancement: CompdataObject[] = [];
   readonly monthOptions = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map((label, index) => ({ value: index + 1, label }));
 
+  countryWeatherChoice: "default" | "copy" | "preset" | "skip" = "skip";
+  countryWeatherPreset: WeatherPresetKey = "temperate";
+  countryWeatherSourceId = 0;
+
   calendarChoice: "generate" | "manual" | "fixtures" | "skip" = "generate";
   calendarStartMonth = 8;
   calendarStartDay = 18;
@@ -456,7 +521,9 @@ export class CreateTournamentWizardComponent implements OnInit {
     private teamEditor: TeamEditorService,
     private advService: AdvancementService,
     private advDisplay: AdvancementDisplayService,
-    public readonly dates: ScheduleDateService
+    public readonly dates: ScheduleDateService,
+    public readonly weather: WeatherService,
+    public readonly weatherDisplay: WeatherDisplayService
   ) {}
 
   ngOnInit() {
@@ -499,11 +566,11 @@ export class CreateTournamentWizardComponent implements OnInit {
     );
   }
 
-  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Choose initial teams", "Configure advancement", "Configure calendar", "Review"][this.step]; }
+  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Choose initial teams", "Configure advancement", "Configure country weather", "Configure calendar", "Review"][this.step]; }
   get locationTypeLabel(): string { return this.locationType === 2 ? "Country" : this.locationType === 1 ? "Confederation" : "World/FIFA"; }
   get locationPickerPlaceholder(): string { return `Choose ${this.locationType === 2 ? "a country" : this.locationType === 1 ? "a confederation" : "World/FIFA"}...`; }
   get locationSearchPlaceholder(): string { return `Search ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA"}...`; }
-  get locationEmptyText(): string { return `No ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA objects"} were found in compobj.txt.`; }
+  get locationEmptyText(): string { return `No ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA entries"} were found in the tournament files.`; }
   get selectedParentName(): string {
     if (this.parentId >= 0) {
       if (this.locationType === 2) return nations.find((n) => n.id === this.parentId)?.name || "";
@@ -521,7 +588,8 @@ export class CreateTournamentWizardComponent implements OnInit {
     }
     if (this.step === 2) return Boolean(this.tournamentId && this.tournamentId > 0 && this.nameKey.trim() && this.internalCode.trim() && !this.isCodeAlreadyUsed);
     if (this.step === 4) return this.teamsChoice === 'skip' || (this.teamsChoice === 'paste' && Boolean(this.pastedTeamIds.trim())) || this.selectedTeams.length > 0;
-    if (this.step === 6) return this.calendarChoice === "skip" || (this.calendarChoice === "fixtures" ? this.calendarFixturesValid : this.calendarRulesValid);
+    if (this.step === 6) return this.countryWeatherChoice !== "copy" || this.countryWeatherSourceId > 0;
+    if (this.step === 7) return this.calendarChoice === "skip" || (this.calendarChoice === "fixtures" ? this.calendarFixturesValid : this.calendarRulesValid);
     return true;
   }
 
@@ -536,8 +604,21 @@ export class CreateTournamentWizardComponent implements OnInit {
       }
     }
     if (this.step === 6) {
+      this.initializeCountryWeatherStep();
+    }
+    if (this.step === 7) {
       this.initializeCalendarStep();
     }
+  }
+
+  initializeCountryWeatherStep(): void {
+    if (this.locationType !== 2) {
+      this.countryWeatherChoice = "skip";
+      return;
+    }
+    this.countryWeatherChoice = this.countryHasCompleteWeather ? "skip" : "default";
+    this.countryWeatherPreset = "temperate";
+    this.countryWeatherSourceId = this.countryWeatherSourceOptions[0]?.id ?? 0;
   }
 
   generateAdvancementPreview() {
@@ -593,6 +674,54 @@ export class CreateTournamentWizardComponent implements OnInit {
     if (this.calendarChoice === "fixtures") return "Exact fixtures";
     if (this.calendarChoice === "manual") return "Manual matchday rules";
     return "Generated simple calendar";
+  }
+
+  get countryWeatherTargetObjectId(): number {
+    if (this.locationType !== 2) return 0;
+    if (this.existingCountry) return this.existingCountry.id;
+    return Math.max(0, ...this.project.objects.map((object) => object.id)) + 1;
+  }
+
+  get countryHasCompleteWeather(): boolean {
+    return this.locationType === 2 && this.existingCountry ? this.weather.hasCompleteWeather(this.project, this.existingCountry.id) : false;
+  }
+
+  get countryWeatherStatusText(): string {
+    if (this.locationType !== 2) return "Weather depends on match country or stadium.";
+    if (this.willCreateCountry) return `${this.selectedParentName} does not have a weather profile yet.`;
+    const configured = this.existingCountry ? this.weather.configuredMonths(this.project, this.existingCountry.id).size : 0;
+    return configured === 12 ? `${this.selectedParentName} already has weather settings.` : `${this.selectedParentName} has weather for ${configured} of 12 months.`;
+  }
+
+  get countryWeatherSourceOptions(): CompdataObject[] {
+    const targetObjectId = this.countryWeatherTargetObjectId;
+    return this.project.objects
+      .filter((object) => object.kind === 2 && object.id !== targetObjectId && this.weather.configuredMonths(this.project, object.id).size > 0)
+      .sort((a, b) => this.weatherDisplay.countryObjectName(a, this.project, this.reference).localeCompare(this.weatherDisplay.countryObjectName(b, this.project, this.reference)));
+  }
+
+  get countryWeatherPreviewEntries() {
+    const targetObjectId = this.countryWeatherTargetObjectId;
+    if (this.countryWeatherChoice === "copy") {
+      return this.weather.countryProfile(this.project, this.countryWeatherSourceId).map((entry) => ({ ...entry, countryObjectId: targetObjectId, originalRawLine: undefined }));
+    }
+    const preset = this.countryWeatherChoice === "preset" ? this.countryWeatherPreset : "temperate";
+    return this.weather.presetEntries(targetObjectId, preset);
+  }
+
+  get countryWeatherTechnicalPreviewLines(): string[] {
+    return this.countryWeatherPreviewEntries.map((entry) => this.weather.rawLine(entry));
+  }
+
+  get countryWeatherReviewTitle(): string {
+    if (this.locationType !== 2) return "Not a country-specific tournament";
+    if (this.countryWeatherChoice === "skip") return this.countryHasCompleteWeather ? "Already configured" : "Not configured yet";
+    if (this.countryWeatherChoice === "copy") {
+      const source = this.project.objects.find((object) => object.id === this.countryWeatherSourceId);
+      return source ? `Copy from ${this.weatherDisplay.countryObjectName(source, this.project, this.reference)}` : "Copy from another country";
+    }
+    if (this.countryWeatherChoice === "preset") return `${this.weather.presets.find((preset) => preset.key === this.countryWeatherPreset)?.label ?? "Custom"} preset`;
+    return "Default weather";
   }
 
   get canAddWizardFixture(): boolean {
@@ -1021,7 +1150,7 @@ export class CreateTournamentWizardComponent implements OnInit {
         return {
           value: String(nation.id),
           label: nation.name,
-          detail: `Country · nationid ${nation.id} · ${exists ? 'Existing in compobj' : 'Available from nations'}`,
+          detail: `Country · ${exists ? 'Already available' : 'Can be added'}`,
           searchText: `${nation.name} ${nation.id}`
         };
       });
@@ -1034,7 +1163,7 @@ export class CreateTournamentWizardComponent implements OnInit {
           return {
             value: String(object.id),
             label,
-            detail: `${typeName} · ${object.shortName || "no code"} · objectId ${object.id}`,
+            detail: `${typeName} · ${object.shortName || "no code"}`,
             searchText: `${object.description} ${object.shortName} ${object.id}`
           };
         });
@@ -1073,6 +1202,7 @@ export class CreateTournamentWizardComponent implements OnInit {
         cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
         initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined,
         advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined,
+        countryWeather: this.createCountryWeatherRequest(),
         calendar: this.createCalendarRequest()
       });
       return;
@@ -1093,8 +1223,21 @@ export class CreateTournamentWizardComponent implements OnInit {
       cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
       initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined,
       advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined,
+      countryWeather: this.createCountryWeatherRequest(),
       calendar: this.createCalendarRequest()
     });
+  }
+
+  private createCountryWeatherRequest(): CreateTournamentCountryWeatherRequest | undefined {
+    if (this.locationType !== 2) return undefined;
+    if (this.countryWeatherChoice === "skip") return { mode: "skip" };
+    if (this.countryWeatherChoice === "copy") {
+      return { mode: "copy", sourceCountryObjectId: this.countryWeatherSourceId };
+    }
+    if (this.countryWeatherChoice === "preset") {
+      return { mode: "preset", preset: this.countryWeatherPreset };
+    }
+    return { mode: "default", preset: "temperate" };
   }
 
   private createCalendarRequest(): CreateTournamentCalendarRequest | undefined {
