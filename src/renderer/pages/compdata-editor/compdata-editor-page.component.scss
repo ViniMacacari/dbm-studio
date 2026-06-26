@@ -404,6 +404,92 @@ app-tournament-phase-details {
 .tse-row-actions button { min-height: 27px; font-size: 10px; }
 .tse-row-actions .tse-open { border-color: #a9cabb; color: var(--tse-accent); }
 
+.tse-muted { color: var(--tse-muted); }
+
+.tse-form-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.tse-form-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tse-form-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.tse-field textarea {
+  min-height: 130px;
+  border: 1px solid #cfd9d3;
+  border-radius: 7px;
+  background: white;
+  color: var(--tse-text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  padding: 10px;
+  resize: vertical;
+}
+
+.tse-checkline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tse-muted);
+  font-size: 12px;
+}
+
+.tse-data-table {
+  display: grid;
+  overflow-x: auto;
+  border: 1px solid var(--tse-line);
+  border-radius: 8px;
+  background: white;
+}
+
+.tse-data-table .head,
+.tse-data-table .row {
+  min-width: 820px;
+  display: grid;
+  grid-template-columns: minmax(150px, 1.1fr) minmax(120px, .9fr) 90px 115px 80px 120px 120px;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--tse-line);
+  padding: 8px 10px;
+}
+
+.tse-data-table.fixture .head,
+.tse-data-table.fixture .row {
+  grid-template-columns: 115px 80px minmax(140px, 1fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(110px, .8fr) 120px;
+}
+
+.tse-data-table.preview .head,
+.tse-data-table.preview .row {
+  grid-template-columns: minmax(140px, 1fr) 80px 135px 105px 70px 70px 80px;
+}
+
+.tse-data-table .head {
+  background: #f3f6f4;
+  color: var(--tse-muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.tse-data-table .row:last-child { border-bottom: 0; }
+.tse-data-table .row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tse-data-table input { width: 100%; min-width: 0; height: 30px; border: 1px solid #cfd9d3; border-radius: 6px; padding: 0 7px; }
+.tse-season-date-edit {
+  display: grid;
+  grid-template-columns: minmax(62px, 1fr) 48px;
+  gap: 4px;
+  overflow: visible !important;
+}
+.tse-season-date-edit select,
+.tse-season-date-edit input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid #cfd9d3;
+  border-radius: 6px;
+  background: white;
+  padding: 0 6px;
+}
+
 .tse-phase-description {
   margin: -5px 0 14px;
 }

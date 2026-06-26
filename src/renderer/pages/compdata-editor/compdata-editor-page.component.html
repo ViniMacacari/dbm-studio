@@ -3,7 +3,7 @@
     <div class="tse-topbar-title">
       <button type="button" (click)="showHome.emit()">Home</button>
       <div>
-        <h1>Tournament Editor</h1><span>compobj.txt structure</span>
+        <h1>Tournament Editor</h1><span>Tournament files</span>
       </div>
     </div>
     <div class="tse-topbar-actions">
@@ -18,8 +18,8 @@
     </div>
   </header>
 
-  <div class="tse-scope-note" *ngIf="compdataProject">Editing structure only. Teams, matches, calendar and progression
-    are configured in other compdata files.</div>
+  <div class="tse-scope-note" *ngIf="compdataProject">Tournament data uses several files. This editor keeps structure, teams,
+    advancement and calendar connected without hiding the source files in Advanced View.</div>
 
   <ng-container *ngIf="compdataProject as project; else noProject">
     <div class="tse-simple-layout" *ngIf="view === 'simple'; else advanced">
@@ -49,6 +49,8 @@
               (click)="activeTab = 'teams'">Teams / Seeding</button>
             <button type="button" class="tse-tab" [class.active]="activeTab === 'advancement'"
               (click)="activeTab = 'advancement'">Advancement</button>
+            <button type="button" class="tse-tab" [class.active]="activeTab === 'calendar'"
+              (click)="activeTab = 'calendar'">Calendar</button>
           </div>
 
           <ng-container *ngIf="selectedCompetition; else selectTournamentState">
@@ -66,6 +68,10 @@
             <app-tournament-advancement *ngIf="activeTab === 'advancement'" [project]="project"
               [referenceProject]="compdataReferenceProject" [competition]="selectedCompetition"
               (structureChanged)="compdataDirty = true"></app-tournament-advancement>
+
+            <app-tournament-calendar *ngIf="activeTab === 'calendar'" [project]="project"
+              [referenceProject]="compdataReferenceProject" [competition]="selectedCompetition"
+              (structureChanged)="compdataDirty = true"></app-tournament-calendar>
           </ng-container>
 
           <ng-template #selectTournamentState>
@@ -246,7 +252,7 @@
     </header>
     <div class="tse-modal-body">
       <p *ngIf="deleteTarget.kind === 'tournament'">This will remove the tournament, its phases and its groups from
-        compobj.txt. It will not remove teams, schedules or rules from other compdata files.</p>
+        the structure file. It will not remove teams, calendar entries or rules from other tournament files.</p>
       <p *ngIf="deleteTarget.kind === 'phase'">This will remove this phase and all groups or match slots inside it.</p>
       <p *ngIf="deleteTarget.kind === 'child'">This will remove this group or match slot from the phase.</p>
     </div>
