@@ -122,21 +122,35 @@ function parseSettings(text: string): CompdataSetting[] {
   }));
 }
 
-function parseTasks(text: string, warnings: string[]): CompdataTask[] {
-  return rows(text).map((row, index) => {
-    if (row.length < 7) {
-      warnings.push(`tasks.txt line ${index + 1} has ${row.length} column(s); expected 7.`);
+function parseTasks(text: string, warnings: string[]): { entries: CompdataTask[]; invalidLines: CompdataInvalidRawLine[] } {
+  const entries: CompdataTask[] = [];
+  const invalidLines: CompdataInvalidRawLine[] = [];
+
+  text.split(/\r?\n/).forEach((sourceLine, sourceIndex) => {
+    const rawLine = sourceLine.trim();
+    if (!rawLine || rawLine.startsWith("#")) {
+      return;
     }
-    return {
+    const row = rawLine.split(",").map((part) => part.trim());
+    if (row.length < 7) {
+      const reason = `tasks.txt line ${sourceIndex + 1} has ${row.length} column(s); expected 7.`;
+      warnings.push(reason);
+      invalidLines.push({ lineNumber: sourceIndex + 1, rawLine, reason });
+      return;
+    }
+    entries.push({
       competitionId: numberValue(row[0]),
       timing: row[1] ?? "",
       action: row[2] ?? "",
       targetId: numberValue(row[3]),
       param1: row[4] ?? "",
       param2: row[5] ?? "",
-      param3: row[6] ?? ""
-    };
+      param3: row[6] ?? "",
+      originalRawLine: rawLine
+    });
   });
+
+  return { entries, invalidLines };
 }
 
 function parseSchedules(text: string): CompdataScheduleEntry[] {
@@ -430,7 +444,7 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
   const initTeams = parseStep("Parsing initteams.txt", () => parseInitTeams(initTeamsText));
   const weather = parseStep("Parsing weather.txt", () => parseWeather(weatherText, warnings));
   emitProgress(onProgress, "building", step, totalSteps, "Building competition summaries");
-  const competitions = competitionSummaries(objects, compIds, settings, tasks, schedules, specificSchedules, standings, advancements, initTeams, warnings);
+  const competitions = competitionSummaries(objects, compIds, settings, tasks.entries, schedules, specificSchedules, standings, advancements, initTeams, warnings);
   step += 1;
   emitProgress(onProgress, "loaded", totalSteps, totalSteps, "Compdata loaded");
 
@@ -440,7 +454,8 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
     objects,
     compIds,
     settings,
-    tasks,
+    tasks: tasks.entries,
+    taskInvalidLines: tasks.invalidLines,
     schedules,
     specificSchedules,
     standings,
@@ -476,6 +491,14 @@ export function saveCompdataProject(project: CompdataProject): { folderPath: str
       content: compidsContent
     }
   ];
+
+  writes.push({
+    fileName: "tasks.txt",
+    content: [
+      ...(project.tasks ?? []).map((task) => line([task.competitionId, task.timing, task.action, task.targetId, task.param1, task.param2, task.param3])),
+      ...(project.taskInvalidLines ?? []).map((invalid) => invalid.rawLine)
+    ].join("\n") + ((project.tasks?.length ?? 0) || (project.taskInvalidLines?.length ?? 0) ? "\n" : "")
+  });
 
   if (project.standings.length > 0) {
     const sortedStandings = [...project.standings].sort((a, b) => {

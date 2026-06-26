@@ -473,6 +473,18 @@ app-tournament-phase-details {
   grid-template-columns: 110px minmax(130px, 1fr) 60px 55px 55px 55px 75px 70px 70px 90px;
 }
 
+.tse-data-table.tasks .head,
+.tse-data-table.tasks .row {
+  min-width: 860px;
+  grid-template-columns: minmax(180px, .9fr) minmax(180px, 1fr) minmax(260px, 1.4fr) 190px;
+}
+
+.tse-data-table.tasks-advanced .head,
+.tse-data-table.tasks-advanced .row {
+  min-width: 1180px;
+  grid-template-columns: minmax(150px, 1fr) 70px minmax(170px, 1fr) minmax(160px, 1fr) minmax(260px, 1.5fr) minmax(260px, 1.4fr) 80px;
+}
+
 .tse-data-table.preview .head,
 .tse-data-table.preview .row {
   grid-template-columns: minmax(140px, 1fr) 80px 135px 105px 70px 70px 80px;

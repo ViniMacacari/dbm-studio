@@ -46,6 +46,8 @@
               (click)="activeTab = 'structure'">Structure</button>
             <button type="button" class="tse-tab" [class.active]="activeTab === 'teams'"
               (click)="activeTab = 'teams'">Teams / Seeding</button>
+            <button type="button" class="tse-tab" [class.active]="activeTab === 'sources'"
+              (click)="activeTab = 'sources'">Team Sources</button>
             <button type="button" class="tse-tab" [class.active]="activeTab === 'advancement'"
               (click)="activeTab = 'advancement'">Advancement</button>
             <button type="button" class="tse-tab" [class.active]="activeTab === 'calendar'"
@@ -65,6 +67,10 @@
             <app-tournament-teams-setup *ngIf="activeTab === 'teams'" [project]="project"
               [referenceProject]="compdataReferenceProject" [competition]="selectedCompetition"
               (structureChanged)="compdataDirty = true"></app-tournament-teams-setup>
+
+            <app-tournament-team-sources *ngIf="activeTab === 'sources'" [project]="project"
+              [referenceProject]="compdataReferenceProject" [competition]="selectedCompetition"
+              (structureChanged)="compdataDirty = true"></app-tournament-team-sources>
 
             <app-tournament-advancement *ngIf="activeTab === 'advancement'" [project]="project"
               [referenceProject]="compdataReferenceProject" [competition]="selectedCompetition"
