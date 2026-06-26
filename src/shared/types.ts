@@ -91,6 +91,24 @@ export interface CompdataSpecificScheduleFile {
   fixtures: CompdataSpecificFixtureEntry[];
 }
 
+export interface CompdataWeatherEntry {
+  countryObjectId: number;
+  month: number;
+  dryChance: number;
+  rainChance: number;
+  snowChance: number;
+  overcastChance: number;
+  sunsetTime: string;
+  nightTime: string;
+  originalRawLine?: string;
+}
+
+export interface CompdataInvalidRawLine {
+  lineNumber: number;
+  rawLine: string;
+  reason: string;
+}
+
 export interface CompdataStandingSlot {
   groupId: number;
   position: number;
@@ -136,6 +154,8 @@ export interface CompdataProject {
   standings: CompdataStandingSlot[];
   advancements: CompdataAdvancement[];
   initTeams: CompdataInitTeam[];
+  weatherEntries: CompdataWeatherEntry[];
+  weatherInvalidLines: CompdataInvalidRawLine[];
   weatherRows: string[][];
   activeTeamsRows: string[][];
   objectiveRows: string[][];

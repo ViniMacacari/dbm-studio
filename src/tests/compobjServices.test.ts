@@ -33,7 +33,7 @@ const project = {
     { id: 14, kind: 5, shortName: "G1", description: "", parentId: 13 }
   ],
   compIds: [10], settings: [], tasks: [], schedules: [], specificSchedules: [], standings: [{ groupId: 12, position: 0 }, { groupId: 12, position: 1 }, { groupId: 14, position: 0 }, { groupId: 14, position: 1 }], advancements: [], initTeams: [],
-  weatherRows: [], activeTeamsRows: [], objectiveRows: [], warnings: [],
+  weatherEntries: [], weatherInvalidLines: [], weatherRows: [], activeTeamsRows: [], objectiveRows: [], warnings: [],
   competitions: [{ id: 10, shortName: "C10", description: "Cup_Key", parentId: 1, stages: [], groups: [], settingsCount: 0, tasksCount: 0, scheduleCount: 0, standingsCount: 0, advancementCount: 0, initTeamsCount: 0 }]
 } satisfies CompdataProject;
 
@@ -63,7 +63,7 @@ try {
   assert.equal(opened.specificSchedules.length, 1);
   opened.objects[1].shortName = "C11";
   const saved = saveCompdataProject(opened);
-  assert.equal(saved.filesWritten, 4);
+  assert.equal(saved.filesWritten, 5);
   assert.equal(readFileSync(join(folder, "settings.txt"), "utf8"), "keep-this-file-unchanged");
   assert.match(readFileSync(join(folder, "compobj.txt"), "utf8"), /10,3,C11,Cup_Key,1/);
   assert.equal(readFileSync(join(folder, "schedule.txt"), "utf8"), "10,215,1,1,5,2030\n");
