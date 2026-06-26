@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type {
   CompdataAdvancement,
@@ -8,6 +8,8 @@ import type {
   CompdataOpenProgress,
   CompdataProject,
   CompdataScheduleEntry,
+  CompdataSpecificFixtureEntry,
+  CompdataSpecificScheduleFile,
   CompdataSetting,
   CompdataStandingSlot,
   CompdataTask
@@ -128,14 +130,76 @@ function parseTasks(text: string, warnings: string[]): CompdataTask[] {
 }
 
 function parseSchedules(text: string): CompdataScheduleEntry[] {
-  return rows(text).map((row) => ({
-    objectId: numberValue(row[0]),
-    day: numberValue(row[1]),
-    round: numberValue(row[2]),
-    minGames: numberValue(row[3]),
-    maxGames: numberValue(row[4]),
-    time: row[5] ?? ""
-  }));
+  return text
+    .split(/\r?\n/)
+    .map((rawLine) => rawLine.trim())
+    .filter((rawLine) => rawLine && !rawLine.startsWith("#"))
+    .map((rawLine) => {
+      const row = rawLine.split(",").map((part) => part.trim());
+      return {
+        objectId: numberValue(row[0]),
+        day: numberValue(row[1]),
+        round: numberValue(row[2]),
+        minGames: numberValue(row[3]),
+        maxGames: numberValue(row[4]),
+        time: row[5] ?? "",
+        originalRawLine: rawLine
+      };
+    });
+}
+
+function parseSpecificScheduleFileName(fileName: string): { competitionCode: string; stageCode: string; year: number } | undefined {
+  const match = /^([a-z]\d+)_([a-z]\d+)_(\d{4})(?:\.txt)?$/i.exec(fileName.trim());
+  if (!match) {
+    return undefined;
+  }
+  return {
+    competitionCode: match[1].toUpperCase(),
+    stageCode: match[2].toUpperCase(),
+    year: numberValue(match[3])
+  };
+}
+
+function parseSpecificFixtures(text: string): CompdataSpecificFixtureEntry[] {
+  return text
+    .split(/\r?\n/)
+    .map((rawLine) => rawLine.trim())
+    .filter((rawLine) => rawLine && !rawLine.startsWith("#"))
+    .map((rawLine) => {
+      const row = rawLine.split(",").map((part) => part.trim());
+      return {
+        date: row[0] ?? "",
+        time: row[1] ?? "",
+        homeTeamId: row[2] ?? "",
+        awayTeamId: row[3] ?? "",
+        originalRawLine: rawLine
+      };
+    });
+}
+
+function readSpecificScheduleFiles(folderPath: string, warnings: string[]): CompdataSpecificScheduleFile[] {
+  const schedulesPath = join(folderPath, "schedules");
+  if (!existsSync(schedulesPath)) {
+    return [];
+  }
+
+  return readdirSync(schedulesPath)
+    .map((fileName) => {
+      const parsedName = parseSpecificScheduleFileName(fileName);
+      if (!parsedName) {
+        warnings.push(`schedules/${fileName} does not match the expected competition_stage_year naming pattern.`);
+        return undefined;
+      }
+      const text = readFileSync(join(schedulesPath, fileName), "utf8");
+      return {
+        fileName,
+        competitionCode: parsedName.competitionCode,
+        stageCode: parsedName.stageCode,
+        year: parsedName.year,
+        fixtures: parseSpecificFixtures(text)
+      } satisfies CompdataSpecificScheduleFile;
+    })
+    .filter((file): file is CompdataSpecificScheduleFile => Boolean(file));
 }
 
 function parseStandings(text: string): CompdataStandingSlot[] {
@@ -192,6 +256,7 @@ function competitionSummaries(
   settings: CompdataSetting[],
   tasks: CompdataTask[],
   schedules: CompdataScheduleEntry[],
+  specificSchedules: CompdataSpecificScheduleFile[],
   standings: CompdataStandingSlot[],
   advancements: CompdataAdvancement[],
   initTeams: CompdataInitTeam[],
@@ -233,8 +298,12 @@ function competitionSummaries(
       const descendantIds = collectDescendantIds(id, byParent);
       const stages = (byParent.get(id) ?? []).filter((object) => object.kind === 4);
       const stageIds = new Set(stages.map((stage) => stage.id));
+      const stageCodes = new Set(stages.map((stage) => stage.shortName.toLowerCase()));
       const groups = [...descendantIds].map((candidate) => byId.get(candidate)).filter((object): object is CompdataObject => object?.kind === 5);
       const groupIds = new Set(groups.map((group) => group.id));
+      const specificScheduleCount = specificSchedules
+        .filter((file) => file.competitionCode.toLowerCase() === competition.shortName.toLowerCase() && stageCodes.has(file.stageCode.toLowerCase()))
+        .reduce((sum, file) => sum + file.fixtures.length, 0);
       return {
         id: competition.id,
         shortName: competition.shortName,
@@ -244,7 +313,7 @@ function competitionSummaries(
         groups,
         settingsCount: settings.filter((setting) => descendantIds.has(setting.objectId)).length,
         tasksCount: tasks.filter((task) => task.competitionId === id).length,
-        scheduleCount: schedules.filter((schedule) => descendantIds.has(schedule.objectId) || stageIds.has(schedule.objectId) || groupIds.has(schedule.objectId)).length,
+        scheduleCount: schedules.filter((schedule) => descendantIds.has(schedule.objectId) || stageIds.has(schedule.objectId) || groupIds.has(schedule.objectId)).length + specificScheduleCount,
         standingsCount: standings.filter((standing) => groupIds.has(standing.groupId)).length,
         advancementCount: advancements.filter((advancement) => groupIds.has(advancement.fromGroupId) || groupIds.has(advancement.toGroupId)).length,
         initTeamsCount: initTeams.filter((team) => team.competitionId === id).length
@@ -260,7 +329,7 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
   if (missingRequiredFiles.length > 0) {
     throw new Error(`Compdata folder is missing required file(s): ${missingRequiredFiles.join(", ")}`);
   }
-  const totalSteps = mainCompdataFiles.length + 10;
+  const totalSteps = mainCompdataFiles.length + 11;
   let step = 0;
   const readFile = (fileName: string, warnIfMissing = false): string => {
     emitProgress(onProgress, "reading", step, totalSteps, `Reading ${fileName}`, fileName);
@@ -301,12 +370,13 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
   const settings = parseStep("Parsing settings.txt", () => parseSettings(settingsText));
   const tasks = parseStep("Parsing tasks.txt", () => parseTasks(tasksText, warnings));
   const schedules = parseStep("Parsing schedule.txt", () => parseSchedules(scheduleText));
+  const specificSchedules = parseStep("Parsing specific schedule files", () => readSpecificScheduleFiles(folderPath, warnings));
   const standings = parseStep("Parsing standings.txt", () => parseStandings(standingsText));
   const advancements = parseStep("Parsing advancement.txt", () => parseAdvancements(advancementText));
   const initTeams = parseStep("Parsing initteams.txt", () => parseInitTeams(initTeamsText));
   const weatherRows = parseStep("Parsing weather.txt", () => rows(weatherText));
   emitProgress(onProgress, "building", step, totalSteps, "Building competition summaries");
-  const competitions = competitionSummaries(objects, compIds, settings, tasks, schedules, standings, advancements, initTeams, warnings);
+  const competitions = competitionSummaries(objects, compIds, settings, tasks, schedules, specificSchedules, standings, advancements, initTeams, warnings);
   step += 1;
   emitProgress(onProgress, "loaded", totalSteps, totalSteps, "Compdata loaded");
 
@@ -318,6 +388,7 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
     settings,
     tasks,
     schedules,
+    specificSchedules,
     standings,
     advancements,
     initTeams,
@@ -400,13 +471,32 @@ export function saveCompdataProject(project: CompdataProject): { folderPath: str
     });
   }
 
+  writes.push({
+    fileName: "schedule.txt",
+    content: project.schedules.map((schedule) => line([schedule.objectId, schedule.day, schedule.round, schedule.minGames, schedule.maxGames, schedule.time])).join("\n") + (project.schedules.length ? "\n" : "")
+  });
+
   for (const write of writes) {
     writeFileSync(join(project.folderPath, write.fileName), write.content, "utf8");
   }
 
+  let specificFilesWritten = 0;
+  const specificSchedules = project.specificSchedules ?? [];
+  if (specificSchedules.length > 0) {
+    const schedulesPath = join(project.folderPath, "schedules");
+    mkdirSync(schedulesPath, { recursive: true });
+    for (const scheduleFile of specificSchedules) {
+      const content = scheduleFile.fixtures
+        .map((fixture) => line([fixture.date, fixture.time, fixture.homeTeamId, fixture.awayTeamId]))
+        .join("\n") + (scheduleFile.fixtures.length ? "\n" : "");
+      writeFileSync(join(schedulesPath, scheduleFile.fileName), content, "utf8");
+      specificFilesWritten += 1;
+    }
+  }
+
   return {
     folderPath: project.folderPath,
-    filesWritten: writes.length,
+    filesWritten: writes.length + specificFilesWritten,
     warnings: []
   };
 }
