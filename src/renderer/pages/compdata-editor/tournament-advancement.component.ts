@@ -5,11 +5,12 @@ import type { CompdataAdvancement, CompdataObject, CompdataProject, DbProject, C
 import { AdvancementDisplayService } from "../../services/compdata/advancement-display.service";
 import { AdvancementService, AdvancementValidationResult } from "../../services/compdata/advancement.service";
 import { CompObjDisplayService } from "../../services/compdata/compobj-display.service";
+import { InputListComponent, InputListOption } from "../../components/input-list/input-list.component";
 
 @Component({
   selector: "app-tournament-advancement",
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, InputListComponent],
   template: `
     <div class="tse-panel" style="padding: 24px;">
       <header style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start;">
@@ -60,41 +61,39 @@ import { CompObjDisplayService } from "../../services/compdata/compobj-display.s
 
     <!-- Add Rule Modal -->
     <div class="tse-modal-backdrop" *ngIf="showAddModal">
-      <section class="tse-modal tse-wizard">
+      <section class="tse-modal tse-wizard" style="width: 800px; max-width: 90vw;">
         <header class="tse-modal-header">
           <div><h2 style="margin: 0; font-size: 18px;">Add advancement rule</h2></div>
           <button type="button" aria-label="Close" (click)="closeAddModal()">×</button>
         </header>
-        <div class="tse-modal-body" style="display: flex; flex-direction: column; gap: 24px;">
+        <div class="tse-modal-body" style="display: flex; flex-direction: column; gap: 24px; min-height: 350px; overflow: visible;">
           <div>
             <strong style="display: block; margin-bottom: 12px;">Step 1: Who moves?</strong>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
               <label class="tse-field">
                 <span>From phase</span>
-                <select [(ngModel)]="fromPhaseId" (ngModelChange)="onFromPhaseChange()">
-                  <option [ngValue]="-1">Select a phase...</option>
-                  <option *ngFor="let phase of phases" [ngValue]="phase.id">{{ display.objectName(phase, referenceProject, project) }}</option>
-                </select>
+                <app-input-list 
+                  [value]="fromPhaseId === -1 ? '' : fromPhaseId.toString()" 
+                  [options]="phaseOptions" 
+                  placeholder="Select a phase..." 
+                  (valueChange)="setFromPhase($event)"></app-input-list>
               </label>
               <label class="tse-field">
                 <span>From slot</span>
-                <select [(ngModel)]="fromSlotId" [disabled]="fromPhaseId === -1">
-                  <option [ngValue]="-1">Select a slot...</option>
-                  <option *ngFor="let slot of fromSlots" [ngValue]="slot.id">{{ display.objectName(slot, referenceProject, project) }}</option>
-                </select>
+                <app-input-list 
+                  [disabled]="fromPhaseId === -1"
+                  [value]="fromSlotId === -1 ? '' : fromSlotId.toString()" 
+                  [options]="fromSlotOptions" 
+                  placeholder="Select a slot..." 
+                  (valueChange)="setFromSlot($event)"></app-input-list>
               </label>
               <label class="tse-field">
                 <span>Position</span>
-                <select [(ngModel)]="fromPosition">
-                  <option [ngValue]="1">Winner / 1st place</option>
-                  <option [ngValue]="2">Runner-up / 2nd place</option>
-                  <option [ngValue]="3">3rd place</option>
-                  <option [ngValue]="4">4th place</option>
-                  <option [ngValue]="5">5th place</option>
-                  <option [ngValue]="6">6th place</option>
-                  <option [ngValue]="7">7th place</option>
-                  <option [ngValue]="8">8th place</option>
-                </select>
+                <app-input-list 
+                  [value]="fromPosition.toString()" 
+                  [options]="fromPositionOptions" 
+                  placeholder="Select position" 
+                  (valueChange)="setFromPosition($event)"></app-input-list>
               </label>
             </div>
           </div>
@@ -106,26 +105,28 @@ import { CompObjDisplayService } from "../../services/compdata/compobj-display.s
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
               <label class="tse-field">
                 <span>To phase</span>
-                <select [(ngModel)]="toPhaseId" (ngModelChange)="onToPhaseChange()">
-                  <option [ngValue]="-1">Select a phase...</option>
-                  <option *ngFor="let phase of phases" [ngValue]="phase.id">{{ display.objectName(phase, referenceProject, project) }}</option>
-                </select>
+                <app-input-list 
+                  [value]="toPhaseId === -1 ? '' : toPhaseId.toString()" 
+                  [options]="phaseOptions" 
+                  placeholder="Select a phase..." 
+                  (valueChange)="setToPhase($event)"></app-input-list>
               </label>
               <label class="tse-field">
                 <span>To slot</span>
-                <select [(ngModel)]="toSlotId" [disabled]="toPhaseId === -1">
-                  <option [ngValue]="-1">Select a slot...</option>
-                  <option *ngFor="let slot of toSlots" [ngValue]="slot.id">{{ display.objectName(slot, referenceProject, project) }}</option>
-                </select>
+                <app-input-list 
+                  [disabled]="toPhaseId === -1"
+                  [value]="toSlotId === -1 ? '' : toSlotId.toString()" 
+                  [options]="toSlotOptions" 
+                  placeholder="Select a slot..." 
+                  (valueChange)="setToSlot($event)"></app-input-list>
               </label>
               <label class="tse-field">
                 <span>Target position</span>
-                <select [(ngModel)]="toPosition">
-                  <option [ngValue]="1">Position 1</option>
-                  <option [ngValue]="2">Position 2</option>
-                  <option [ngValue]="3">Position 3</option>
-                  <option [ngValue]="4">Position 4</option>
-                </select>
+                <app-input-list 
+                  [value]="toPosition.toString()" 
+                  [options]="toPositionOptions" 
+                  placeholder="Select position" 
+                  (valueChange)="setToPosition($event)"></app-input-list>
               </label>
             </div>
           </div>
@@ -165,6 +166,32 @@ export class TournamentAdvancementComponent implements OnChanges {
   toPosition = 1;
   toSlots: CompdataObject[] = [];
 
+  phaseOptions: InputListOption[] = [];
+  fromSlotOptions: InputListOption[] = [];
+  toSlotOptions: InputListOption[] = [];
+
+  fromPositionOptions: InputListOption[] = [
+    { value: "1", label: "Winner / 1st place" },
+    { value: "2", label: "Runner-up / 2nd place" },
+    { value: "3", label: "3rd place" },
+    { value: "4", label: "4th place" },
+    { value: "5", label: "5th place" },
+    { value: "6", label: "6th place" },
+    { value: "7", label: "7th place" },
+    { value: "8", label: "8th place" }
+  ];
+
+  toPositionOptions: InputListOption[] = [
+    { value: "1", label: "Position 1" },
+    { value: "2", label: "Position 2" },
+    { value: "3", label: "Position 3" },
+    { value: "4", label: "Position 4" },
+    { value: "5", label: "Position 5" },
+    { value: "6", label: "Position 6" },
+    { value: "7", label: "Position 7" },
+    { value: "8", label: "Position 8" }
+  ];
+
   constructor(
     public readonly display: CompObjDisplayService,
     private advDisplay: AdvancementDisplayService,
@@ -183,6 +210,11 @@ export class TournamentAdvancementComponent implements OnChanges {
     
     // Load phases
     this.phases = this.project.objects.filter(o => o.parentId === this.competition.id && o.kind === 4).sort((a, b) => a.id - b.id);
+    this.phaseOptions = this.phases.map(p => ({
+      value: p.id.toString(),
+      label: this.display.objectName(p, this.referenceProject, this.project),
+      detail: `ID: ${p.id} (${p.shortName})`
+    }));
   }
 
   describeRule(rule: CompdataAdvancement): string {
@@ -259,15 +291,41 @@ export class TournamentAdvancementComponent implements OnChanges {
     this.showAddModal = false;
   }
 
+  setFromPhase(val: string) {
+    this.fromPhaseId = parseInt(val, 10) || -1;
+    this.onFromPhaseChange();
+  }
+
   onFromPhaseChange() {
     this.fromSlotId = -1;
     this.fromSlots = this.project.objects.filter(o => o.parentId === this.fromPhaseId && o.kind === 5).sort((a, b) => a.id - b.id);
+    this.fromSlotOptions = this.fromSlots.map(s => ({
+      value: s.id.toString(),
+      label: this.display.objectName(s, this.referenceProject, this.project),
+      detail: `ID: ${s.id} (${s.shortName})`
+    }));
+  }
+
+  setFromSlot(val: string) { this.fromSlotId = parseInt(val, 10) || -1; }
+  setFromPosition(val: string) { this.fromPosition = parseInt(val, 10) || 1; }
+
+  setToPhase(val: string) {
+    this.toPhaseId = parseInt(val, 10) || -1;
+    this.onToPhaseChange();
   }
 
   onToPhaseChange() {
     this.toSlotId = -1;
     this.toSlots = this.project.objects.filter(o => o.parentId === this.toPhaseId && o.kind === 5).sort((a, b) => a.id - b.id);
+    this.toSlotOptions = this.toSlots.map(s => ({
+      value: s.id.toString(),
+      label: this.display.objectName(s, this.referenceProject, this.project),
+      detail: `ID: ${s.id} (${s.shortName})`
+    }));
   }
+
+  setToSlot(val: string) { this.toSlotId = parseInt(val, 10) || -1; }
+  setToPosition(val: string) { this.toPosition = parseInt(val, 10) || 1; }
 
   get canAddRule(): boolean {
     return this.fromSlotId !== -1 && this.toSlotId !== -1;
