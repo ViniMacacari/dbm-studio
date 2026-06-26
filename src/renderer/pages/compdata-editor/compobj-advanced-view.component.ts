@@ -3,6 +3,8 @@ import { Component, Input } from "@angular/core";
 import type { CompdataObject, CompdataProject, DbProject } from "../../../shared/types";
 import { CompObjDisplayService } from "../../services/compdata/compobj-display.service";
 import { CompObjTreeService } from "../../services/compdata/compobj-tree.service";
+import { WeatherDisplayService } from "../../services/compdata/weather-display.service";
+import { WeatherValidationService } from "../../services/compdata/weather-validation.service";
 
 @Component({
   selector: "app-compobj-advanced-view",
@@ -75,6 +77,34 @@ import { CompObjTreeService } from "../../services/compdata/compobj-tree.service
             <code>No specific schedule files found.</code>
           </div>
         </details>
+        <details class="tse-technical tse-full-preview">
+          <summary>Preview weather.txt</summary>
+          <div class="tse-generated-lines">
+            <code *ngFor="let weather of weatherPreview">{{ weather }}</code>
+            <code *ngIf="!weatherPreview.length">No weather entries found.</code>
+          </div>
+          <div class="tse-warning" *ngFor="let invalid of project.weatherInvalidLines" style="margin-top: 8px;">
+            Invalid preserved line {{ invalid.lineNumber }}: {{ invalid.rawLine }}
+          </div>
+        </details>
+        <details class="tse-technical tse-full-preview">
+          <summary>weather.txt technical table</summary>
+          <div class="tse-data-table weather-advanced">
+            <div class="head"><span>Country objectId</span><span>Country</span><span>Month</span><span>Dry</span><span>Rain</span><span>Snow</span><span>Overcast</span><span>Sunset</span><span>Night</span><span>Status</span></div>
+            <div class="row" *ngFor="let row of weatherRows">
+              <span>{{ row.countryObjectId }}</span>
+              <span>{{ weatherDisplay.countryName(project, row.countryObjectId, reference) }}</span>
+              <span>{{ row.month }}</span>
+              <span>{{ row.dryChance }}</span>
+              <span>{{ row.rainChance }}</span>
+              <span>{{ row.snowChance }}</span>
+              <span>{{ row.overcastChance }}</span>
+              <span>{{ row.sunsetTime }}</span>
+              <span>{{ row.nightTime }}</span>
+              <span>{{ weatherStatus(row.countryObjectId, row.month) }}</span>
+            </div>
+          </div>
+        </details>
       </main>
       <ng-template #selectObject><main class="tse-main-empty"><strong>Select an object</strong><span>Choose an object from the technical tree.</span></main></ng-template>
     </div>
@@ -84,7 +114,12 @@ export class CompObjAdvancedViewComponent {
   @Input({ required: true }) project!: CompdataProject;
   @Input() reference?: DbProject;
   selectedId = 0;
-  constructor(public readonly display: CompObjDisplayService, private readonly tree: CompObjTreeService) {}
+  constructor(
+    public readonly display: CompObjDisplayService,
+    private readonly tree: CompObjTreeService,
+    public readonly weatherDisplay: WeatherDisplayService,
+    private readonly weatherValidation: WeatherValidationService
+  ) {}
   get rows() { return this.tree.fullTree(this.project); }
   get selectedObject(): CompdataObject | undefined { return this.display.object(this.project, this.selectedId) ?? this.rows[0]?.object; }
 
@@ -190,5 +225,24 @@ export class CompObjAdvancedViewComponent {
       fileName: `schedules/${file.fileName}`,
       lines: file.fixtures.map((fixture) => [fixture.date, fixture.time, fixture.homeTeamId, fixture.awayTeamId].join(","))
     }));
+  }
+
+  get weatherPreview(): string[] {
+    return (this.project.weatherEntries ?? [])
+      .slice()
+      .sort((a, b) => a.countryObjectId !== b.countryObjectId ? a.countryObjectId - b.countryObjectId : a.month - b.month)
+      .map((weather) => this.weatherDisplay.rawLine(weather));
+  }
+
+  get weatherRows() {
+    return (this.project.weatherEntries ?? [])
+      .slice()
+      .sort((a, b) => a.countryObjectId !== b.countryObjectId ? a.countryObjectId - b.countryObjectId : a.month - b.month);
+  }
+
+  weatherStatus(countryObjectId: number, month: number): string {
+    const issues = this.weatherValidation.validateProject(this.project).filter((issue) => issue.countryObjectId === countryObjectId && (issue.month === undefined || issue.month === month));
+    if (issues.some((issue) => issue.severity === "error")) return "Error";
+    return issues.length ? "Warning" : "OK";
   }
 }

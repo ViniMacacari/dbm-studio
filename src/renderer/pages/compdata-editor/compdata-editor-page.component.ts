@@ -16,8 +16,10 @@ import { TournamentSidebarComponent } from "./tournament-sidebar.component";
 import { TournamentTeamsSetupComponent } from "./tournament-teams-setup.component";
 import { TournamentAdvancementComponent } from "./tournament-advancement.component";
 import { TournamentCalendarComponent } from "./tournament-calendar.component";
+import { CountryWeatherComponent } from "./country-weather.component";
 import { ScheduleDateService } from "../../services/compdata/schedule-date.service";
 import { ScheduleService } from "../../services/compdata/schedule.service";
+import { WeatherService } from "../../services/compdata/weather.service";
 import { nations } from "../../../utils/get-nations/get-nations";
 
 type EditorDialog = "create" | "addPhase" | "addChild" | "editTournament" | "editPhase" | "editPhaseQuantities" | "editChild" | "delete" | "validation" | "preview" | undefined;
@@ -35,6 +37,7 @@ type DeleteTarget = { kind: "tournament" | "phase" | "child"; object: CompdataOb
     TournamentTeamsSetupComponent,
     TournamentAdvancementComponent,
     TournamentCalendarComponent,
+    CountryWeatherComponent,
     CompObjAdvancedViewComponent,
     CreateTournamentWizardComponent
   ],
@@ -50,7 +53,7 @@ export class CompdataEditorPageComponent {
   compdataReferenceProject?: DbProject;
   compdataDirty = false;
   view: "simple" | "advanced" = "simple";
-  activeTab: "structure" | "teams" | "advancement" | "calendar" = "structure";
+  activeTab: "structure" | "teams" | "advancement" | "calendar" | "weather" = "structure";
   selectedTournamentId = 0;
   selectedPhaseId = 0;
   dialog: EditorDialog;
@@ -74,6 +77,7 @@ export class CompdataEditorPageComponent {
     private readonly validation: CompObjValidationService,
     private readonly schedule: ScheduleService,
     private readonly scheduleDates: ScheduleDateService,
+    private readonly weather: WeatherService,
     private readonly toast: ToastService,
     private readonly loading: LoadingService
   ) {}
@@ -189,6 +193,10 @@ export class CompdataEditorPageComponent {
       resolvedParentId = parent.id;
     }
 
+    if (request.locationType === 2) {
+      this.applyCountryWeatherRequest(request, resolvedParentId);
+    }
+
     maxId++;
     const tournamentId = maxId;
     this.compdataProject.objects.push({ id: tournamentId, kind: 3, shortName: request.internalCode, description: request.nameKey, parentId: resolvedParentId });
@@ -299,6 +307,26 @@ export class CompdataEditorPageComponent {
     this.selectTournament(tournamentId);
     this.dialog = undefined;
     this.statusChanged.emit(newCountryCreated ? "Country and tournament structure created" : "Tournament structure created");
+  }
+
+  private applyCountryWeatherRequest(request: CreateTournamentRequest, countryObjectId: number): void {
+    if (!this.compdataProject || request.locationType !== 2) return;
+    const country = this.tree.object(this.compdataProject, countryObjectId);
+    if (!country || country.kind !== 2) return;
+    const weatherRequest = request.countryWeather;
+    if (!weatherRequest || weatherRequest.mode === "skip") {
+      if (!this.weather.hasCompleteWeather(this.compdataProject, countryObjectId)) {
+        this.toast.show(`${this.display.objectName(country, this.compdataReferenceProject, this.compdataProject)} has no complete weather profile configured.`, "warn");
+      }
+      return;
+    }
+
+    if (weatherRequest.mode === "copy" && weatherRequest.sourceCountryObjectId) {
+      this.weather.copyFromCountry(this.compdataProject, weatherRequest.sourceCountryObjectId, countryObjectId);
+      return;
+    }
+
+    this.weather.applyPreset(this.compdataProject, countryObjectId, weatherRequest.preset ?? "temperate", "all");
   }
 
   openAddPhase(): void {
@@ -483,6 +511,8 @@ export class CompdataEditorPageComponent {
       }
       this.compdataProject = JSON.parse(result.projectJson) as CompdataProject;
       this.compdataProject.specificSchedules ??= [];
+      this.compdataProject.weatherEntries ??= [];
+      this.compdataProject.weatherInvalidLines ??= [];
       this.compdataReferenceProject = undefined;
       this.originalObjectIds = new Set(this.compdataProject.objects.map((object) => object.id));
       this.removedOriginalLines = [];
@@ -536,6 +566,7 @@ export class CompdataEditorPageComponent {
       this.compdataProject.objects.forEach((object) => object.originalRawLine = this.display.rawLine(object));
       this.compdataProject.schedules.forEach((schedule) => schedule.originalRawLine = [schedule.objectId, schedule.day, schedule.round, schedule.minGames, schedule.maxGames, schedule.time].join(","));
       this.compdataProject.specificSchedules?.forEach((file) => file.fixtures.forEach((fixture) => fixture.originalRawLine = [fixture.date, fixture.time, fixture.homeTeamId, fixture.awayTeamId].join(",")));
+      this.compdataProject.weatherEntries?.forEach((weather) => weather.originalRawLine = [weather.countryObjectId, weather.month, weather.dryChance, weather.rainChance, weather.snowChance, weather.overcastChance, weather.sunsetTime, weather.nightTime].join(","));
       this.removedOriginalLines = [];
       this.statusChanged.emit(`${result.filesWritten} compdata file(s) saved`);
       if (result.warnings.length) this.toast.show(result.warnings[0], "warn");
