@@ -72,6 +72,23 @@ export interface CompdataScheduleEntry {
   minGames: number;
   maxGames: number;
   time: string;
+  originalRawLine?: string;
+}
+
+export interface CompdataSpecificFixtureEntry {
+  date: string;
+  time: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  originalRawLine?: string;
+}
+
+export interface CompdataSpecificScheduleFile {
+  fileName: string;
+  competitionCode: string;
+  stageCode: string;
+  year: number;
+  fixtures: CompdataSpecificFixtureEntry[];
 }
 
 export interface CompdataStandingSlot {
@@ -115,6 +132,7 @@ export interface CompdataProject {
   settings: CompdataSetting[];
   tasks: CompdataTask[];
   schedules: CompdataScheduleEntry[];
+  specificSchedules: CompdataSpecificScheduleFile[];
   standings: CompdataStandingSlot[];
   advancements: CompdataAdvancement[];
   initTeams: CompdataInitTeam[];
