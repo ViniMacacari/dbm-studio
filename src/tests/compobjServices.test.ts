@@ -32,7 +32,7 @@ const project = {
     { id: 13, kind: 4, shortName: "S2", description: "FCE_Final", parentId: 10 },
     { id: 14, kind: 5, shortName: "G1", description: "", parentId: 13 }
   ],
-  compIds: [10], settings: [], tasks: [], schedules: [], specificSchedules: [], standings: [{ groupId: 12, position: 0 }, { groupId: 12, position: 1 }, { groupId: 14, position: 0 }, { groupId: 14, position: 1 }], advancements: [], initTeams: [],
+  compIds: [10], settings: [], tasks: [], taskInvalidLines: [], schedules: [], specificSchedules: [], standings: [{ groupId: 12, position: 0 }, { groupId: 12, position: 1 }, { groupId: 14, position: 0 }, { groupId: 14, position: 1 }], advancements: [], initTeams: [],
   weatherEntries: [], weatherInvalidLines: [], weatherRows: [], activeTeamsRows: [], objectiveRows: [], warnings: [],
   competitions: [{ id: 10, shortName: "C10", description: "Cup_Key", parentId: 1, stages: [], groups: [], settingsCount: 0, tasksCount: 0, scheduleCount: 0, standingsCount: 0, advancementCount: 0, initTeamsCount: 0 }]
 } satisfies CompdataProject;
@@ -54,18 +54,21 @@ const folder = mkdtempSync(join(tmpdir(), "dbm-compobj-test-"));
 try {
   writeFileSync(join(folder, "compobj.txt"), "1,0,FIFA,FIFA,-1\n10,3,C10,Cup_Key,1\n", "utf8");
   writeFileSync(join(folder, "settings.txt"), "keep-this-file-unchanged", "utf8");
+  writeFileSync(join(folder, "tasks.txt"), "10,start,FillWithTeam,12,1,687,0\n", "utf8");
   writeFileSync(join(folder, "schedule.txt"), "10,215,1,1,5,2030\n", "utf8");
   mkdirSync(join(folder, "schedules"));
   writeFileSync(join(folder, "schedules", "c10_s1_2012"), "20120818,1500,1,106\n", "utf8");
   const opened = openCompdataProject(folder);
   assert.equal(opened.competitions.length, 1);
+  assert.equal(opened.tasks.length, 1);
   assert.equal(opened.schedules.length, 1);
   assert.equal(opened.specificSchedules.length, 1);
   opened.objects[1].shortName = "C11";
   const saved = saveCompdataProject(opened);
-  assert.equal(saved.filesWritten, 5);
+  assert.equal(saved.filesWritten, 6);
   assert.equal(readFileSync(join(folder, "settings.txt"), "utf8"), "keep-this-file-unchanged");
   assert.match(readFileSync(join(folder, "compobj.txt"), "utf8"), /10,3,C11,Cup_Key,1/);
+  assert.equal(readFileSync(join(folder, "tasks.txt"), "utf8"), "10,start,FillWithTeam,12,1,687,0\n");
   assert.equal(readFileSync(join(folder, "schedule.txt"), "utf8"), "10,215,1,1,5,2030\n");
   assert.equal(readFileSync(join(folder, "schedules", "c10_s1_2012"), "utf8"), "20120818,1500,1,106\n");
 } finally {
