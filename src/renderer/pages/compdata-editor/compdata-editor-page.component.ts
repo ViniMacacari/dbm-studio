@@ -15,6 +15,9 @@ import { TournamentPhaseDetailsComponent } from "./tournament-phase-details.comp
 import { TournamentSidebarComponent } from "./tournament-sidebar.component";
 import { TournamentTeamsSetupComponent } from "./tournament-teams-setup.component";
 import { TournamentAdvancementComponent } from "./tournament-advancement.component";
+import { TournamentCalendarComponent } from "./tournament-calendar.component";
+import { ScheduleDateService } from "../../services/compdata/schedule-date.service";
+import { ScheduleService } from "../../services/compdata/schedule.service";
 import { nations } from "../../../utils/get-nations/get-nations";
 
 type EditorDialog = "create" | "addPhase" | "addChild" | "editTournament" | "editPhase" | "editPhaseQuantities" | "editChild" | "delete" | "validation" | "preview" | undefined;
@@ -31,6 +34,7 @@ type DeleteTarget = { kind: "tournament" | "phase" | "child"; object: CompdataOb
     TournamentPhaseDetailsComponent,
     TournamentTeamsSetupComponent,
     TournamentAdvancementComponent,
+    TournamentCalendarComponent,
     CompObjAdvancedViewComponent,
     CreateTournamentWizardComponent
   ],
@@ -46,7 +50,7 @@ export class CompdataEditorPageComponent {
   compdataReferenceProject?: DbProject;
   compdataDirty = false;
   view: "simple" | "advanced" = "simple";
-  activeTab: "structure" | "teams" | "advancement" = "structure";
+  activeTab: "structure" | "teams" | "advancement" | "calendar" = "structure";
   selectedTournamentId = 0;
   selectedPhaseId = 0;
   dialog: EditorDialog;
@@ -68,6 +72,8 @@ export class CompdataEditorPageComponent {
     public readonly display: CompObjDisplayService,
     public readonly tree: CompObjTreeService,
     private readonly validation: CompObjValidationService,
+    private readonly schedule: ScheduleService,
+    private readonly scheduleDates: ScheduleDateService,
     private readonly toast: ToastService,
     private readonly loading: LoadingService
   ) {}
@@ -253,6 +259,35 @@ export class CompdataEditorPageComponent {
       this.compdataProject!.advancements.push(...request.advancements);
     }
 
+    if (request.calendar) {
+      const phases = this.compdataProject.objects.filter((object) => object.kind === 4 && object.parentId === tournamentId);
+      const phaseByCode = new Map(phases.map((phase) => [phase.shortName.toUpperCase(), phase]));
+      for (const rule of request.calendar.rules) {
+        const phase = phaseByCode.get(rule.phaseCode.toUpperCase());
+        if (!phase) continue;
+        this.compdataProject.schedules.push({
+          objectId: phase.id,
+          day: this.scheduleDates.dateToDayOffset(this.scheduleDates.monthDayToDateInput(rule.month, rule.day, request.calendar.seasonBaseDate || this.scheduleDates.defaultSeasonBaseDate), request.calendar.seasonBaseDate || this.scheduleDates.defaultSeasonBaseDate),
+          round: Math.max(1, Math.trunc(Number(rule.roundNumber) || 1)),
+          minGames: Math.max(0, Math.trunc(Number(rule.minGames) || 0)),
+          maxGames: Math.max(0, Math.trunc(Number(rule.maxGames) || 0)),
+          time: this.scheduleDates.parseTimeToHHMM(rule.time)
+        });
+      }
+      for (const fixture of request.calendar.fixtures) {
+        const phase = phaseByCode.get(fixture.phaseCode.toUpperCase());
+        if (!phase) continue;
+        this.schedule.addSpecificFixture(this.compdataProject, { id: tournamentId, shortName: request.internalCode, description: request.nameKey, parentId: resolvedParentId, stages: [], groups: [], settingsCount: 0, tasksCount: 0, scheduleCount: 0, standingsCount: 0, advancementCount: 0, initTeamsCount: 0 }, {
+          phaseId: phase.id,
+          year: fixture.year,
+          date: this.scheduleDates.dateFromParts(fixture.year, fixture.month, fixture.day),
+          time: fixture.time,
+          homeTeamId: fixture.homeTeamId,
+          awayTeamId: fixture.awayTeamId
+        });
+      }
+    }
+
     this.originalObjectIds.clear();
     
     // Add missing custom name implementation if there was one
@@ -260,6 +295,7 @@ export class CompdataEditorPageComponent {
       // Could push to a queue for .loc saving later, 
       // but UI handles it as warning for now.
     }
+    this.afterStructureChange();
     this.selectTournament(tournamentId);
     this.dialog = undefined;
     this.statusChanged.emit(newCountryCreated ? "Country and tournament structure created" : "Tournament structure created");
@@ -446,6 +482,7 @@ export class CompdataEditorPageComponent {
         return;
       }
       this.compdataProject = JSON.parse(result.projectJson) as CompdataProject;
+      this.compdataProject.specificSchedules ??= [];
       this.compdataReferenceProject = undefined;
       this.originalObjectIds = new Set(this.compdataProject.objects.map((object) => object.id));
       this.removedOriginalLines = [];
@@ -497,6 +534,8 @@ export class CompdataEditorPageComponent {
       this.compdataDirty = false;
       this.originalObjectIds = new Set(this.compdataProject.objects.map((object) => object.id));
       this.compdataProject.objects.forEach((object) => object.originalRawLine = this.display.rawLine(object));
+      this.compdataProject.schedules.forEach((schedule) => schedule.originalRawLine = [schedule.objectId, schedule.day, schedule.round, schedule.minGames, schedule.maxGames, schedule.time].join(","));
+      this.compdataProject.specificSchedules?.forEach((file) => file.fixtures.forEach((fixture) => fixture.originalRawLine = [fixture.date, fixture.time, fixture.homeTeamId, fixture.awayTeamId].join(",")));
       this.removedOriginalLines = [];
       this.statusChanged.emit(`${result.filesWritten} compdata file(s) saved`);
       if (result.warnings.length) this.toast.show(result.warnings[0], "warn");
@@ -550,7 +589,12 @@ export class CompdataEditorPageComponent {
       const objectIds = new Set(objects.map((object) => object.id));
       const stages = objects.filter((object) => object.kind === 4);
       const groups = objects.filter((object) => object.kind === 5);
+      const stageCodes = new Set(stages.map((stage) => stage.shortName.toLowerCase()));
       const groupIds = new Set(groups.map((group) => group.id));
+      const scheduleRulesCount = project.schedules.filter((schedule) => objectIds.has(schedule.objectId)).length;
+      const fixtureCount = (project.specificSchedules ?? [])
+        .filter((file) => file.competitionCode.toLowerCase() === competition.shortName.toLowerCase() && stageCodes.has(file.stageCode.toLowerCase()))
+        .reduce((sum, file) => sum + file.fixtures.length, 0);
       return {
         id,
         shortName: competition.shortName,
@@ -560,7 +604,7 @@ export class CompdataEditorPageComponent {
         groups,
         settingsCount: project.settings.filter((setting) => objectIds.has(setting.objectId)).length,
         tasksCount: project.tasks.filter((task) => task.competitionId === id).length,
-        scheduleCount: project.schedules.filter((schedule) => objectIds.has(schedule.objectId)).length,
+        scheduleCount: scheduleRulesCount + fixtureCount,
         standingsCount: project.standings.filter((standing) => groupIds.has(standing.groupId)).length,
         advancementCount: project.advancements.filter((advancement) => groupIds.has(advancement.fromGroupId) || groupIds.has(advancement.toGroupId)).length,
         initTeamsCount: project.initTeams.filter((team) => team.competitionId === id).length

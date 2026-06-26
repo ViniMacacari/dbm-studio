@@ -57,6 +57,24 @@ import { CompObjTreeService } from "../../services/compdata/compobj-tree.service
             <code *ngIf="!initteamsPreview.length">No initial teams found.</code>
           </div>
         </details>
+        <details class="tse-technical tse-full-preview">
+          <summary>Preview schedule.txt</summary>
+          <div class="tse-generated-lines">
+            <code *ngFor="let schedule of schedulePreview">{{ schedule }}</code>
+            <code *ngIf="!schedulePreview.length">No matchday rules found.</code>
+          </div>
+        </details>
+        <details class="tse-technical tse-full-preview">
+          <summary>Preview schedules/ files</summary>
+          <div class="tse-code-panel" *ngFor="let file of specificSchedulePreview">
+            <span>{{ file.fileName }}</span>
+            <code *ngFor="let line of file.lines">{{ line }}</code>
+            <code *ngIf="!file.lines.length">No fixture lines.</code>
+          </div>
+          <div class="tse-generated-lines" *ngIf="!specificSchedulePreview.length">
+            <code>No specific schedule files found.</code>
+          </div>
+        </details>
       </main>
       <ng-template #selectObject><main class="tse-main-empty"><strong>Select an object</strong><span>Choose an object from the technical tree.</span></main></ng-template>
     </div>
@@ -161,5 +179,16 @@ export class CompObjAdvancedViewComponent {
     });
 
     return warnings;
+  }
+
+  get schedulePreview(): string[] {
+    return this.project.schedules.map((schedule) => [schedule.objectId, schedule.day, schedule.round, schedule.minGames, schedule.maxGames, schedule.time].join(","));
+  }
+
+  get specificSchedulePreview(): Array<{ fileName: string; lines: string[] }> {
+    return (this.project.specificSchedules ?? []).map((file) => ({
+      fileName: `schedules/${file.fileName}`,
+      lines: file.fixtures.map((fixture) => [fixture.date, fixture.time, fixture.homeTeamId, fixture.awayTeamId].join(","))
+    }));
   }
 }
