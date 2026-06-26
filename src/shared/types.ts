@@ -63,6 +63,7 @@ export interface CompdataTask {
   param1: string;
   param2: string;
   param3: string;
+  originalRawLine?: string;
 }
 
 export interface CompdataScheduleEntry {
@@ -149,6 +150,7 @@ export interface CompdataProject {
   compIds: number[];
   settings: CompdataSetting[];
   tasks: CompdataTask[];
+  taskInvalidLines: CompdataInvalidRawLine[];
   schedules: CompdataScheduleEntry[];
   specificSchedules: CompdataSpecificScheduleFile[];
   standings: CompdataStandingSlot[];
