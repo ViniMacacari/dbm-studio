@@ -18,8 +18,7 @@
     </div>
   </header>
 
-  <div class="tse-scope-note" *ngIf="compdataProject">Tournament data uses several files. This editor keeps structure, teams,
-    advancement and calendar connected without hiding the source files in Advanced View.</div>
+  <div class="tse-scope-note" *ngIf="compdataProject">Tournament data uses several files. Weather is global by country and can affect every competition played there.</div>
 
   <ng-container *ngIf="compdataProject as project; else noProject">
     <div class="tse-simple-layout" *ngIf="view === 'simple'; else advanced">
@@ -51,6 +50,8 @@
               (click)="activeTab = 'advancement'">Advancement</button>
             <button type="button" class="tse-tab" [class.active]="activeTab === 'calendar'"
               (click)="activeTab = 'calendar'">Calendar</button>
+            <button type="button" class="tse-tab" [class.active]="activeTab === 'weather'"
+              (click)="activeTab = 'weather'">Global Weather</button>
           </div>
 
           <ng-container *ngIf="selectedCompetition; else selectTournamentState">
@@ -71,7 +72,11 @@
 
             <app-tournament-calendar *ngIf="activeTab === 'calendar'" [project]="project"
               [referenceProject]="compdataReferenceProject" [competition]="selectedCompetition"
-              (structureChanged)="compdataDirty = true"></app-tournament-calendar>
+              (structureChanged)="compdataDirty = true" (openCountryWeather)="activeTab = 'weather'"></app-tournament-calendar>
+
+            <app-country-weather *ngIf="activeTab === 'weather'" [project]="project"
+              [reference]="compdataReferenceProject" [competition]="selectedCompetition"
+              (structureChanged)="compdataDirty = true"></app-country-weather>
           </ng-container>
 
           <ng-template #selectTournamentState>

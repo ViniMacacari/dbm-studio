@@ -4,6 +4,7 @@ import type {
   CompdataAdvancement,
   CompdataCompetitionSummary,
   CompdataInitTeam,
+  CompdataInvalidRawLine,
   CompdataObject,
   CompdataOpenProgress,
   CompdataProject,
@@ -12,7 +13,8 @@ import type {
   CompdataSpecificScheduleFile,
   CompdataSetting,
   CompdataStandingSlot,
-  CompdataTask
+  CompdataTask,
+  CompdataWeatherEntry
 } from "../shared/types";
 
 type CompdataOpenProgressCallback = (progress: CompdataOpenProgress) => void;
@@ -77,6 +79,14 @@ function rows(text: string): string[][] {
 function numberValue(value: string | undefined, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function strictInteger(value: string | undefined): number | undefined {
+  if (!value || !/^-?\d+$/.test(value.trim())) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 function parseObjects(text: string, warnings: string[]): CompdataObject[] {
@@ -175,6 +185,50 @@ function parseSpecificFixtures(text: string): CompdataSpecificFixtureEntry[] {
         originalRawLine: rawLine
       };
     });
+}
+
+function parseWeather(text: string, warnings: string[]): { entries: CompdataWeatherEntry[]; invalidLines: CompdataInvalidRawLine[]; rowData: string[][] } {
+  const entries: CompdataWeatherEntry[] = [];
+  const invalidLines: CompdataInvalidRawLine[] = [];
+  const rowData: string[][] = [];
+
+  text.split(/\r?\n/).forEach((sourceLine, sourceIndex) => {
+    const rawLine = sourceLine.trim();
+    if (!rawLine || rawLine.startsWith("#")) {
+      return;
+    }
+
+    const row = rawLine.split(",").map((part) => part.trim());
+    rowData.push(row);
+    if (row.length < 8) {
+      const reason = `weather.txt line ${sourceIndex + 1} has ${row.length} column(s); expected 8.`;
+      warnings.push(reason);
+      invalidLines.push({ lineNumber: sourceIndex + 1, rawLine, reason });
+      return;
+    }
+
+    const parsed = row.slice(0, 6).map((value) => strictInteger(value));
+    if (parsed.some((value) => value === undefined)) {
+      const reason = `weather.txt line ${sourceIndex + 1} has a non-numeric country, month or chance value.`;
+      warnings.push(reason);
+      invalidLines.push({ lineNumber: sourceIndex + 1, rawLine, reason });
+      return;
+    }
+
+    entries.push({
+      countryObjectId: parsed[0]!,
+      month: parsed[1]!,
+      dryChance: parsed[2]!,
+      rainChance: parsed[3]!,
+      snowChance: parsed[4]!,
+      overcastChance: parsed[5]!,
+      sunsetTime: row[6] ?? "",
+      nightTime: row[7] ?? "",
+      originalRawLine: rawLine
+    });
+  });
+
+  return { entries, invalidLines, rowData };
 }
 
 function readSpecificScheduleFiles(folderPath: string, warnings: string[]): CompdataSpecificScheduleFile[] {
@@ -374,7 +428,7 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
   const standings = parseStep("Parsing standings.txt", () => parseStandings(standingsText));
   const advancements = parseStep("Parsing advancement.txt", () => parseAdvancements(advancementText));
   const initTeams = parseStep("Parsing initteams.txt", () => parseInitTeams(initTeamsText));
-  const weatherRows = parseStep("Parsing weather.txt", () => rows(weatherText));
+  const weather = parseStep("Parsing weather.txt", () => parseWeather(weatherText, warnings));
   emitProgress(onProgress, "building", step, totalSteps, "Building competition summaries");
   const competitions = competitionSummaries(objects, compIds, settings, tasks, schedules, specificSchedules, standings, advancements, initTeams, warnings);
   step += 1;
@@ -392,7 +446,9 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
     standings,
     advancements,
     initTeams,
-    weatherRows,
+    weatherEntries: weather.entries,
+    weatherInvalidLines: weather.invalidLines,
+    weatherRows: weather.rowData,
     activeTeamsRows: activeTeamsText ? rows(activeTeamsText) : [],
     objectiveRows: objectiveText ? rows(objectiveText) : [],
     warnings,
@@ -474,6 +530,17 @@ export function saveCompdataProject(project: CompdataProject): { folderPath: str
   writes.push({
     fileName: "schedule.txt",
     content: project.schedules.map((schedule) => line([schedule.objectId, schedule.day, schedule.round, schedule.minGames, schedule.maxGames, schedule.time])).join("\n") + (project.schedules.length ? "\n" : "")
+  });
+
+  const weatherEntries = project.weatherEntries ?? [];
+  const weatherLines = weatherEntries
+    .slice()
+    .sort((a, b) => a.countryObjectId !== b.countryObjectId ? a.countryObjectId - b.countryObjectId : a.month - b.month)
+    .map((weather) => line([weather.countryObjectId, weather.month, weather.dryChance, weather.rainChance, weather.snowChance, weather.overcastChance, weather.sunsetTime, weather.nightTime]));
+  const preservedWeatherLines = (project.weatherInvalidLines ?? []).map((invalid) => invalid.rawLine);
+  writes.push({
+    fileName: "weather.txt",
+    content: [...weatherLines, ...preservedWeatherLines].join("\n") + (weatherLines.length || preservedWeatherLines.length ? "\n" : "")
   });
 
   for (const write of writes) {
