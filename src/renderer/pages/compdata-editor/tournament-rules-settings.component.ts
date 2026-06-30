@@ -11,6 +11,13 @@ import { SettingsValidationIssue, SettingsValidationService } from "../../servic
 
 type RulesScope = "tournament" | "phases" | "groups" | "inherited" | "global";
 type CopySectionKey = "profile" | "points" | "match" | "ending" | "season" | "promotion" | "stage" | "group";
+type RulesSelection = {
+  selectedObject?: CompdataObject;
+  chain: CompdataObject[];
+  validationIssues: SettingsValidationIssue[];
+  settingsEntries: ReturnType<SettingsService["objectEntries"]>;
+  previewLines: string[];
+};
 
 @Component({
   selector: "app-tournament-rules-settings",
@@ -35,10 +42,10 @@ type CopySectionKey = "profile" | "points" | "match" | "ending" | "season" | "pr
       </div>
 
       <div class="tse-actions">
-        <button type="button" class="tse-primary" (click)="scope = 'tournament'; ensureSelections()">Edit tournament rules</button>
-        <button type="button" (click)="scope = 'phases'; ensureSelections()">Edit phase rules</button>
-        <button type="button" (click)="scope = 'groups'; ensureSelections()">Edit group rules</button>
-        <button type="button" (click)="scope = 'global'; ensureSelections()">Global Settings</button>
+        <button type="button" class="tse-primary" (click)="setScope('tournament')">Edit tournament rules</button>
+        <button type="button" (click)="setScope('phases')">Edit phase rules</button>
+        <button type="button" (click)="setScope('groups')">Edit group rules</button>
+        <button type="button" (click)="setScope('global')">Global Settings</button>
         <button type="button" (click)="showCopy = !showCopy">Copy rules from another tournament</button>
         <button type="button" (click)="resetCurrentObject()" [disabled]="!selectedObjectSettings.length">Reset to inherited values</button>
         <button type="button" (click)="showValidation = !showValidation">Validate settings</button>
@@ -72,21 +79,21 @@ type CopySectionKey = "profile" | "points" | "match" | "ending" | "season" | "pr
       </section>
 
       <div class="tse-tab-bar compact">
-        <button type="button" class="tse-tab" [class.active]="scope === 'tournament'" (click)="scope = 'tournament'; ensureSelections()">Tournament</button>
-        <button type="button" class="tse-tab" [class.active]="scope === 'phases'" (click)="scope = 'phases'; ensureSelections()">Phases</button>
-        <button type="button" class="tse-tab" [class.active]="scope === 'groups'" (click)="scope = 'groups'; ensureSelections()">Groups</button>
-        <button type="button" class="tse-tab" [class.active]="scope === 'inherited'" (click)="scope = 'inherited'; ensureSelections()">Inherited settings</button>
-        <button type="button" class="tse-tab" [class.active]="scope === 'global'" (click)="scope = 'global'; ensureSelections()">Global Settings</button>
+        <button type="button" class="tse-tab" [class.active]="scope === 'tournament'" (click)="setScope('tournament')">Tournament</button>
+        <button type="button" class="tse-tab" [class.active]="scope === 'phases'" (click)="setScope('phases')">Phases</button>
+        <button type="button" class="tse-tab" [class.active]="scope === 'groups'" (click)="setScope('groups')">Groups</button>
+        <button type="button" class="tse-tab" [class.active]="scope === 'inherited'" (click)="setScope('inherited')">Inherited settings</button>
+        <button type="button" class="tse-tab" [class.active]="scope === 'global'" (click)="setScope('global')">Global Settings</button>
       </div>
 
       <div class="tse-rules-target">
-        <label class="tse-field" *ngIf="scope === 'phases'"><span>Editing phase rules</span><select [(ngModel)]="selectedPhaseId">
+        <label class="tse-field" *ngIf="scope === 'phases'"><span>Editing phase rules</span><select [(ngModel)]="selectedPhaseId" (ngModelChange)="refreshSelectionCache()">
           <option *ngFor="let phase of phases" [ngValue]="phase.id">{{ display.objectName(phase, reference, project) }}</option>
         </select></label>
-        <label class="tse-field" *ngIf="scope === 'groups'"><span>Editing group/slot rules</span><select [(ngModel)]="selectedGroupId">
+        <label class="tse-field" *ngIf="scope === 'groups'"><span>Editing group/slot rules</span><select [(ngModel)]="selectedGroupId" (ngModelChange)="refreshSelectionCache()">
           <option *ngFor="let group of groups" [ngValue]="group.id">{{ groupPathLabel(group) }}</option>
         </select></label>
-        <label class="tse-field" *ngIf="scope === 'global'"><span>Editing global rules</span><select [(ngModel)]="selectedGlobalId">
+        <label class="tse-field" *ngIf="scope === 'global'"><span>Editing global rules</span><select [(ngModel)]="selectedGlobalId" (ngModelChange)="refreshSelectionCache()">
           <option *ngFor="let object of globalObjects" [ngValue]="object.id">{{ display.objectName(object, reference, project) }} · {{ display.typeLabel(object.kind) }}</option>
         </select></label>
         <div class="tse-resolved">
@@ -311,7 +318,7 @@ export class TournamentRulesSettingsComponent implements OnChanges {
   @Input({ required: true }) project!: CompdataProject;
   @Input() reference?: DbProject;
   @Input({ required: true }) competition!: CompdataCompetitionSummary;
-  @Output() structureChanged = new EventEmitter<void>();
+  @Output() structureChanged = new EventEmitter<boolean>();
 
   scope: RulesScope = "tournament";
   selectedPhaseId = 0;
@@ -351,6 +358,8 @@ export class TournamentRulesSettingsComponent implements OnChanges {
     "info_league_promo",
     "info_league_releg"
   ];
+  private selectionCache?: RulesSelection;
+  private effectiveCache = new Map<string, EffectiveSetting>();
 
   constructor(
     public readonly display: CompObjDisplayService,
@@ -363,6 +372,13 @@ export class TournamentRulesSettingsComponent implements OnChanges {
 
   ngOnChanges(): void {
     this.ensureSelections();
+    this.refreshSelectionCache();
+  }
+
+  setScope(scope: RulesScope): void {
+    this.scope = scope;
+    this.ensureSelections();
+    this.refreshSelectionCache();
   }
 
   ensureSelections(): void {
@@ -377,6 +393,20 @@ export class TournamentRulesSettingsComponent implements OnChanges {
       ? this.selectedGlobalId
       : this.tournamentObject?.parentId ?? this.globalObjects[0]?.id ?? 0;
     this.copySourceId = this.copySourceId || this.project.competitions.find((candidate) => candidate.id !== this.competition.id)?.id || 0;
+  }
+
+  refreshSelectionCache(): void {
+    if (!this.project || !this.competition) return;
+    const selectedObject = this.tree.object(this.project, this.selectedObjectId);
+    const chainTargetId = selectedObject ? this.selectedObjectId : this.competition.id;
+    this.selectionCache = {
+      selectedObject,
+      chain: this.inheritance.inheritanceChain(this.project, chainTargetId),
+      validationIssues: selectedObject ? this.validation.validateObject(this.project, this.selectedObjectId) : [],
+      settingsEntries: selectedObject ? this.settings.objectEntries(this.project, this.selectedObjectId) : [],
+      previewLines: selectedObject ? this.settings.previewLines(this.project, this.selectedObjectId) : []
+    };
+    this.effectiveCache.clear();
   }
 
   get tournamentObject(): CompdataObject | undefined {
@@ -403,7 +433,7 @@ export class TournamentRulesSettingsComponent implements OnChanges {
   }
 
   get selectedObject(): CompdataObject | undefined {
-    return this.tree.object(this.project, this.selectedObjectId);
+    return this.selectionCache?.selectedObject ?? this.tree.object(this.project, this.selectedObjectId);
   }
 
   get selectedObjectLabel(): string {
@@ -411,7 +441,7 @@ export class TournamentRulesSettingsComponent implements OnChanges {
   }
 
   get inheritanceChain(): CompdataObject[] {
-    return this.inheritance.inheritanceChain(this.project, this.selectedObject ? this.selectedObjectId : this.competition.id);
+    return this.selectionCache?.chain ?? [];
   }
 
   get inheritancePath(): string {
@@ -428,11 +458,11 @@ export class TournamentRulesSettingsComponent implements OnChanges {
   }
 
   get selectedObjectSettings() {
-    return this.selectedObject ? this.settings.objectEntries(this.project, this.selectedObjectId) : [];
+    return this.selectionCache?.settingsEntries ?? [];
   }
 
   get selectedPreviewLines(): string[] {
-    return this.selectedObject ? this.settings.previewLines(this.project, this.selectedObjectId) : [];
+    return this.selectionCache?.previewLines ?? [];
   }
 
   get tournamentOptions(): Array<{ id: number; label: string }> {
@@ -460,8 +490,7 @@ export class TournamentRulesSettingsComponent implements OnChanges {
   }
 
   get objectValidationIssues(): SettingsValidationIssue[] {
-    if (!this.selectedObject) return [];
-    return this.validation.validateObject(this.project, this.selectedObjectId);
+    return this.selectionCache?.validationIssues ?? [];
   }
 
   get defaultCompetitionType(): string {
@@ -514,19 +543,17 @@ export class TournamentRulesSettingsComponent implements OnChanges {
   }
 
   single(attribute: string, fallback: string): string {
-    const effective = this.inheritance.getEffectiveSetting(this.project, this.selectedObjectId, attribute);
+    const effective = this.effective(attribute, false);
     return effective.value ?? fallback;
   }
 
   multi(attribute: string, fallback: string[] = []): string[] {
-    const effective = this.inheritance.getEffectiveMultiSetting(this.project, this.selectedObjectId, attribute);
+    const effective = this.effective(attribute, true);
     return effective.entries.length ? effective.entries.map((entry) => entry.value) : fallback;
   }
 
   badge(attribute: string, multi = false): string {
-    const effective = multi
-      ? this.inheritance.getEffectiveMultiSetting(this.project, this.selectedObjectId, attribute)
-      : this.inheritance.getEffectiveSetting(this.project, this.selectedObjectId, attribute);
+    const effective = this.effective(attribute, multi);
     if (!effective.isConfigured) return "Not configured";
     if (effective.isCustom) return this.scope === "global" ? "Global default" : "Custom";
     return `Inherited from ${this.display.objectName(effective.sourceObject, this.reference, this.project)}`;
@@ -534,13 +561,15 @@ export class TournamentRulesSettingsComponent implements OnChanges {
 
   setSingle(attribute: string, value: string | number): void {
     if (!this.selectedObject) return;
+    const hadLocal = this.settings.hasLocalSetting(this.project, this.selectedObjectId, attribute);
     const normalized = String(value).trim();
     if (!normalized) {
       this.settings.removeSetting(this.project, this.selectedObjectId, attribute);
     } else {
       this.settings.setSingleSetting(this.project, this.selectedObjectId, attribute, normalized);
     }
-    this.changed();
+    const hasLocal = this.settings.hasLocalSetting(this.project, this.selectedObjectId, attribute);
+    this.changed(hadLocal !== hasLocal);
   }
 
   onOff(attribute: string, fallback: boolean): boolean {
@@ -566,20 +595,22 @@ export class TournamentRulesSettingsComponent implements OnChanges {
     if (target < 0 || target >= values.length) return;
     [values[index], values[target]] = [values[target], values[index]];
     this.settings.setMultiSetting(this.project, this.selectedObjectId, "standings_sort", values);
-    this.changed();
+    this.changed(false);
   }
 
   addTieBreaker(value: string): void {
     if (!value) return;
+    const previousCount = this.settings.entries(this.project, this.selectedObjectId, "standings_sort").length;
     this.settings.setMultiSetting(this.project, this.selectedObjectId, "standings_sort", [...this.tieBreakers, value]);
     this.tieBreakerToAdd = "";
-    this.changed();
+    this.changed(this.settings.entries(this.project, this.selectedObjectId, "standings_sort").length !== previousCount);
   }
 
   removeTieBreaker(index: number): void {
+    const previousCount = this.settings.entries(this.project, this.selectedObjectId, "standings_sort").length;
     const values = this.tieBreakers.filter((_value, valueIndex) => valueIndex !== index);
     this.settings.setMultiSetting(this.project, this.selectedObjectId, "standings_sort", values);
-    this.changed();
+    this.changed(this.settings.entries(this.project, this.selectedObjectId, "standings_sort").length !== previousCount);
   }
 
   hasEndStep(attribute: string, value: string): boolean {
@@ -587,11 +618,12 @@ export class TournamentRulesSettingsComponent implements OnChanges {
   }
 
   toggleEndStep(attribute: string, value: string, enabled: boolean): void {
+    const previousCount = this.settings.entries(this.project, this.selectedObjectId, attribute).length;
     const order = attribute === "match_endruleko2leg2" ? ["AGG", "AWAY", "ET", "ET_AWAY", "PENS"] : ["ET", "PENS"];
     const values = new Set(this.multi(attribute, []));
     if (enabled) values.add(value); else values.delete(value);
     this.settings.setMultiSetting(this.project, this.selectedObjectId, attribute, order.filter((candidate) => values.has(candidate)));
-    this.changed();
+    this.changed(this.settings.entries(this.project, this.selectedObjectId, attribute).length !== previousCount);
   }
 
   listValue(attribute: string): string {
@@ -599,28 +631,29 @@ export class TournamentRulesSettingsComponent implements OnChanges {
   }
 
   setList(attribute: string, value: string): void {
+    const previousCount = this.settings.entries(this.project, this.selectedObjectId, attribute).length;
     this.settings.setMultiSetting(this.project, this.selectedObjectId, attribute, String(value).split(",").map((part) => part.trim()).filter(Boolean));
-    this.changed();
+    this.changed(this.settings.entries(this.project, this.selectedObjectId, attribute).length !== previousCount);
   }
 
   resetSection(section: keyof typeof SETTINGS_SECTIONS): void {
     if (!this.selectedObject) return;
     this.settings.resetSettings(this.project, this.selectedObjectId, SETTINGS_SECTIONS[section]);
-    this.changed();
+    this.changed(true);
   }
 
   resetCurrentObject(): void {
     if (!this.selectedObject) return;
     const attributes = [...new Set(this.selectedObjectSettings.map((setting) => setting.key))];
     this.settings.resetSettings(this.project, this.selectedObjectId, attributes);
-    this.changed();
+    this.changed(true);
   }
 
   applyCopy(): void {
     if (!this.copySourceId || !this.selectedObject) return;
     this.settings.copyAttributes(this.project, this.copySourceId, this.selectedObjectId, this.copyAttributes());
     this.showCopy = false;
-    this.changed();
+    this.changed(true);
   }
 
   groupPathLabel(group: CompdataObject): string {
@@ -637,7 +670,19 @@ export class TournamentRulesSettingsComponent implements OnChanges {
     return [...new Set(attributes)];
   }
 
-  private changed(): void {
-    this.structureChanged.emit();
+  private changed(settingsCountChanged = false): void {
+    this.refreshSelectionCache();
+    this.structureChanged.emit(settingsCountChanged);
+  }
+
+  private effective(attribute: string, multi: boolean): EffectiveSetting {
+    const key = `${this.selectedObjectId}\u0000${multi ? "multi" : "single"}\u0000${attribute}`;
+    const cached = this.effectiveCache.get(key);
+    if (cached) return cached;
+    const effective = multi
+      ? this.inheritance.getEffectiveMultiSetting(this.project, this.selectedObjectId, attribute)
+      : this.inheritance.getEffectiveSetting(this.project, this.selectedObjectId, attribute);
+    this.effectiveCache.set(key, effective);
+    return effective;
   }
 }

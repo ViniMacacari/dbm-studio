@@ -81,7 +81,7 @@
 
             <app-tournament-rules-settings *ngIf="activeTab === 'rules'" [project]="project"
               [reference]="compdataReferenceProject" [competition]="selectedCompetition"
-              (structureChanged)="afterSettingsChange()"></app-tournament-rules-settings>
+              (structureChanged)="afterSettingsChange($event)"></app-tournament-rules-settings>
 
             <app-tournament-advancement *ngIf="activeTab === 'advancement'" [project]="project"
               [referenceProject]="compdataReferenceProject" [competition]="selectedCompetition"

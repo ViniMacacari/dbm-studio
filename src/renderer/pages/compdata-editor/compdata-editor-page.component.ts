@@ -681,12 +681,11 @@ export class CompdataEditorPageComponent {
     this.refreshCompetitionSummaries();
   }
 
-  afterSettingsChange(): void {
-    if (this.compdataProject) {
-      this.validation.invalidateTournament(this.compdataProject, this.selectedTournamentId);
-    }
+  afterSettingsChange(settingsCountChanged = false): void {
     this.compdataDirty = true;
-    this.refreshCompetitionSummaries();
+    if (settingsCountChanged) {
+      this.refreshCompetitionSummaries();
+    }
   }
 
   afterGlobalWeatherChange(): void {

@@ -1,7 +1,7 @@
 import { Injectable } from "@angular/core";
 import type { CompdataProject, CompdataSetting } from "../../../shared/types";
 import { COMP_TYPE_OPTIONS, MATCH_SITUATION_OPTIONS, MONTH_OPTIONS, STAGE_TYPE_OPTIONS } from "./settings-display.service";
-import { MULTI_SETTING_KEYS } from "./settings.service";
+import { MULTI_SETTING_KEYS, SettingsService } from "./settings.service";
 
 export interface SettingsValidationIssue {
   severity: "warning" | "error";
@@ -113,28 +113,98 @@ const TIE_BREAKER_VALUES = new Set(["POINTS", "GOALDIFF", "GOALSFOR", "WINS", "H
 
 @Injectable({ providedIn: "root" })
 export class SettingsValidationService {
+  private readonly cache = new WeakMap<CompdataProject, {
+    settingsRevision: number;
+    settingsReference: CompdataSetting[];
+    settingsCount: number;
+    objectsReference: CompdataProject["objects"];
+    objectCount: number;
+    invalidLineCount: number;
+    all: SettingsValidationIssue[];
+    byObject: Map<number, SettingsValidationIssue[]>;
+    global: SettingsValidationIssue[];
+  }>();
+
+  constructor(private readonly settings: SettingsService) {}
+
   validateProject(project: CompdataProject): SettingsValidationIssue[] {
+    return this.index(project).all;
+  }
+
+  validateObject(project: CompdataProject, objectId: number): SettingsValidationIssue[] {
+    const index = this.index(project);
+    return [...index.global, ...(index.byObject.get(objectId) ?? [])];
+  }
+
+  private index(project: CompdataProject) {
+    const settings = project.settings ?? [];
+    const invalidLines = project.settingsInvalidLines ?? [];
+    const cached = this.cache.get(project);
+    const settingsRevision = this.settings.revision(project);
+    if (
+      cached &&
+      cached.settingsRevision === settingsRevision &&
+      cached.settingsReference === settings &&
+      cached.settingsCount === settings.length &&
+      cached.objectsReference === project.objects &&
+      cached.objectCount === project.objects.length &&
+      cached.invalidLineCount === invalidLines.length
+    ) {
+      return cached;
+    }
+
     const issues: SettingsValidationIssue[] = [];
-    for (const invalid of project.settingsInvalidLines ?? []) {
+    const objectById = new Map(project.objects.map((object) => [object.id, object]));
+    const competitionIds = new Set(project.objects.filter((object) => object.kind === 3).map((object) => object.id));
+    const duplicateCounts = this.duplicateCounts(settings);
+
+    for (const invalid of invalidLines) {
       issues.push({
         severity: "warning",
         message: "A settings.txt line could not be edited visually and will be preserved.",
         technical: invalid.reason
       });
     }
-    for (const setting of project.settings ?? []) {
-      issues.push(...this.validateSetting(project, setting));
+    for (const setting of settings) {
+      issues.push(...this.validateSetting(project, setting, objectById, competitionIds, duplicateCounts));
     }
-    return issues;
+
+    const byObject = new Map<number, SettingsValidationIssue[]>();
+    const global: SettingsValidationIssue[] = [];
+    for (const issue of issues) {
+      if (issue.objectId === undefined) {
+        global.push(issue);
+        continue;
+      }
+      const objectIssues = byObject.get(issue.objectId) ?? [];
+      objectIssues.push(issue);
+      byObject.set(issue.objectId, objectIssues);
+    }
+
+    const created = {
+      settingsRevision,
+      settingsReference: settings,
+      settingsCount: settings.length,
+      objectsReference: project.objects,
+      objectCount: project.objects.length,
+      invalidLineCount: invalidLines.length,
+      all: issues,
+      byObject,
+      global
+    };
+    this.cache.set(project, created);
+    return created;
   }
 
-  validateObject(project: CompdataProject, objectId: number): SettingsValidationIssue[] {
-    return this.validateProject(project).filter((issue) => issue.objectId === undefined || issue.objectId === objectId);
-  }
-
-  private validateSetting(project: CompdataProject, setting: CompdataSetting): SettingsValidationIssue[] {
+  private validateSetting(
+    project: CompdataProject,
+    setting: CompdataSetting,
+    objectById: Map<number, CompdataProject["objects"][number]>,
+    competitionIds: Set<number>,
+    duplicateCounts: Map<string, number>
+  ): SettingsValidationIssue[] {
     const issues: SettingsValidationIssue[] = [];
-    const object = project.objects.find((candidate) => candidate.id === setting.objectId);
+    const object = objectById.get(setting.objectId);
     const value = String(setting.value ?? "").trim();
 
     if (!object) {
@@ -203,14 +273,12 @@ export class SettingsValidationService {
       issues.push({ severity: "warning", objectId: setting.objectId, attribute: setting.key, message: "This match ending rule is not recognized by DBM Studio, but it will be preserved." });
     }
     if (COMP_REFERENCE_ATTRIBUTES.has(setting.key)) {
-      const target = project.objects.find((candidate) => candidate.id === Number(value));
-      if (!target || target.kind !== 3) {
+      if (!competitionIds.has(Number(value))) {
         issues.push({ severity: "warning", objectId: setting.objectId, attribute: setting.key, message: "This setting points to a tournament that no longer exists." });
       }
     }
     if (MULTI_SETTING_KEYS.has(setting.key)) {
-      const duplicates = project.settings.filter((candidate) => candidate.objectId === setting.objectId && candidate.key === setting.key && candidate.value === setting.value);
-      if (duplicates.length > 1) {
+      if ((duplicateCounts.get(this.duplicateKey(setting)) ?? 0) > 1) {
         issues.push({ severity: "warning", objectId: setting.objectId, attribute: setting.key, message: "This repeated table marker appears more than once." });
       }
     }
@@ -224,5 +292,19 @@ export class SettingsValidationService {
 
   private isNumber(value: string, min: number): boolean {
     return value !== "" && Number.isFinite(Number(value)) && Number(value) >= min;
+  }
+
+  private duplicateCounts(settings: CompdataSetting[]): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const setting of settings) {
+      if (!MULTI_SETTING_KEYS.has(setting.key)) continue;
+      const key = this.duplicateKey(setting);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  private duplicateKey(setting: CompdataSetting): string {
+    return `${setting.objectId}\u0000${setting.key}\u0000${setting.value}`;
   }
 }

@@ -63,12 +63,29 @@ export const SETTINGS_SECTIONS = {
 
 @Injectable({ providedIn: "root" })
 export class SettingsService {
+  private readonly indexes = new WeakMap<CompdataProject, {
+    settingsReference: CompdataSetting[];
+    settingsCount: number;
+    byObject: Map<number, CompdataSetting[]>;
+    byObjectAttribute: Map<string, CompdataSetting[]>;
+  }>();
+  private readonly revisions = new WeakMap<CompdataProject, number>();
+
+  revision(project: CompdataProject): number {
+    return this.revisions.get(project) ?? 0;
+  }
+
+  invalidate(project: CompdataProject): void {
+    this.indexes.delete(project);
+    this.revisions.set(project, this.revision(project) + 1);
+  }
+
   entries(project: CompdataProject, objectId: number, attribute: string): CompdataSetting[] {
-    return (project.settings ?? []).filter((setting) => setting.objectId === objectId && setting.key === attribute);
+    return this.index(project).byObjectAttribute.get(this.indexKey(objectId, attribute)) ?? [];
   }
 
   objectEntries(project: CompdataProject, objectId: number): CompdataSetting[] {
-    return (project.settings ?? []).filter((setting) => setting.objectId === objectId);
+    return this.index(project).byObject.get(objectId) ?? [];
   }
 
   getSingleSetting(project: CompdataProject, objectId: number, attribute: string): CompdataSetting | undefined {
@@ -96,10 +113,12 @@ export class SettingsService {
         const keep = existing[0];
         project.settings = project.settings.filter((setting) => setting === keep || setting.objectId !== objectId || setting.key !== attribute);
       }
+      this.invalidate(project);
       return;
     }
 
     this.insertSetting(project, { objectId, key: attribute, value: normalized });
+    this.invalidate(project);
   }
 
   setMultiSetting(project: CompdataProject, objectId: number, attribute: string, values: string[]): void {
@@ -121,15 +140,18 @@ export class SettingsService {
     normalizedValues.slice(existing.length).forEach((value) => {
       this.insertSetting(project, { objectId, key: attribute, value });
     });
+    this.invalidate(project);
   }
 
   removeSetting(project: CompdataProject, objectId: number, attribute: string): void {
     project.settings = (project.settings ?? []).filter((setting) => setting.objectId !== objectId || setting.key !== attribute);
+    this.invalidate(project);
   }
 
   resetSettings(project: CompdataProject, objectId: number, attributes: string[]): void {
     const attributesSet = new Set(attributes);
     project.settings = (project.settings ?? []).filter((setting) => setting.objectId !== objectId || !attributesSet.has(setting.key));
+    this.invalidate(project);
   }
 
   copyAttributes(project: CompdataProject, sourceObjectId: number, targetObjectId: number, attributes: string[]): void {
@@ -169,5 +191,39 @@ export class SettingsService {
       if (project.settings[index].objectId === objectId) return index;
     }
     return -1;
+  }
+
+  private index(project: CompdataProject) {
+    const settings = project.settings ?? [];
+    const cached = this.indexes.get(project);
+    if (cached && cached.settingsReference === settings && cached.settingsCount === settings.length) {
+      return cached;
+    }
+
+    const byObject = new Map<number, CompdataSetting[]>();
+    const byObjectAttribute = new Map<string, CompdataSetting[]>();
+    for (const setting of settings) {
+      const objectEntries = byObject.get(setting.objectId) ?? [];
+      objectEntries.push(setting);
+      byObject.set(setting.objectId, objectEntries);
+
+      const key = this.indexKey(setting.objectId, setting.key);
+      const attributeEntries = byObjectAttribute.get(key) ?? [];
+      attributeEntries.push(setting);
+      byObjectAttribute.set(key, attributeEntries);
+    }
+
+    const created = {
+      settingsReference: settings,
+      settingsCount: settings.length,
+      byObject,
+      byObjectAttribute
+    };
+    this.indexes.set(project, created);
+    return created;
+  }
+
+  private indexKey(objectId: number, attribute: string): string {
+    return `${objectId}\u0000${attribute}`;
   }
 }
