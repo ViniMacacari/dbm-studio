@@ -2,6 +2,7 @@ import { Injectable } from "@angular/core";
 import type { CompdataObject, CompdataProject, CompdataTask, DbProject } from "../../../shared/types";
 import { LeagueEditorService } from "../league-editor.service";
 import { TeamEditorService } from "../team-editor.service";
+import { nations } from "../../../utils/get-nations/get-nations";
 import { CompObjDisplayService } from "./compobj-display.service";
 import { CompObjTreeService } from "./compobj-tree.service";
 
@@ -18,13 +19,17 @@ export class TasksDisplayService {
     return ({
       FillWithTeam: "Add specific club",
       FillFromSpecialTeams: "Add special teams",
+      FillFromSpecialTeamsWithNation: "Add special teams from a nation",
       FillFromLeague: "Add clubs from a league",
       FillFromLeagueMaxFromCountry: "Add top clubs from a league with country limit",
+      FillFromTopCoefficientCountry: "Take teams by country coefficient rank",
       FillFromCompTable: "Add qualified teams from another tournament",
       FillFromCompTableBackupLeague: "Add qualified team with league backup",
       FillFromCompTableBackup: "Add qualified team with tournament backup",
+      ClearLeagueStats: "Clear previous league stats",
       UpdateTable: "Update previous-season table",
-      UpdateLeagueTable: "Update league table"
+      UpdateLeagueTable: "Update league table",
+      UpdateLeagueStats: "Update league stats after season"
     } as Record<string, string>)[task.action] ?? "Advanced automation rule";
   }
 
@@ -45,10 +50,14 @@ export class TasksDisplayService {
         return `Club: ${this.teamName(task.param2, reference)}`;
       case "FillFromSpecialTeams":
         return `Special teams: ${task.param1}`;
+      case "FillFromSpecialTeamsWithNation":
+        return `Special teams: ${task.param1} · Nation: ${this.nationName(task.param2)}`;
       case "FillFromLeague":
         return `League: ${this.leagueName(task.param1, reference)}`;
       case "FillFromLeagueMaxFromCountry":
         return `League: ${this.leagueName(task.param1, reference)} · Clubs: ${task.param2} · Max from same country: ${task.param3}`;
+      case "FillFromTopCoefficientCountry":
+        return `Country coefficient rank: ${task.param1} · Teams: ${task.param2} · Allocation slot: ${task.param3}`;
       case "FillFromCompTable":
         return `Source tournament: ${this.competitionName(project, task.param1, reference)} · Teams: ${task.param2}`;
       case "FillFromCompTableBackupLeague":
@@ -58,6 +67,10 @@ export class TasksDisplayService {
       case "UpdateTable":
         return `Take ${this.ordinal(Number(task.param2))} team from ${this.targetLabel(project, Number(task.param1), reference)} and replace table position ${task.param3}.`;
       case "UpdateLeagueTable":
+        return `League: ${this.leagueName(task.param1, reference)} · Phase: ${this.targetLabel(project, task.targetId, reference)}`;
+      case "ClearLeagueStats":
+        return `Clear stats for ${this.leagueName(task.param1, reference)}`;
+      case "UpdateLeagueStats":
         return `League: ${this.leagueName(task.param1, reference)} · Phase: ${this.targetLabel(project, task.targetId, reference)}`;
       default:
         return "This rule type is preserved and can be reviewed in Advanced View.";
@@ -71,10 +84,14 @@ export class TasksDisplayService {
         return `At tournament start, add ${this.teamName(task.param2, reference)} to ${target}.`;
       case "FillFromSpecialTeams":
         return `At tournament start, add ${task.param1} special team(s) to ${target}.`;
+      case "FillFromSpecialTeamsWithNation":
+        return `At tournament start, add ${task.param1} special team(s) from ${this.nationName(task.param2)} to ${target}.`;
       case "FillFromLeague":
         return `At tournament start, clubs from ${this.leagueName(task.param1, reference)} will be added to ${target}.`;
       case "FillFromLeagueMaxFromCountry":
         return `At tournament start, add ${task.param2} club(s) from ${this.leagueName(task.param1, reference)} to ${target}, with up to ${task.param3} from the same country.`;
+      case "FillFromTopCoefficientCountry":
+        return `At tournament start, take teams from country coefficient rank ${task.param1} and put them into ${target}.`;
       case "FillFromCompTable":
         return `At tournament start, add ${task.param2} qualified team(s) from ${this.competitionName(project, task.param1, reference)} to ${target}.`;
       case "FillFromCompTableBackupLeague":
@@ -85,6 +102,10 @@ export class TasksDisplayService {
         return `At season end, take the ${this.ordinal(Number(task.param2))} team from ${this.targetLabel(project, Number(task.param1), reference)} and put it into position ${task.param3} of next season's table.`;
       case "UpdateLeagueTable":
         return `At season end, update ${this.leagueName(task.param1, reference)} table using ${target} results.`;
+      case "ClearLeagueStats":
+        return `At tournament start, clear previous stats for ${this.leagueName(task.param1, reference)}.`;
+      case "UpdateLeagueStats":
+        return `At season end, update ${this.leagueName(task.param1, reference)} stats using ${target} results.`;
       default:
         return "Advanced automation rule preserved from tasks.txt.";
     }
@@ -109,6 +130,12 @@ export class TasksDisplayService {
     const competition = this.tree.object(project, id);
     if (!competition) return `Tournament ${competitionId}`;
     return this.display.objectName(competition, reference, project);
+  }
+
+  nationName(nationId: string | number): string {
+    const id = Number(nationId);
+    const nation = id ? nations.find((candidate) => candidate.id === id) : undefined;
+    return nation?.name ?? `Nation ID ${nationId}`;
   }
 
   ordinal(position: number): string {
@@ -151,4 +178,5 @@ export class TasksDisplayService {
   private objectLabel(object: CompdataObject | undefined, project: CompdataProject, reference?: DbProject): string {
     return this.display.objectName(object, reference, project);
   }
+
 }
