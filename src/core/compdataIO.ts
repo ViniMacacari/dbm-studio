@@ -114,12 +114,44 @@ function parseCompIds(text: string): number[] {
   return rows(text).map((row) => numberValue(row[0])).filter((id) => id > 0);
 }
 
-function parseSettings(text: string): CompdataSetting[] {
-  return rows(text).map((row) => ({
-    objectId: numberValue(row[0]),
-    key: row[1] ?? "",
-    value: row.slice(2).join(",")
-  }));
+function parseSettings(text: string, warnings: string[]): { entries: CompdataSetting[]; invalidLines: CompdataInvalidRawLine[]; rawLines: string[]; trailingNewline: boolean } {
+  const entries: CompdataSetting[] = [];
+  const invalidLines: CompdataInvalidRawLine[] = [];
+  const trailingNewline = /\r?\n$/.test(text);
+  const rawLines = text ? text.split(/\r?\n/) : [];
+  if (rawLines.length > 0 && rawLines[rawLines.length - 1] === "") {
+    rawLines.pop();
+  }
+
+  rawLines.forEach((sourceLine, sourceIndex) => {
+    const rawLine = sourceLine.trim();
+    if (!rawLine || rawLine.startsWith("#")) {
+      return;
+    }
+    const row = rawLine.split(",").map((part) => part.trim());
+    if (row.length < 3) {
+      const reason = `settings.txt line ${sourceIndex + 1} has ${row.length} column(s); expected at least 3.`;
+      warnings.push(reason);
+      invalidLines.push({ lineNumber: sourceIndex + 1, sourceLine: sourceIndex, rawLine, reason });
+      return;
+    }
+    const objectId = strictInteger(row[0]);
+    if (objectId === undefined) {
+      const reason = `settings.txt line ${sourceIndex + 1} has an invalid object id.`;
+      warnings.push(reason);
+      invalidLines.push({ lineNumber: sourceIndex + 1, sourceLine: sourceIndex, rawLine, reason });
+      return;
+    }
+    entries.push({
+      objectId,
+      key: row[1] ?? "",
+      value: row.slice(2).join(","),
+      originalRawLine: rawLine,
+      sourceLine: sourceIndex
+    });
+  });
+
+  return { entries, invalidLines, rawLines, trailingNewline };
 }
 
 function parseTasks(text: string, warnings: string[]): { entries: CompdataTask[]; invalidLines: CompdataInvalidRawLine[] } {
@@ -435,7 +467,7 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
   }
   const objects = parseStep("Parsing compobj.txt", () => parseObjects(compobj, warnings));
   const compIds = parseStep("Parsing compids.txt", () => parseCompIds(compids));
-  const settings = parseStep("Parsing settings.txt", () => parseSettings(settingsText));
+  const settings = parseStep("Parsing settings.txt", () => parseSettings(settingsText, warnings));
   const tasks = parseStep("Parsing tasks.txt", () => parseTasks(tasksText, warnings));
   const schedules = parseStep("Parsing schedule.txt", () => parseSchedules(scheduleText));
   const specificSchedules = parseStep("Parsing specific schedule files", () => readSpecificScheduleFiles(folderPath, warnings));
@@ -444,7 +476,7 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
   const initTeams = parseStep("Parsing initteams.txt", () => parseInitTeams(initTeamsText));
   const weather = parseStep("Parsing weather.txt", () => parseWeather(weatherText, warnings));
   emitProgress(onProgress, "building", step, totalSteps, "Building competition summaries");
-  const competitions = competitionSummaries(objects, compIds, settings, tasks.entries, schedules, specificSchedules, standings, advancements, initTeams, warnings);
+  const competitions = competitionSummaries(objects, compIds, settings.entries, tasks.entries, schedules, specificSchedules, standings, advancements, initTeams, warnings);
   step += 1;
   emitProgress(onProgress, "loaded", totalSteps, totalSteps, "Compdata loaded");
 
@@ -453,7 +485,10 @@ export function openCompdataProject(folderPath: string, onProgress?: CompdataOpe
     folderPath,
     objects,
     compIds,
-    settings,
+    settings: settings.entries,
+    settingsInvalidLines: settings.invalidLines,
+    settingsRawLines: settings.rawLines,
+    settingsTrailingNewline: settings.trailingNewline,
     tasks: tasks.entries,
     taskInvalidLines: tasks.invalidLines,
     schedules,
@@ -475,6 +510,80 @@ function line(parts: Array<number | string>): string {
   return parts.map((part) => String(part)).join(",");
 }
 
+function settingLine(setting: CompdataSetting): string {
+  return line([setting.objectId, setting.key, setting.value]);
+}
+
+function isParseableSettingLine(rawLine: string): boolean {
+  const trimmed = rawLine.trim();
+  if (!trimmed || trimmed.startsWith("#")) {
+    return false;
+  }
+  const row = trimmed.split(",").map((part) => part.trim());
+  return row.length >= 3 && strictInteger(row[0]) !== undefined;
+}
+
+function serializeSettings(project: CompdataProject): string {
+  const settings = project.settings ?? [];
+  const rawLines = project.settingsRawLines;
+  if (!rawLines) {
+    const lines = [
+      ...settings.map((setting) => settingLine(setting)),
+      ...(project.settingsInvalidLines ?? []).map((invalid) => invalid.rawLine)
+    ];
+    return lines.join("\n") + (lines.length ? "\n" : "");
+  }
+
+  const bySourceLine = new Map<number, CompdataSetting[]>();
+  const newSettings: CompdataSetting[] = [];
+  for (const setting of settings) {
+    if (typeof setting.sourceLine === "number") {
+      const entries = bySourceLine.get(setting.sourceLine) ?? [];
+      entries.push(setting);
+      bySourceLine.set(setting.sourceLine, entries);
+    } else {
+      newSettings.push(setting);
+    }
+  }
+
+  const output: string[] = [];
+  const objectLastOutputIndex = new Map<number, number>();
+  for (let index = 0; index < rawLines.length; index += 1) {
+    const entries = bySourceLine.get(index);
+    if (entries?.length) {
+      for (const entry of entries) {
+        output.push(settingLine(entry));
+        objectLastOutputIndex.set(entry.objectId, output.length - 1);
+      }
+      continue;
+    }
+
+    const rawLine = rawLines[index] ?? "";
+    if (!isParseableSettingLine(rawLine)) {
+      output.push(rawLine);
+      continue;
+    }
+  }
+
+  for (const setting of newSettings) {
+    const generated = settingLine(setting);
+    const lastIndex = objectLastOutputIndex.get(setting.objectId);
+    if (lastIndex === undefined) {
+      output.push(generated);
+      objectLastOutputIndex.set(setting.objectId, output.length - 1);
+      continue;
+    }
+    output.splice(lastIndex + 1, 0, generated);
+    for (const [objectId, index] of objectLastOutputIndex) {
+      if (index > lastIndex) objectLastOutputIndex.set(objectId, index + 1);
+    }
+    objectLastOutputIndex.set(setting.objectId, lastIndex + 1);
+  }
+
+  const content = output.join("\n");
+  return content + (content && project.settingsTrailingNewline ? "\n" : "");
+}
+
 export function saveCompdataProject(project: CompdataProject): { folderPath: string; filesWritten: number; warnings: string[] } {
   const compidsContent = project.objects
     .filter(obj => obj.kind === 3)
@@ -491,6 +600,17 @@ export function saveCompdataProject(project: CompdataProject): { folderPath: str
       content: compidsContent
     }
   ];
+
+  const settingsContent = serializeSettings(project);
+  const originalSettingsContent = Array.isArray(project.settingsRawLines)
+    ? project.settingsRawLines.join("\n") + (project.settingsRawLines.length && project.settingsTrailingNewline ? "\n" : "")
+    : "";
+  if (settingsContent !== originalSettingsContent || (!Array.isArray(project.settingsRawLines) && settingsContent)) {
+    writes.push({
+      fileName: "settings.txt",
+      content: settingsContent
+    });
+  }
 
   writes.push({
     fileName: "tasks.txt",
