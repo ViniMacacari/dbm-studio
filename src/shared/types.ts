@@ -53,6 +53,8 @@ export interface CompdataSetting {
   objectId: number;
   key: string;
   value: string;
+  originalRawLine?: string;
+  sourceLine?: number;
 }
 
 export interface CompdataTask {
@@ -108,6 +110,7 @@ export interface CompdataInvalidRawLine {
   lineNumber: number;
   rawLine: string;
   reason: string;
+  sourceLine?: number;
 }
 
 export interface CompdataStandingSlot {
@@ -149,6 +152,9 @@ export interface CompdataProject {
   objects: CompdataObject[];
   compIds: number[];
   settings: CompdataSetting[];
+  settingsInvalidLines?: CompdataInvalidRawLine[];
+  settingsRawLines?: string[];
+  settingsTrailingNewline?: boolean;
   tasks: CompdataTask[];
   taskInvalidLines: CompdataInvalidRawLine[];
   schedules: CompdataScheduleEntry[];

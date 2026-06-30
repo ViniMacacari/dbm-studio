@@ -75,4 +75,20 @@ try {
   rmSync(folder, { recursive: true, force: true });
 }
 
+const settingsFolder = mkdtempSync(join(tmpdir(), "dbm-settings-test-"));
+try {
+  writeFileSync(join(settingsFolder, "compobj.txt"), "0,0,FIFA,FIFA,-1\n10,3,C10,Cup_Key,0\n", "utf8");
+  writeFileSync(join(settingsFolder, "settings.txt"), "0,rule_numsubsbench,7\n# keep this comment\n10,standings_sort,POINTS\n10,standings_sort,GOALDIFF\n10,standings_sort,GOALSFOR\n", "utf8");
+  const opened = openCompdataProject(settingsFolder);
+  assert.equal(opened.settings.length, 4);
+  assert.deepEqual(opened.settings.filter((setting) => setting.objectId === 10 && setting.key === "standings_sort").map((setting) => setting.value), ["POINTS", "GOALDIFF", "GOALSFOR"]);
+  opened.settings.find((setting) => setting.objectId === 0 && setting.key === "rule_numsubsbench")!.value = "5";
+  opened.settings.push({ objectId: 10, key: "standings_sort", value: "WINS" });
+  const saved = saveCompdataProject(opened);
+  assert.equal(saved.filesWritten, 6);
+  assert.equal(readFileSync(join(settingsFolder, "settings.txt"), "utf8"), "0,rule_numsubsbench,5\n# keep this comment\n10,standings_sort,POINTS\n10,standings_sort,GOALDIFF\n10,standings_sort,GOALSFOR\n10,standings_sort,WINS\n");
+} finally {
+  rmSync(settingsFolder, { recursive: true, force: true });
+}
+
 console.log("CompObj display/tree/validation tests passed.");
