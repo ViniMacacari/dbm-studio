@@ -7,10 +7,18 @@ import { openCompdataProject, saveCompdataProject } from "../core/compdataIO";
 import { CompObjDisplayService } from "../renderer/services/compdata/compobj-display.service";
 import { CompObjTreeService } from "../renderer/services/compdata/compobj-tree.service";
 import { CompObjValidationService } from "../renderer/services/compdata/compobj-validation.service";
+import { ContinentalQualificationService } from "../renderer/services/compdata/continental-qualification.service";
+import { SettingsService } from "../renderer/services/compdata/settings.service";
+import { TasksDisplayService } from "../renderer/services/compdata/tasks-display.service";
+import { TasksService } from "../renderer/services/compdata/tasks.service";
 
 const tree = new CompObjTreeService();
 const display = new CompObjDisplayService(tree);
 const validation = new CompObjValidationService(tree, display);
+const settings = new SettingsService();
+const tasks = new TasksService(tree);
+const tasksDisplay = new TasksDisplayService(display, tree, { findTeams: () => [] } as any, { findLeagues: () => [] } as any);
+const continental = new ContinentalQualificationService(tree, display, settings, tasks, tasksDisplay);
 
 assert.equal(display.phaseInfo("FCE_Quarter_Final").label, "Quarter Finals");
 assert.equal(display.phaseInfo("FCE_North-West_1").label, "North-West 1");
@@ -90,5 +98,67 @@ try {
 } finally {
   rmSync(settingsFolder, { recursive: true, force: true });
 }
+
+const continentalProject = {
+  title: "continental",
+  folderPath: "",
+  objects: [
+    { id: 1, kind: 0, shortName: "FIFA", description: "FIFA", parentId: -1 },
+    { id: 1592, kind: 1, shortName: "CNBL", description: "", parentId: 1 },
+    { id: 1717, kind: 2, shortName: "ARG", description: "Argentina", parentId: 1592 },
+    { id: 353, kind: 3, shortName: "ARG1", description: "Argentina League", parentId: 1717 },
+    { id: 354, kind: 4, shortName: "S1", description: "FCE_League_Stage", parentId: 353 },
+    { id: 355, kind: 5, shortName: "G1", description: "", parentId: 354 },
+    { id: 1596, kind: 3, shortName: "C1003", description: "Libertadores", parentId: 1592 },
+    { id: 1597, kind: 4, shortName: "S1", description: "FCE_Group_Stage", parentId: 1596 },
+    { id: 1598, kind: 5, shortName: "G1", description: "", parentId: 1597 },
+    { id: 1655, kind: 3, shortName: "C1014", description: "Sudamericana", parentId: 1592 }
+  ],
+  compIds: [353, 1596, 1655],
+  settings: [
+    { objectId: 355, key: "info_label_slot_libert", value: "2" },
+    { objectId: 355, key: "info_label_slot_libert", value: "3" },
+    { objectId: 355, key: "info_label_slot_libert_qual", value: "5" },
+    { objectId: 1717, key: "conmebol_seeded_slots", value: "8" },
+    { objectId: 1717, key: "conmebol_seeded_slots", value: "7" },
+    { objectId: 1592, key: "conmebol_seeded_slots_special_teams", value: "9" },
+    { objectId: 1592, key: "conmebol_seeded_slots_special_teams", value: "7" },
+    { objectId: 1592, key: "conmebol_seeded_slots_special_teams", value: "54" }
+  ],
+  tasks: [
+    { competitionId: 1596, timing: "start", action: "FillFromSpecialTeamsWithNation", targetId: 1598, param1: "5", param2: "54", param3: "0" },
+    { competitionId: 1596, timing: "start", action: "FillFromLeagueMaxFromCountry", targetId: 1598, param1: "353", param2: "5", param3: "8" }
+  ],
+  taskInvalidLines: [],
+  schedules: [],
+  specificSchedules: [],
+  standings: Array.from({ length: 12 }, (_value, index) => ({ groupId: 355, position: index })),
+  advancements: [],
+  initTeams: [],
+  weatherEntries: [],
+  weatherInvalidLines: [],
+  weatherRows: [],
+  activeTeamsRows: [],
+  objectiveRows: [],
+  warnings: [],
+  competitions: [
+    { id: 353, shortName: "ARG1", description: "Argentina League", parentId: 1717, stages: [], groups: [], settingsCount: 0, tasksCount: 0, scheduleCount: 0, standingsCount: 12, advancementCount: 0, initTeamsCount: 0 },
+    { id: 1596, shortName: "C1003", description: "Libertadores", parentId: 1592, stages: [], groups: [], settingsCount: 0, tasksCount: 2, scheduleCount: 0, standingsCount: 0, advancementCount: 0, initTeamsCount: 0 },
+    { id: 1655, shortName: "C1014", description: "Sudamericana", parentId: 1592, stages: [], groups: [], settingsCount: 0, tasksCount: 0, scheduleCount: 0, standingsCount: 0, advancementCount: 0, initTeamsCount: 0 }
+  ]
+} satisfies CompdataProject;
+
+assert.equal(continental.regionForCompetition(continentalProject, continentalProject.competitions[0]), "CONMEBOL");
+assert.deepEqual(continental.qualificationSlots(continentalProject, 355).map((slot) => `${slot.position}:${slot.kind}`), ["2:libertadores", "3:libertadores", "5:libertadoresQual"]);
+continental.setQualificationSlot(continentalProject, 355, 6, "sudamericana");
+assert.deepEqual(settings.getMultiValues(continentalProject, 355, "info_label_slot_sudame"), ["6"]);
+continental.setCountryAllocation(continentalProject, 1717, "CONMEBOL", ["8", "7", "1"]);
+assert.deepEqual(continental.countryAllocation(continentalProject, 1717, "CONMEBOL"), ["8", "7", "1"]);
+assert.deepEqual(continental.specialTeamPools(continentalProject, 1592, "CONMEBOL").map((pool) => ({ label: pool.nationLabel, values: pool.values })), [{ label: "Brazil", values: ["9", "7"] }]);
+const continentalCompetitions = continental.continentalCompetitions(continentalProject);
+assert.equal(continentalCompetitions.find((competition) => competition.object.id === 1596)?.startRules.length, 2);
+assert.match(continental.fillRuleSentence(continentalProject, continentalProject.tasks[0]), /special team\(s\) from Brazil/);
+assert.equal(continental.validateDomesticLeague(continentalProject, continentalProject.competitions[0], 355, "CONMEBOL").some((issue) => issue.severity === "error"), false);
+assert.equal(continental.validateContinentalCompetitions(continentalProject, continentalCompetitions.filter((competition) => competition.object.id === 1596)).some((issue) => issue.severity === "error"), false);
 
 console.log("CompObj display/tree/validation tests passed.");
