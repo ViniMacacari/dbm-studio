@@ -74,8 +74,11 @@ export class TasksValidationService {
       this.validatePositiveNumber(task.param1, "Club order", task, issues);
       this.validateTeam(task.param2, task, reference, issues);
     }
-    if (task.action === "FillFromSpecialTeams") {
+    if (task.action === "FillFromSpecialTeams" || task.action === "FillFromSpecialTeamsWithNation") {
       this.validatePositiveNumber(task.param1, "Number of special teams", task, issues);
+    }
+    if (task.action === "FillFromSpecialTeamsWithNation") {
+      this.validatePositiveNumber(task.param2, "Nation", task, issues);
     }
     if (task.action === "FillFromLeague" || task.action === "FillFromLeagueMaxFromCountry" || task.action === "FillFromCompTableBackupLeague" || task.action === "UpdateLeagueTable") {
       const leagueId = task.action === "FillFromCompTableBackupLeague" ? task.param2 : task.param1;
@@ -85,6 +88,11 @@ export class TasksValidationService {
       this.validatePositiveNumber(task.param2, "Number of clubs", task, issues);
       this.validatePositiveNumber(task.param3, "Max clubs from same country", task, issues);
     }
+    if (task.action === "FillFromTopCoefficientCountry") {
+      this.validatePositiveNumber(task.param1, "Country coefficient rank", task, issues);
+      this.validatePositiveNumber(task.param2, "Number of teams", task, issues);
+      this.validatePositiveNumber(task.param3, "Allocation slot", task, issues);
+    }
     if (task.action === "FillFromCompTable" || task.action === "FillFromCompTableBackupLeague" || task.action === "FillFromCompTableBackup") {
       this.validateSourceCompetition(project, task.param1, task, issues);
       const count = task.action === "FillFromCompTable" ? task.param2 : task.param3;
@@ -92,6 +100,9 @@ export class TasksValidationService {
     }
     if (task.action === "FillFromCompTableBackup") {
       this.validateSourceCompetition(project, task.param2, task, issues);
+    }
+    if (task.action === "ClearLeagueStats" || task.action === "UpdateLeagueStats") {
+      this.validateLeague(task.param1, task, reference, issues);
     }
 
     return issues;

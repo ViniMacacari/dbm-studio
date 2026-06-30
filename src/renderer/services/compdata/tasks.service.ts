@@ -6,25 +6,32 @@ export type TaskTiming = "start" | "end";
 export type KnownTaskAction =
   | "FillWithTeam"
   | "FillFromSpecialTeams"
+  | "FillFromSpecialTeamsWithNation"
   | "FillFromLeague"
   | "FillFromLeagueMaxFromCountry"
+  | "FillFromTopCoefficientCountry"
   | "FillFromCompTable"
   | "FillFromCompTableBackupLeague"
   | "FillFromCompTableBackup"
+  | "ClearLeagueStats"
   | "UpdateTable"
-  | "UpdateLeagueTable";
+  | "UpdateLeagueTable"
+  | "UpdateLeagueStats";
 
 export const START_TASK_ACTIONS: KnownTaskAction[] = [
   "FillWithTeam",
   "FillFromSpecialTeams",
+  "FillFromSpecialTeamsWithNation",
   "FillFromLeague",
   "FillFromLeagueMaxFromCountry",
+  "FillFromTopCoefficientCountry",
   "FillFromCompTable",
   "FillFromCompTableBackupLeague",
-  "FillFromCompTableBackup"
+  "FillFromCompTableBackup",
+  "ClearLeagueStats"
 ];
 
-export const END_TASK_ACTIONS: KnownTaskAction[] = ["UpdateTable", "UpdateLeagueTable"];
+export const END_TASK_ACTIONS: KnownTaskAction[] = ["UpdateTable", "UpdateLeagueTable", "UpdateLeagueStats"];
 export const KNOWN_TASK_ACTIONS: KnownTaskAction[] = [...START_TASK_ACTIONS, ...END_TASK_ACTIONS];
 
 export interface TeamSourceTaskRow {
@@ -88,6 +95,12 @@ export class TasksService {
   duplicateTask(project: CompdataProject, row: TeamSourceTaskRow): void {
     const copy = { ...row.task, originalRawLine: undefined };
     project.tasks.splice(row.globalIndex + 1, 0, copy);
+  }
+
+  moveTask(project: CompdataProject, globalIndex: number, direction: -1 | 1): void {
+    const targetIndex = globalIndex + direction;
+    if (targetIndex < 0 || targetIndex >= project.tasks.length) return;
+    [project.tasks[globalIndex], project.tasks[targetIndex]] = [project.tasks[targetIndex], project.tasks[globalIndex]];
   }
 
   nextFillWithTeamOrder(project: CompdataProject, competitionId: number, targetGroupId: number): number {
