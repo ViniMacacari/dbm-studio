@@ -331,6 +331,48 @@ app-tournament-phase-details {
   margin-bottom: 22px;
 }
 
+.tse-tab-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--tse-line);
+  background: #f7f9f7;
+  padding: 10px 18px 0;
+}
+
+.tse-tab-bar.compact {
+  position: static;
+  margin-bottom: 12px;
+  border: 1px solid var(--tse-line);
+  border-radius: 8px;
+  background: white;
+  padding: 6px;
+}
+
+.tse-tab {
+  min-height: 33px !important;
+  border-color: transparent;
+  border-bottom-color: transparent;
+  border-radius: 7px 7px 0 0;
+  background: transparent;
+  color: var(--tse-muted);
+  font-size: 11px;
+}
+
+.tse-tab-bar.compact .tse-tab {
+  border-radius: 6px;
+}
+
+.tse-tab.active {
+  border-color: #bdd2c7;
+  background: white;
+  color: var(--tse-accent);
+  font-weight: 700;
+}
+
 .tse-danger-link { color: #a33f3f !important; }
 .tse-danger { border-color: #a33f3f !important; background: #a33f3f !important; color: white !important; }
 .tse-back-link { min-height: 28px !important; margin-bottom: 10px; border: 0; background: transparent; color: var(--tse-accent); padding: 0; }
@@ -483,6 +525,12 @@ app-tournament-phase-details {
 .tse-data-table.tasks-advanced .row {
   min-width: 1180px;
   grid-template-columns: minmax(150px, 1fr) 70px minmax(170px, 1fr) minmax(160px, 1fr) minmax(260px, 1.5fr) minmax(260px, 1.4fr) 80px;
+}
+
+.tse-data-table.settings-advanced .head,
+.tse-data-table.settings-advanced .row {
+  min-width: 760px;
+  grid-template-columns: minmax(190px, 1.2fr) minmax(160px, 1fr) minmax(190px, 1fr) 110px;
 }
 
 .tse-data-table.preview .head,
@@ -711,6 +759,128 @@ app-tournament-phase-details {
 
 .tse-weather-main {
   min-width: 0;
+}
+
+.tse-rules-content {
+  width: min(1220px, 100%);
+}
+
+.tse-rules-panel {
+  border: 1px solid var(--tse-line);
+  border-radius: 8px;
+  background: white;
+  padding: 14px;
+}
+
+.tse-rules-target {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.tse-rules-panel .tse-field em {
+  color: var(--tse-accent);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.tse-rules-checks,
+.tse-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tse-rules-checks label,
+.tse-toggle-grid label {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--tse-line);
+  border-radius: 7px;
+  background: #fafbfa;
+  color: var(--tse-text);
+  font-size: 12px;
+  padding: 8px 9px;
+}
+
+.tse-toggle-grid label span {
+  margin-left: auto;
+  color: var(--tse-accent);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.tse-rules-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.tse-rules-list-head,
+.tse-rules-list article {
+  display: grid;
+  grid-template-columns: 34px minmax(180px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.tse-rules-list-head {
+  grid-template-columns: minmax(180px, 1fr) auto;
+  color: var(--tse-muted);
+  font-size: 11px;
+}
+
+.tse-rules-list article {
+  border: 1px solid var(--tse-line);
+  border-radius: 7px;
+  background: #fafbfa;
+  padding: 8px;
+}
+
+.tse-rules-list article > span:first-child {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: #e8f2ed;
+  color: var(--tse-accent);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tse-inheritance-chain {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tse-inheritance-chain article {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--tse-line);
+  border-radius: 8px;
+  background: #fafbfa;
+  padding: 10px;
+}
+
+.tse-inheritance-chain article.active {
+  border-color: #9fc2b3;
+  background: #eef6f2;
+}
+
+.tse-inheritance-chain span {
+  color: var(--tse-muted);
+  font-size: 10px;
+}
+
+.compact-heading {
+  margin-top: 16px;
 }
 
 .tse-month-picker {

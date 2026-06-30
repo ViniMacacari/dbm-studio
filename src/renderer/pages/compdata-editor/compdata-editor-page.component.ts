@@ -15,12 +15,14 @@ import { TournamentPhaseDetailsComponent } from "./tournament-phase-details.comp
 import { TournamentSidebarComponent } from "./tournament-sidebar.component";
 import { TournamentTeamsSetupComponent } from "./tournament-teams-setup.component";
 import { TournamentTeamSourcesComponent } from "./tournament-team-sources.component";
+import { TournamentRulesSettingsComponent } from "./tournament-rules-settings.component";
 import { TournamentAdvancementComponent } from "./tournament-advancement.component";
 import { TournamentCalendarComponent } from "./tournament-calendar.component";
 import { CountryWeatherComponent } from "./country-weather.component";
 import { ScheduleDateService } from "../../services/compdata/schedule-date.service";
 import { ScheduleService } from "../../services/compdata/schedule.service";
 import { WeatherService } from "../../services/compdata/weather.service";
+import { SettingsService } from "../../services/compdata/settings.service";
 import { nations } from "../../../utils/get-nations/get-nations";
 
 type EditorDialog = "create" | "addPhase" | "addChild" | "editTournament" | "editPhase" | "editPhaseQuantities" | "editChild" | "delete" | "validation" | "preview" | undefined;
@@ -37,6 +39,7 @@ type DeleteTarget = { kind: "tournament" | "phase" | "child"; object: CompdataOb
     TournamentPhaseDetailsComponent,
     TournamentTeamsSetupComponent,
     TournamentTeamSourcesComponent,
+    TournamentRulesSettingsComponent,
     TournamentAdvancementComponent,
     TournamentCalendarComponent,
     CountryWeatherComponent,
@@ -55,7 +58,7 @@ export class CompdataEditorPageComponent {
   compdataReferenceProject?: DbProject;
   compdataDirty = false;
   view: "simple" | "advanced" = "simple";
-  activeTab: "structure" | "teams" | "sources" | "advancement" | "calendar" | "weather" = "structure";
+  activeTab: "structure" | "teams" | "sources" | "rules" | "advancement" | "calendar" | "weather" = "structure";
   selectedTournamentId = 0;
   selectedPhaseId = 0;
   dialog: EditorDialog;
@@ -80,6 +83,7 @@ export class CompdataEditorPageComponent {
     private readonly schedule: ScheduleService,
     private readonly scheduleDates: ScheduleDateService,
     private readonly weather: WeatherService,
+    private readonly settings: SettingsService,
     private readonly toast: ToastService,
     private readonly loading: LoadingService
   ) {}
@@ -255,6 +259,8 @@ export class CompdataEditorPageComponent {
       });
     }
 
+    this.applyRulesRequest(request, tournamentId);
+
     if (request.initialTeams && request.initialTeams.length > 0) {
       request.initialTeams.forEach((tid, index) => {
         this.compdataProject!.initTeams.push({
@@ -323,6 +329,43 @@ export class CompdataEditorPageComponent {
     this.selectTournament(tournamentId);
     this.dialog = undefined;
     this.statusChanged.emit(newCountryCreated ? "Country and tournament structure created" : "Tournament structure created");
+  }
+
+  private applyRulesRequest(request: CreateTournamentRequest, tournamentId: number): void {
+    if (!this.compdataProject || !request.rules || request.rules.mode === "inherit") return;
+    const rules = request.rules;
+    this.settings.setSingleSetting(this.compdataProject, tournamentId, "comp_type", rules.competitionType);
+    this.settings.setSingleSetting(this.compdataProject, tournamentId, "standings_pointswin", rules.pointsWin);
+    this.settings.setSingleSetting(this.compdataProject, tournamentId, "standings_pointsdraw", rules.pointsDraw);
+    this.settings.setSingleSetting(this.compdataProject, tournamentId, "standings_pointsloss", rules.pointsLoss);
+    this.settings.setSingleSetting(this.compdataProject, tournamentId, "rule_numsubsbench", rules.substitutesBench);
+    this.settings.setSingleSetting(this.compdataProject, tournamentId, "rule_numsubsmatch", rules.substitutionsMatch);
+    this.settings.setSingleSetting(this.compdataProject, tournamentId, "schedule_seasonstartmonth", rules.seasonStartMonth);
+    this.settings.setMultiSetting(this.compdataProject, tournamentId, "standings_sort", rules.tieBreakers);
+    this.settings.setMultiSetting(this.compdataProject, tournamentId, "match_endruleko1leg", rules.knockoutEndRules);
+    if (rules.promotionCompetitionId) this.settings.setSingleSetting(this.compdataProject, tournamentId, "info_league_promo", rules.promotionCompetitionId);
+    if (rules.relegationCompetitionId) this.settings.setSingleSetting(this.compdataProject, tournamentId, "info_league_releg", rules.relegationCompetitionId);
+    if (rules.promotionPlayoffCompetitionId) this.settings.setSingleSetting(this.compdataProject, tournamentId, "schedule_forcecomp", rules.promotionPlayoffCompetitionId);
+
+    const phases = this.compdataProject.objects.filter((object) => object.kind === 4 && object.parentId === tournamentId);
+    for (const phase of phases) {
+      const stage = this.stageSettingsForPhase(phase);
+      this.settings.setSingleSetting(this.compdataProject, phase.id, "match_stagetype", stage.type);
+      if (stage.situation) {
+        this.settings.setSingleSetting(this.compdataProject, phase.id, "match_matchsituation", stage.situation);
+      }
+    }
+  }
+
+  private stageSettingsForPhase(phase: CompdataObject): { type: string; situation?: string } {
+    if (/setup/i.test(phase.description)) return { type: "SETUP" };
+    if (/quarter/i.test(phase.description)) return { type: "KO1LEG", situation: "QUARTER" };
+    if (/semi/i.test(phase.description)) return { type: "KO1LEG", situation: "SEMI" };
+    if (/third/i.test(phase.description)) return { type: "KO1LEG", situation: "THIRDPLACE" };
+    if (/final/i.test(phase.description)) return { type: "KO1LEG", situation: "FINAL" };
+    if (/round/i.test(phase.description)) return { type: "KO1LEG", situation: "ROUNDX" };
+    if (phase.description === "FCE_Group_Stage") return { type: "GROUP", situation: "GROUP" };
+    return { type: "LEAGUE", situation: "LEAGUE" };
   }
 
   private applyCountryWeatherRequest(request: CreateTournamentRequest, countryObjectId: number): void {
@@ -527,6 +570,10 @@ export class CompdataEditorPageComponent {
       }
       this.compdataProject = JSON.parse(result.projectJson) as CompdataProject;
       this.compdataProject.tasks ??= [];
+      this.compdataProject.settings ??= [];
+      this.compdataProject.settingsInvalidLines ??= [];
+      this.compdataProject.settingsRawLines ??= [];
+      this.compdataProject.settingsTrailingNewline ??= false;
       this.compdataProject.specificSchedules ??= [];
       this.compdataProject.taskInvalidLines ??= [];
       this.compdataProject.weatherEntries ??= [];
@@ -582,6 +629,7 @@ export class CompdataEditorPageComponent {
       this.compdataDirty = false;
       this.originalObjectIds = new Set(this.compdataProject.objects.map((object) => object.id));
       this.compdataProject.objects.forEach((object) => object.originalRawLine = this.display.rawLine(object));
+      this.compdataProject.settings.forEach((setting) => setting.originalRawLine = [setting.objectId, setting.key, setting.value].join(","));
       this.compdataProject.tasks.forEach((task) => task.originalRawLine = [task.competitionId, task.timing, task.action, task.targetId, task.param1, task.param2, task.param3].join(","));
       this.compdataProject.schedules.forEach((schedule) => schedule.originalRawLine = [schedule.objectId, schedule.day, schedule.round, schedule.minGames, schedule.maxGames, schedule.time].join(","));
       this.compdataProject.specificSchedules?.forEach((file) => file.fixtures.forEach((fixture) => fixture.originalRawLine = [fixture.date, fixture.time, fixture.homeTeamId, fixture.awayTeamId].join(",")));
@@ -622,6 +670,14 @@ export class CompdataEditorPageComponent {
   private afterStructureChange(): void {
     if (this.compdataProject) {
       this.tree.invalidate(this.compdataProject);
+      this.validation.invalidateTournament(this.compdataProject, this.selectedTournamentId);
+    }
+    this.compdataDirty = true;
+    this.refreshCompetitionSummaries();
+  }
+
+  afterSettingsChange(): void {
+    if (this.compdataProject) {
       this.validation.invalidateTournament(this.compdataProject, this.selectedTournamentId);
     }
     this.compdataDirty = true;
