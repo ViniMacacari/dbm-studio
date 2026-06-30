@@ -18,6 +18,7 @@ import { TournamentTeamSourcesComponent } from "./tournament-team-sources.compon
 import { TournamentRulesSettingsComponent } from "./tournament-rules-settings.component";
 import { TournamentAdvancementComponent } from "./tournament-advancement.component";
 import { TournamentCalendarComponent } from "./tournament-calendar.component";
+import { ContinentalQualificationComponent } from "./continental-qualification.component";
 import { CountryWeatherComponent } from "./country-weather.component";
 import { ScheduleDateService } from "../../services/compdata/schedule-date.service";
 import { ScheduleService } from "../../services/compdata/schedule.service";
@@ -40,6 +41,7 @@ type DeleteTarget = { kind: "tournament" | "phase" | "child"; object: CompdataOb
     TournamentTeamsSetupComponent,
     TournamentTeamSourcesComponent,
     TournamentRulesSettingsComponent,
+    ContinentalQualificationComponent,
     TournamentAdvancementComponent,
     TournamentCalendarComponent,
     CountryWeatherComponent,
@@ -58,7 +60,7 @@ export class CompdataEditorPageComponent {
   compdataReferenceProject?: DbProject;
   compdataDirty = false;
   view: "simple" | "advanced" = "simple";
-  activeTab: "structure" | "teams" | "sources" | "rules" | "advancement" | "calendar" | "weather" = "structure";
+  activeTab: "structure" | "teams" | "sources" | "rules" | "continental" | "advancement" | "calendar" | "weather" = "structure";
   selectedTournamentId = 0;
   selectedPhaseId = 0;
   dialog: EditorDialog;
@@ -332,6 +334,9 @@ export class CompdataEditorPageComponent {
     }
     this.afterStructureChange();
     this.selectTournament(tournamentId);
+    if (request.template === "league" && request.locationType === 2) {
+      this.activeTab = "continental";
+    }
     this.dialog = undefined;
     this.statusChanged.emit(newCountryCreated ? "Country and tournament structure created" : "Tournament structure created");
   }
@@ -686,6 +691,11 @@ export class CompdataEditorPageComponent {
     if (settingsCountChanged) {
       this.refreshCompetitionSummaries();
     }
+  }
+
+  afterContinentalQualificationChange(): void {
+    this.compdataDirty = true;
+    this.refreshCompetitionSummaries();
   }
 
   afterGlobalWeatherChange(): void {
