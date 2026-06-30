@@ -7,6 +7,8 @@ import { TasksDisplayService } from "../../services/compdata/tasks-display.servi
 import { TasksValidationService } from "../../services/compdata/tasks-validation.service";
 import { WeatherDisplayService } from "../../services/compdata/weather-display.service";
 import { WeatherValidationService } from "../../services/compdata/weather-validation.service";
+import { SettingsDisplayService } from "../../services/compdata/settings-display.service";
+import { SettingsValidationService } from "../../services/compdata/settings-validation.service";
 
 @Component({
   selector: "app-compobj-advanced-view",
@@ -87,6 +89,28 @@ import { WeatherValidationService } from "../../services/compdata/weather-valida
           </div>
         </details>
         <details class="tse-technical tse-full-preview">
+          <summary>Preview settings.txt</summary>
+          <div class="tse-generated-lines">
+            <code *ngFor="let setting of settingsPreview">{{ setting }}</code>
+            <code *ngIf="!settingsPreview.length">No settings found.</code>
+          </div>
+          <div class="tse-warning" *ngFor="let invalid of project.settingsInvalidLines ?? []" style="margin-top: 8px;">
+            Preserved settings line {{ invalid.lineNumber }}: {{ invalid.rawLine }}
+          </div>
+        </details>
+        <details class="tse-technical tse-full-preview">
+          <summary>settings.txt technical table</summary>
+          <div class="tse-data-table settings-advanced">
+            <div class="head"><span>Object</span><span>Rule</span><span>Value</span><span>Status</span></div>
+            <div class="row" *ngFor="let setting of settingsRows">
+              <span>{{ settingsObjectLabel(setting.objectId) }}</span>
+              <span>{{ settingsDisplay.attributeLabel(setting.key) }}</span>
+              <span>{{ setting.value }}</span>
+              <span>{{ settingStatus(setting.objectId, setting.key) }}</span>
+            </div>
+          </div>
+        </details>
+        <details class="tse-technical tse-full-preview">
           <summary>Preview schedule.txt</summary>
           <div class="tse-generated-lines">
             <code *ngFor="let schedule of schedulePreview">{{ schedule }}</code>
@@ -147,7 +171,9 @@ export class CompObjAdvancedViewComponent {
     public readonly tasksDisplay: TasksDisplayService,
     private readonly tasksValidation: TasksValidationService,
     public readonly weatherDisplay: WeatherDisplayService,
-    private readonly weatherValidation: WeatherValidationService
+    private readonly weatherValidation: WeatherValidationService,
+    public readonly settingsDisplay: SettingsDisplayService,
+    private readonly settingsValidation: SettingsValidationService
   ) {}
   get rows() { return this.tree.fullTree(this.project); }
   get selectedObject(): CompdataObject | undefined { return this.display.object(this.project, this.selectedId) ?? this.rows[0]?.object; }
@@ -272,6 +298,25 @@ export class CompObjAdvancedViewComponent {
     const competition = this.project.competitions.find((candidate) => candidate.id === task.competitionId);
     if (!competition) return "Warning";
     const issues = this.tasksValidation.validateTask(this.project, competition, task, this.reference);
+    if (issues.some((issue) => issue.severity === "error")) return "Error";
+    return issues.length ? "Warning" : "OK";
+  }
+
+  get settingsPreview(): string[] {
+    return (this.project.settings ?? []).map((setting) => this.settingsDisplay.rawLine(setting));
+  }
+
+  get settingsRows() {
+    return this.project.settings ?? [];
+  }
+
+  settingsObjectLabel(objectId: number): string {
+    const object = this.project.objects.find((candidate) => candidate.id === objectId);
+    return object ? this.display.objectName(object, this.reference, this.project) : `Missing object ${objectId}`;
+  }
+
+  settingStatus(objectId: number, attribute: string): string {
+    const issues = this.settingsValidation.validateProject(this.project).filter((issue) => issue.objectId === objectId && (!issue.attribute || issue.attribute === attribute));
     if (issues.some((issue) => issue.severity === "error")) return "Error";
     return issues.length ? "Warning" : "OK";
   }

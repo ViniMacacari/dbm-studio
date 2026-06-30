@@ -12,6 +12,7 @@ import { TasksDisplayService } from "../../services/compdata/tasks-display.servi
 import { KnownTaskAction, TasksService } from "../../services/compdata/tasks.service";
 import { WeatherDisplayService } from "../../services/compdata/weather-display.service";
 import { WeatherPresetKey, WeatherService } from "../../services/compdata/weather.service";
+import { MONTH_OPTIONS, TIE_BREAKER_OPTIONS } from "../../services/compdata/settings-display.service";
 import { LeagueEditorService } from "../../services/league-editor.service";
 import type { TeamSearchResult } from "../../services/team-editor.service";
 import type { CompdataAdvancement, CompdataObject } from "../../../shared/types";
@@ -63,6 +64,22 @@ export interface CreateTournamentTeamSourcesRequest {
   rules: CreateTournamentTaskRuleRequest[];
 }
 
+export interface CreateTournamentRulesRequest {
+  mode: "inherit" | "preset";
+  competitionType: string;
+  pointsWin: number;
+  pointsDraw: number;
+  pointsLoss: number;
+  tieBreakers: string[];
+  substitutesBench: number;
+  substitutionsMatch: number;
+  knockoutEndRules: string[];
+  seasonStartMonth: string;
+  promotionCompetitionId?: number;
+  relegationCompetitionId?: number;
+  promotionPlayoffCompetitionId?: number;
+}
+
 export interface CreateTournamentRequest {
   locationType: 0 | 1 | 2;
   locationId: number;
@@ -77,6 +94,7 @@ export interface CreateTournamentRequest {
   cupInitialTeams?: number;
   initialTeams?: string[];
   teamSources?: CreateTournamentTeamSourcesRequest;
+  rules?: CreateTournamentRulesRequest;
   advancements?: CompdataAdvancement[];
   countryWeather?: CreateTournamentCountryWeatherRequest;
   calendar?: CreateTournamentCalendarRequest;
@@ -89,8 +107,8 @@ export interface CreateTournamentRequest {
   template: `
     <div class="tse-modal-backdrop">
       <section class="tse-modal tse-wizard" style="width: 800px; max-width: 90vw;" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
-        <header class="tse-modal-header"><div><span>Step {{ step }} of 9</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
-        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4,5,6,7,8,9]" [class.active]="item <= step"></span></div>
+        <header class="tse-modal-header"><div><span>Step {{ step }} of 10</span><h2 id="wizard-title">{{ stepTitle }}</h2></div><button type="button" aria-label="Close" (click)="cancel.emit()">×</button></header>
+        <div class="tse-step-track"><span *ngFor="let item of [1,2,3,4,5,6,7,8,9,10]" [class.active]="item <= step"></span></div>
         <div class="tse-modal-body">
           <ng-container *ngIf="step === 1">
             <p>Choose where this tournament belongs.</p>
@@ -275,6 +293,83 @@ export interface CreateTournamentRequest {
             </details>
           </ng-container>
 
+          <ng-container *ngIf="step === 6">
+            <p>Choose the main football rules for this tournament. Advanced settings can be edited later.</p>
+            <div class="tse-choice-grid">
+              <button type="button" [class.active]="rulesChoice === 'inherit'" (click)="rulesChoice = 'inherit'"><strong>Use inherited/default rules</strong><span>Create the tournament without custom settings lines.</span></button>
+              <button type="button" [class.active]="rulesChoice === 'preset' && rulesCompetitionType === 'LEAGUE'" (click)="setRulesPreset('LEAGUE')"><strong>League</strong><span>Points table, standard tie-breakers and league draws.</span></button>
+              <button type="button" [class.active]="rulesChoice === 'preset' && rulesCompetitionType === 'CUP'" (click)="setRulesPreset('CUP')"><strong>Cup</strong><span>Knockout defaults with extra time and penalties.</span></button>
+              <button type="button" [class.active]="rulesChoice === 'preset' && rulesCompetitionType === 'SUPERCUP'" (click)="setRulesPreset('SUPERCUP')"><strong>Supercup</strong><span>One final with extra time and penalties.</span></button>
+              <button type="button" [class.active]="rulesChoice === 'preset' && rulesCompetitionType === 'PLAYOFF'" (click)="setRulesPreset('PLAYOFF')"><strong>Playoff</strong><span>Knockout style rules for qualification games.</span></button>
+              <button type="button" [class.active]="rulesChoice === 'preset' && rulesCompetitionType === 'INTERCUP'" (click)="setRulesPreset('INTERCUP')"><strong>International Cup</strong><span>Tournament cup defaults for national teams.</span></button>
+            </div>
+
+            <ng-container *ngIf="rulesChoice === 'preset'">
+              <div class="tse-form-grid three" style="margin-top: 16px;">
+                <label class="tse-field"><span>Competition type</span><select [(ngModel)]="rulesCompetitionType">
+                  <option value="LEAGUE">League</option>
+                  <option value="CUP">Cup</option>
+                  <option value="SUPERCUP">Supercup</option>
+                  <option value="PLAYOFF">Playoff</option>
+                  <option value="INTERCUP">International Cup</option>
+                  <option value="INTERQUAL">International Qualifiers</option>
+                  <option value="NONE">None / Custom</option>
+                </select></label>
+                <label class="tse-field"><span>Substitutes on bench</span><input type="number" min="0" [(ngModel)]="rulesSubstitutesBench" /></label>
+                <label class="tse-field"><span>Substitutions per match</span><input type="number" min="0" [(ngModel)]="rulesSubstitutionsMatch" /></label>
+                <label class="tse-field"><span>Win points</span><input type="number" [(ngModel)]="rulesPointsWin" /></label>
+                <label class="tse-field"><span>Draw points</span><input type="number" [(ngModel)]="rulesPointsDraw" /></label>
+                <label class="tse-field"><span>Loss points</span><input type="number" [(ngModel)]="rulesPointsLoss" /></label>
+                <label class="tse-field"><span>Season starts</span><select [(ngModel)]="rulesSeasonStartMonth">
+                  <option *ngFor="let month of rulesMonthOptions" [value]="month.value">{{ month.label }}</option>
+                </select></label>
+              </div>
+
+              <div class="tse-rules-list" style="margin-top: 16px;">
+                <div class="tse-rules-list-head"><strong>Tie-breakers</strong><span>{{ rulesTieBreakers.length }} selected</span></div>
+                <article *ngFor="let value of rulesTieBreakers; let i = index">
+                  <span>{{ i + 1 }}</span>
+                  <strong>{{ rulesTieBreakerLabel(value) }}</strong>
+                  <button type="button" (click)="moveWizardTieBreaker(i, -1)" [disabled]="i === 0">Up</button>
+                  <button type="button" (click)="moveWizardTieBreaker(i, 1)" [disabled]="i === rulesTieBreakers.length - 1">Down</button>
+                  <button type="button" class="tse-danger-link" (click)="rulesTieBreakers.splice(i, 1)">Remove</button>
+                </article>
+                <label class="tse-field"><span>Add tie-breaker</span><select [ngModel]="''" (ngModelChange)="addWizardTieBreaker($event)">
+                  <option value="">Choose...</option>
+                  <option *ngFor="let option of availableWizardTieBreakers" [value]="option.value">{{ option.label }}</option>
+                </select></label>
+              </div>
+
+              <div class="tse-toggle-grid" style="margin-top: 16px;">
+                <label><input type="checkbox" [ngModel]="rulesKnockoutEndRules.includes('ET')" (ngModelChange)="toggleWizardEndRule('ET', $event)" /> Knockout draws: Extra time</label>
+                <label><input type="checkbox" [ngModel]="rulesKnockoutEndRules.includes('PENS')" (ngModelChange)="toggleWizardEndRule('PENS', $event)" /> Knockout draws: Penalties</label>
+              </div>
+
+              <details class="tse-technical" style="margin-top: 8px;">
+                <summary>Advanced rules</summary>
+                <div class="tse-form-grid three" style="margin-top: 8px;">
+                  <label class="tse-field"><span>Promotion target</span><select [(ngModel)]="rulesPromotionCompetitionId">
+                    <option [ngValue]="0">None</option><option *ngFor="let option of existingCompetitionOptions" [ngValue]="option.id">{{ option.label }}</option>
+                  </select></label>
+                  <label class="tse-field"><span>Relegation target</span><select [(ngModel)]="rulesRelegationCompetitionId">
+                    <option [ngValue]="0">None</option><option *ngFor="let option of existingCompetitionOptions" [ngValue]="option.id">{{ option.label }}</option>
+                  </select></label>
+                  <label class="tse-field"><span>Promotion playoff</span><select [(ngModel)]="rulesPromotionPlayoffCompetitionId">
+                    <option [ngValue]="0">None</option><option *ngFor="let option of existingCompetitionOptions" [ngValue]="option.id">{{ option.label }}</option>
+                  </select></label>
+                </div>
+              </details>
+            </ng-container>
+
+            <details class="tse-technical" style="margin-top: 8px;">
+              <summary>Show generated settings.txt lines</summary>
+              <ng-container *ngIf="rulesTechnicalPreviewLines.length; else noRulesLines">
+                <code *ngFor="let line of rulesTechnicalPreviewLines">{{ line }}</code>
+              </ng-container>
+              <ng-template #noRulesLines><p>No settings.txt lines generated.</p></ng-template>
+            </details>
+          </ng-container>
+
           <ng-container *ngIf="step === 7">
             <p>Choose how teams move between phases. DBM Studio can generate this automatically for simple structures.</p>
             <div class="tse-choice-grid">
@@ -297,7 +392,7 @@ export interface CreateTournamentRequest {
             </div>
           </ng-container>
 
-          <ng-container *ngIf="step === 6">
+          <ng-container *ngIf="step === 8">
             <p>Country weather is a global country setting. It can affect every competition played in that country.</p>
             <ng-container *ngIf="locationType === 2; else noCountryWeatherStep">
               <div class="tse-resolved">
@@ -344,7 +439,7 @@ export interface CreateTournamentRequest {
             </ng-template>
           </ng-container>
 
-          <ng-container *ngIf="step === 8">
+          <ng-container *ngIf="step === 9">
             <p>Set when the tournament will be played. You can create generic matchday rules or exact fixtures.</p>
             <div class="tse-choice-grid">
               <button type="button" [class.active]="calendarChoice === 'generate'" (click)="calendarChoice = 'generate'; buildCalendarPreview()"><strong>Generate simple calendar</strong><span>Create matchdays from a start date and interval.</span></button>
@@ -447,7 +542,7 @@ export interface CreateTournamentRequest {
             </ng-container>
           </ng-container>
 
-          <ng-container *ngIf="step === 9">
+          <ng-container *ngIf="step === 10">
             <div class="tse-review">
               <div><span>Tournament ID</span><strong>{{ tournamentId }}</strong></div>
               <div><span>Generated internal code</span><strong>{{ internalCode }}</strong></div>
@@ -479,6 +574,12 @@ export interface CreateTournamentRequest {
                 </ul>
               </div>
               <div>
+                <span>Rules & Settings</span>
+                <strong>{{ rulesReviewTitle }}</strong>
+                <small *ngIf="rulesChoice === 'preset'" style="display: block; color: var(--tse-text-muted); margin-top: 4px;">Tie-breakers: {{ rulesTieBreakerSummary }}</small>
+                <small *ngIf="rulesChoice === 'preset'" style="display: block; color: var(--tse-text-muted); margin-top: 4px;">Substitutions: {{ rulesSubstitutionsMatch }} per match, {{ rulesSubstitutesBench }} on bench</small>
+              </div>
+              <div>
                 <span>Country weather</span>
                 <strong>{{ countryWeatherReviewTitle }}</strong>
                 <small *ngIf="locationType === 2" style="display: block; color: var(--tse-text-muted); margin-top: 4px;">Global country setting for {{ selectedParentName }}.</small>
@@ -490,6 +591,13 @@ export interface CreateTournamentRequest {
                 <small *ngIf="calendarRules.length" style="display: block; color: var(--tse-text-muted); margin-top: 4px;">First matchday: {{ dates.formatMonthDay(calendarRules[0].month, calendarRules[0].day) }} · Last matchday: {{ dates.formatMonthDay(calendarRules[calendarRules.length - 1].month, calendarRules[calendarRules.length - 1].day) }}</small>
               </div>
             </div>
+            <details class="tse-technical" style="margin-top: 8px;">
+              <summary>Show generated settings.txt lines</summary>
+              <ng-container *ngIf="rulesTechnicalPreviewLines.length; else noSettingsLines">
+                <code *ngFor="let line of rulesTechnicalPreviewLines">{{ line }}</code>
+              </ng-container>
+              <ng-template #noSettingsLines><p>No settings.txt lines generated.</p></ng-template>
+            </details>
             <details class="tse-technical" style="margin-top: 8px;">
               <summary>Show generated schedule lines</summary>
               <ng-container *ngIf="calendarTechnicalPreviewLines.length; else noCalendarLines">
@@ -541,7 +649,7 @@ export interface CreateTournamentRequest {
             </details>
           </ng-container>
         </div>
-        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 9" [disabled]="!canContinue" (click)="onContinue()">Continue</button><button type="button" class="tse-primary" *ngIf="step === 9" (click)="submit()">Create tournament</button></footer>
+        <footer class="tse-modal-actions"><button type="button" (click)="cancel.emit()">Cancel</button><button type="button" *ngIf="step > 1" (click)="step = step - 1">Back</button><button type="button" class="tse-primary" *ngIf="step < 10" [disabled]="!canContinue" (click)="onContinue()">Continue</button><button type="button" class="tse-primary" *ngIf="step === 10" (click)="submit()">Create tournament</button></footer>
       </section>
     </div>
   `
@@ -576,6 +684,21 @@ export class CreateTournamentWizardComponent implements OnInit {
   teamSourcesChoice: "rules" | "skip" = "skip";
   teamSourceDraft: CreateTournamentTaskRuleRequest = { timing: "start", action: "FillWithTeam", targetId: 0, param1: "1", param2: "", param3: "0" };
   teamSourceRules: CreateTournamentTaskRuleRequest[] = [];
+
+  rulesChoice: "inherit" | "preset" = "preset";
+  rulesCompetitionType = "LEAGUE";
+  rulesPointsWin = 3;
+  rulesPointsDraw = 1;
+  rulesPointsLoss = 0;
+  rulesTieBreakers = ["POINTS", "GOALDIFF", "GOALSFOR", "WINS"];
+  rulesSubstitutesBench = 7;
+  rulesSubstitutionsMatch = 3;
+  rulesKnockoutEndRules = ["ET", "PENS"];
+  rulesSeasonStartMonth = "AUG";
+  rulesPromotionCompetitionId = 0;
+  rulesRelegationCompetitionId = 0;
+  rulesPromotionPlayoffCompetitionId = 0;
+  private rulesInitialized = false;
 
   advancementChoice: "auto" | "skip" = "skip";
   generatedAdvancementRules: CompdataAdvancement[] = [];
@@ -658,7 +781,7 @@ export class CreateTournamentWizardComponent implements OnInit {
     );
   }
 
-  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Choose initial teams", "Team sources and season updates", "Configure advancement", "Configure country weather", "Configure calendar", "Review"][this.step]; }
+  get stepTitle(): string { return ["", "Where does this tournament belong?", "Tournament information", "Choose the tournament structure", "Choose initial teams", "Team sources and season updates", "Rules & Settings", "Configure advancement", "Configure country weather", "Configure calendar", "Review"][this.step]; }
   get locationTypeLabel(): string { return this.locationType === 2 ? "Country" : this.locationType === 1 ? "Confederation" : "World/FIFA"; }
   get locationPickerPlaceholder(): string { return `Choose ${this.locationType === 2 ? "a country" : this.locationType === 1 ? "a confederation" : "World/FIFA"}...`; }
   get locationSearchPlaceholder(): string { return `Search ${this.locationType === 2 ? "countries" : this.locationType === 1 ? "confederations" : "World/FIFA"}...`; }
@@ -680,8 +803,8 @@ export class CreateTournamentWizardComponent implements OnInit {
     }
     if (this.step === 2) return Boolean(this.tournamentId && this.tournamentId > 0 && this.nameKey.trim() && this.internalCode.trim() && !this.isCodeAlreadyUsed);
     if (this.step === 4) return this.teamsChoice === 'skip' || (this.teamsChoice === 'paste' && Boolean(this.pastedTeamIds.trim())) || this.selectedTeams.length > 0;
-    if (this.step === 7) return this.countryWeatherChoice !== "copy" || this.countryWeatherSourceId > 0;
-    if (this.step === 8) return this.calendarChoice === "skip" || (this.calendarChoice === "fixtures" ? this.calendarFixturesValid : this.calendarRulesValid);
+    if (this.step === 8) return this.countryWeatherChoice !== "copy" || this.countryWeatherSourceId > 0;
+    if (this.step === 9) return this.calendarChoice === "skip" || (this.calendarChoice === "fixtures" ? this.calendarFixturesValid : this.calendarRulesValid);
     return true;
   }
 
@@ -691,6 +814,9 @@ export class CreateTournamentWizardComponent implements OnInit {
       this.initializeTeamSourcesStep();
     }
     if (this.step === 6) {
+      this.initializeRulesStep();
+    }
+    if (this.step === 7) {
       if (this.template === "cup") {
         this.advancementChoice = "auto";
         this.generateAdvancementPreview();
@@ -698,10 +824,10 @@ export class CreateTournamentWizardComponent implements OnInit {
         this.advancementChoice = "skip";
       }
     }
-    if (this.step === 7) {
+    if (this.step === 8) {
       this.initializeCountryWeatherStep();
     }
-    if (this.step === 8) {
+    if (this.step === 9) {
       this.initializeCalendarStep();
     }
   }
@@ -719,6 +845,119 @@ export class CreateTournamentWizardComponent implements OnInit {
   initializeTeamSourcesStep(): void {
     this.teamSourcesChoice = this.teamSourceRules.length ? "rules" : "skip";
     this.setTeamSourceAction("FillWithTeam");
+  }
+
+  initializeRulesStep(): void {
+    if (this.rulesInitialized) return;
+    if (this.template === "cup") this.setRulesPreset("CUP");
+    else if (this.template === "groupStage") this.setRulesPreset("INTERCUP");
+    else if (this.template === "empty") this.rulesChoice = "inherit";
+    else this.setRulesPreset("LEAGUE");
+    this.rulesInitialized = true;
+  }
+
+  setRulesPreset(type: string): void {
+    this.rulesChoice = "preset";
+    this.rulesCompetitionType = type;
+    this.rulesPointsWin = 3;
+    this.rulesPointsDraw = 1;
+    this.rulesPointsLoss = 0;
+    this.rulesTieBreakers = ["POINTS", "GOALDIFF", "GOALSFOR", "WINS"];
+    this.rulesSubstitutesBench = 7;
+    this.rulesSubstitutionsMatch = 3;
+    this.rulesKnockoutEndRules = type === "LEAGUE" ? [] : ["ET", "PENS"];
+    this.rulesSeasonStartMonth = "AUG";
+  }
+
+  get rulesMonthOptions() {
+    return MONTH_OPTIONS;
+  }
+
+  get availableWizardTieBreakers() {
+    const used = new Set(this.rulesTieBreakers);
+    return TIE_BREAKER_OPTIONS.filter((option) => !used.has(option.value));
+  }
+
+  get existingCompetitionOptions(): Array<{ id: number; label: string }> {
+    return this.project.competitions.map((competition) => ({
+      id: competition.id,
+      label: this.display.objectName(this.display.object(this.project, competition.id), this.reference, this.project)
+    }));
+  }
+
+  rulesTieBreakerLabel(value: string): string {
+    return TIE_BREAKER_OPTIONS.find((option) => option.value === value)?.label ?? value;
+  }
+
+  addWizardTieBreaker(value: string): void {
+    if (!value || this.rulesTieBreakers.includes(value)) return;
+    this.rulesTieBreakers.push(value);
+  }
+
+  moveWizardTieBreaker(index: number, direction: -1 | 1): void {
+    const target = index + direction;
+    if (target < 0 || target >= this.rulesTieBreakers.length) return;
+    [this.rulesTieBreakers[index], this.rulesTieBreakers[target]] = [this.rulesTieBreakers[target], this.rulesTieBreakers[index]];
+  }
+
+  toggleWizardEndRule(value: string, enabled: boolean): void {
+    const values = new Set(this.rulesKnockoutEndRules);
+    if (enabled) values.add(value); else values.delete(value);
+    this.rulesKnockoutEndRules = ["ET", "PENS"].filter((candidate) => values.has(candidate));
+  }
+
+  get rulesReviewTitle(): string {
+    if (this.rulesChoice === "inherit") return "Inherited/default rules";
+    return `${this.rulesCompetitionType} · Points ${this.rulesPointsWin}/${this.rulesPointsDraw}/${this.rulesPointsLoss}`;
+  }
+
+  get rulesTieBreakerSummary(): string {
+    return this.rulesTieBreakers.map((value) => this.rulesTieBreakerLabel(value)).join(", ");
+  }
+
+  get rulesTechnicalPreviewLines(): string[] {
+    const request = this.createRulesRequest();
+    if (!request) return [];
+    const mockObjects = this.generateMockObjects();
+    return this.rulesLinesForObjects(request, mockObjects);
+  }
+
+  private rulesLinesForObjects(request: CreateTournamentRulesRequest, objects: CompdataObject[]): string[] {
+    if (request.mode === "inherit") return [];
+    const competition = objects.find((object) => object.kind === 3);
+    if (!competition) return [];
+    const lines = [
+      [competition.id, "comp_type", request.competitionType].join(","),
+      [competition.id, "standings_pointswin", request.pointsWin].join(","),
+      [competition.id, "standings_pointsdraw", request.pointsDraw].join(","),
+      [competition.id, "standings_pointsloss", request.pointsLoss].join(","),
+      [competition.id, "rule_numsubsbench", request.substitutesBench].join(","),
+      [competition.id, "rule_numsubsmatch", request.substitutionsMatch].join(","),
+      [competition.id, "schedule_seasonstartmonth", request.seasonStartMonth].join(",")
+    ];
+    request.tieBreakers.forEach((value) => lines.push([competition.id, "standings_sort", value].join(",")));
+    request.knockoutEndRules.forEach((value) => lines.push([competition.id, "match_endruleko1leg", value].join(",")));
+    if (request.promotionCompetitionId) lines.push([competition.id, "info_league_promo", request.promotionCompetitionId].join(","));
+    if (request.relegationCompetitionId) lines.push([competition.id, "info_league_releg", request.relegationCompetitionId].join(","));
+    if (request.promotionPlayoffCompetitionId) lines.push([competition.id, "schedule_forcecomp", request.promotionPlayoffCompetitionId].join(","));
+
+    objects.filter((object) => object.kind === 4).forEach((phase) => {
+      const stage = this.stageSettingsForPhase(phase);
+      lines.push([phase.id, "match_stagetype", stage.type].join(","));
+      if (stage.situation) lines.push([phase.id, "match_matchsituation", stage.situation].join(","));
+    });
+    return lines;
+  }
+
+  private stageSettingsForPhase(phase: CompdataObject): { type: string; situation?: string } {
+    if (/setup/i.test(phase.description)) return { type: "SETUP" };
+    if (/quarter/i.test(phase.description)) return { type: "KO1LEG", situation: "QUARTER" };
+    if (/semi/i.test(phase.description)) return { type: "KO1LEG", situation: "SEMI" };
+    if (/third/i.test(phase.description)) return { type: "KO1LEG", situation: "THIRDPLACE" };
+    if (/final/i.test(phase.description)) return { type: "KO1LEG", situation: "FINAL" };
+    if (/round/i.test(phase.description)) return { type: "KO1LEG", situation: "ROUNDX" };
+    if (phase.description === "FCE_Group_Stage") return { type: "GROUP", situation: "GROUP" };
+    return { type: "LEAGUE", situation: "LEAGUE" };
   }
 
   get mockTeamSourceObjects(): CompdataObject[] {
@@ -1434,6 +1673,7 @@ export class CreateTournamentWizardComponent implements OnInit {
         cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
         initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined,
         teamSources: this.createTeamSourcesRequest(),
+        rules: this.createRulesRequest(),
         advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined,
         countryWeather: this.createCountryWeatherRequest(),
         calendar: this.createCalendarRequest()
@@ -1456,6 +1696,7 @@ export class CreateTournamentWizardComponent implements OnInit {
       cupInitialTeams: this.template === "cup" ? this.cupInitialTeams : undefined,
       initialTeams: this.teamsChoice !== "skip" && this.selectedTeams.length > 0 ? this.selectedTeams.map(t => t.teamId) : undefined,
       teamSources: this.createTeamSourcesRequest(),
+      rules: this.createRulesRequest(),
       advancements: this.advancementChoice === "auto" ? this.generatedAdvancementRules : undefined,
       countryWeather: this.createCountryWeatherRequest(),
       calendar: this.createCalendarRequest()
@@ -1477,6 +1718,25 @@ export class CreateTournamentWizardComponent implements OnInit {
   private createTeamSourcesRequest(): CreateTournamentTeamSourcesRequest | undefined {
     if (this.teamSourcesChoice === "skip" || this.teamSourceRules.length === 0) return undefined;
     return { rules: this.teamSourceRules.map((rule) => ({ ...rule })) };
+  }
+
+  private createRulesRequest(): CreateTournamentRulesRequest | undefined {
+    if (this.rulesChoice === "inherit") return { mode: "inherit", competitionType: "NONE", pointsWin: 0, pointsDraw: 0, pointsLoss: 0, tieBreakers: [], substitutesBench: 0, substitutionsMatch: 0, knockoutEndRules: [], seasonStartMonth: "AUG" };
+    return {
+      mode: "preset",
+      competitionType: this.rulesCompetitionType,
+      pointsWin: Number(this.rulesPointsWin) || 0,
+      pointsDraw: Number(this.rulesPointsDraw) || 0,
+      pointsLoss: Number(this.rulesPointsLoss) || 0,
+      tieBreakers: [...this.rulesTieBreakers],
+      substitutesBench: Number(this.rulesSubstitutesBench) || 0,
+      substitutionsMatch: Number(this.rulesSubstitutionsMatch) || 0,
+      knockoutEndRules: [...this.rulesKnockoutEndRules],
+      seasonStartMonth: this.rulesSeasonStartMonth,
+      promotionCompetitionId: Number(this.rulesPromotionCompetitionId) || undefined,
+      relegationCompetitionId: Number(this.rulesRelegationCompetitionId) || undefined,
+      promotionPlayoffCompetitionId: Number(this.rulesPromotionPlayoffCompetitionId) || undefined
+    };
   }
 
   private createCalendarRequest(): CreateTournamentCalendarRequest | undefined {
