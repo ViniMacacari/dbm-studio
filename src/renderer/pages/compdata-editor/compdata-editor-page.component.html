@@ -11,6 +11,8 @@
         <button type="button" [class.active]="view === 'simple'" (click)="view = 'simple'">Simple View</button>
         <button type="button" [class.active]="view === 'advanced'" (click)="view = 'advanced'">Advanced View</button>
       </div>
+      <button type="button" *ngIf="compdataProject" [class.tse-toolbar-active]="activeTab === 'weather'"
+        (click)="openGlobalWeather()">Global Weather</button>
       <button type="button" (click)="openCompdataFolder()">Open Tournament Files</button>
       <button type="button" [disabled]="!compdataProject" (click)="loadTranslatedNames()">Load Translated Names</button>
       <button type="button" class="tse-primary" [disabled]="!compdataProject || !compdataDirty"
@@ -33,14 +35,19 @@
           <button type="button" (click)="loadTranslatedNames()">Load Translated Names</button>
         </div>
 
-        <app-tournament-phase-details *ngIf="selectedPhase && selectedTournamentObject; else tournamentState"
-          [project]="project" [reference]="compdataReferenceProject" [tournament]="selectedTournamentObject"
-          [phase]="selectedPhase" (back)="selectedPhaseId = 0" (addChild)="openAddChild()" (editPhase)="openEditPhase()"
-          (editQuantities)="openEditPhaseQuantities()" (deletePhase)="requestDelete('phase', selectedPhaseId)"
-          (editChild)="openEditChild($event)"
-          (deleteChild)="requestDelete('child', $event)"></app-tournament-phase-details>
+        <app-country-weather *ngIf="activeTab === 'weather'; else tournamentEditorState" [project]="project"
+          [reference]="compdataReferenceProject" [competition]="selectedCompetition"
+          (structureChanged)="afterGlobalWeatherChange()"></app-country-weather>
 
-        <ng-template #tournamentState>
+        <ng-template #tournamentEditorState>
+          <app-tournament-phase-details *ngIf="selectedPhase && selectedTournamentObject; else tournamentState"
+            [project]="project" [reference]="compdataReferenceProject" [tournament]="selectedTournamentObject"
+            [phase]="selectedPhase" (back)="selectedPhaseId = 0" (addChild)="openAddChild()" (editPhase)="openEditPhase()"
+            (editQuantities)="openEditPhaseQuantities()" (deletePhase)="requestDelete('phase', selectedPhaseId)"
+            (editChild)="openEditChild($event)"
+            (deleteChild)="requestDelete('child', $event)"></app-tournament-phase-details>
+
+          <ng-template #tournamentState>
           <div class="tse-tab-bar" *ngIf="selectedCompetition">
             <button type="button" class="tse-tab" [class.active]="activeTab === 'structure'"
               (click)="activeTab = 'structure'">Structure</button>
@@ -54,8 +61,6 @@
               (click)="activeTab = 'advancement'">Advancement</button>
             <button type="button" class="tse-tab" [class.active]="activeTab === 'calendar'"
               (click)="activeTab = 'calendar'">Calendar</button>
-            <button type="button" class="tse-tab" [class.active]="activeTab === 'weather'"
-              (click)="activeTab = 'weather'">Global Weather</button>
           </div>
 
           <ng-container *ngIf="selectedCompetition; else selectTournamentState">
@@ -84,11 +89,7 @@
 
             <app-tournament-calendar *ngIf="activeTab === 'calendar'" [project]="project"
               [referenceProject]="compdataReferenceProject" [competition]="selectedCompetition"
-              (structureChanged)="compdataDirty = true" (openCountryWeather)="activeTab = 'weather'"></app-tournament-calendar>
-
-            <app-country-weather *ngIf="activeTab === 'weather'" [project]="project"
-              [reference]="compdataReferenceProject" [competition]="selectedCompetition"
-              (structureChanged)="compdataDirty = true"></app-country-weather>
+              (structureChanged)="compdataDirty = true" (openCountryWeather)="openGlobalWeather()"></app-tournament-calendar>
           </ng-container>
 
           <ng-template #selectTournamentState>
@@ -99,6 +100,7 @@
               <div><button type="button" class="tse-primary" (click)="openCreateWizard()">Create
                   Tournament</button><button type="button" (click)="view = 'advanced'">Open Advanced View</button></div>
             </div>
+          </ng-template>
           </ng-template>
         </ng-template>
       </main>

@@ -90,6 +90,13 @@ app-compdata-editor-page {
   box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
 }
 
+.tse-toolbar-active {
+  border-color: #98bead !important;
+  background: #eaf4ef !important;
+  color: var(--tse-accent) !important;
+  font-weight: 700;
+}
+
 .tse-scope-note {
   overflow: hidden;
   border-bottom: 1px solid #e9dfba;
@@ -245,8 +252,15 @@ app-tournament-sidebar {
 .tse-loc-note button { min-height: 26px; font-size: 10px; }
 
 app-tournament-overview,
-app-tournament-phase-details {
+app-tournament-phase-details,
+app-country-weather {
   display: block;
+}
+
+app-country-weather {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .tse-content {
@@ -685,20 +699,30 @@ app-tournament-phase-details {
 
 .tse-weather-content {
   width: min(1240px, 100%);
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .tse-weather-layout {
-  min-height: 560px;
+  min-height: 0;
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   gap: 14px;
+  overflow: hidden;
 }
 
 .tse-weather-sidebar {
   min-width: 0;
+  min-height: 0;
   display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   align-content: start;
   gap: 10px;
+  overflow: hidden;
   border: 1px solid var(--tse-line);
   border-radius: 8px;
   background: white;
@@ -719,16 +743,20 @@ app-tournament-phase-details {
 }
 
 .tse-country-list {
-  max-height: 590px;
+  min-height: 0;
   display: grid;
+  align-content: start;
   gap: 4px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .tse-country-list button {
   min-width: 0;
+  min-height: 52px !important;
   display: grid;
   gap: 2px;
+  align-content: center;
   border-color: transparent;
   background: transparent;
   text-align: left;
@@ -744,6 +772,7 @@ app-tournament-phase-details {
 .tse-country-list strong,
 .tse-country-list span {
   overflow: hidden;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -759,6 +788,17 @@ app-tournament-phase-details {
 
 .tse-weather-main {
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.tse-weather-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .tse-rules-content {
