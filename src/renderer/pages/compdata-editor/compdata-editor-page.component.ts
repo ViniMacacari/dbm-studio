@@ -162,6 +162,11 @@ export class CompdataEditorPageComponent {
 
   openCreateWizard(): void { this.dialog = "create"; }
 
+  openGlobalWeather(): void {
+    this.selectedPhaseId = 0;
+    this.activeTab = "weather";
+  }
+
   createTournament(request: CreateTournamentRequest): void {
     if (!this.compdataProject) return;
     
@@ -679,6 +684,15 @@ export class CompdataEditorPageComponent {
   afterSettingsChange(): void {
     if (this.compdataProject) {
       this.validation.invalidateTournament(this.compdataProject, this.selectedTournamentId);
+    }
+    this.compdataDirty = true;
+    this.refreshCompetitionSummaries();
+  }
+
+  afterGlobalWeatherChange(): void {
+    if (this.compdataProject) {
+      this.tree.invalidate(this.compdataProject);
+      this.validation.invalidate(this.compdataProject);
     }
     this.compdataDirty = true;
     this.refreshCompetitionSummaries();

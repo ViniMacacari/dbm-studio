@@ -5,8 +5,9 @@ import type { CompdataCompetitionSummary, CompdataObject, CompdataProject, Compd
 import { WeatherDisplayService } from "../../services/compdata/weather-display.service";
 import { MissingWeatherFillMode, WeatherMonthDraft, WeatherPresetApplyMode, WeatherPresetKey, WeatherService } from "../../services/compdata/weather.service";
 import { WeatherValidationIssue } from "../../services/compdata/weather-validation.service";
+import { nations } from "../../../utils/get-nations/get-nations";
 
-type WeatherDialog = "month" | "preset" | "copy" | "missing" | "validation" | "preview" | undefined;
+type WeatherDialog = "country" | "month" | "preset" | "copy" | "missing" | "validation" | "preview" | undefined;
 
 interface WeatherMonthRow {
   month: number;
@@ -26,7 +27,10 @@ interface WeatherMonthRow {
           <p>Edit weather and lighting by country. These settings can affect all tournaments played in that country.</p>
           <small class="tse-entity-note">Weather is configured by country, not by tournament.</small>
         </div>
-        <span class="tse-structure-badge">Global country setting</span>
+        <div class="tse-weather-header-actions">
+          <button type="button" class="tse-primary" (click)="openCreateCountry()" [disabled]="!availableCountryOptions.length">Add country</button>
+          <span class="tse-structure-badge">Global country setting</span>
+        </div>
       </header>
 
       <div class="tse-field-help" *ngIf="contextCountry as country">
@@ -43,6 +47,7 @@ interface WeatherMonthRow {
             <span>{{ countries.length }} countries</span>
           </header>
           <input class="tse-search" [(ngModel)]="countrySearch" placeholder="Search country..." />
+          <button type="button" class="tse-create" (click)="openCreateCountry()" [disabled]="!availableCountryOptions.length">+ Add country</button>
           <div class="tse-country-list">
             <button type="button" *ngFor="let country of filteredCountries" [class.active]="country.id === selectedCountryId" (click)="selectCountry(country.id)">
               <strong>{{ countryName(country) }}</strong>
@@ -109,9 +114,34 @@ interface WeatherMonthRow {
           <main class="tse-main-empty">
             <strong>No countries found</strong>
             <span>Create or load Country objects before adding weather profiles.</span>
+            <button type="button" class="tse-primary" (click)="openCreateCountry()" [disabled]="!availableCountryOptions.length">Add country</button>
           </main>
         </ng-template>
       </div>
+    </div>
+
+    <div class="tse-modal-backdrop" *ngIf="dialog === 'country'">
+      <section class="tse-modal" role="dialog" aria-modal="true">
+        <header class="tse-modal-header">
+          <div><span>Global Weather</span><h2>Add country</h2></div>
+          <button type="button" (click)="closeDialog()">×</button>
+        </header>
+        <div class="tse-modal-body">
+          <p>Create the country entry in compobj.txt, then configure its weather profile.</p>
+          <label class="tse-field"><span>Country</span><select [(ngModel)]="newCountryNationId">
+            <option *ngFor="let option of availableCountryOptions" [ngValue]="option.id">{{ option.name }}</option>
+          </select></label>
+          <label class="tse-checkline"><input type="checkbox" [(ngModel)]="createCountryWithPreset" /> Generate weather for all months now</label>
+          <label class="tse-field" *ngIf="createCountryWithPreset"><span>Climate preset</span><select [(ngModel)]="createCountryPreset">
+            <option *ngFor="let preset of weather.presets" [ngValue]="preset.key">{{ preset.label }}</option>
+          </select></label>
+          <div class="tse-field-help">DBM Studio will create the country as a normal compdata country object, using the same NationName entry used by tournament creation.</div>
+        </div>
+        <footer class="tse-modal-actions">
+          <button type="button" (click)="closeDialog()">Cancel</button>
+          <button type="button" class="tse-primary" [disabled]="!newCountryNationId" (click)="createCountry()">Create country</button>
+        </footer>
+      </section>
     </div>
 
     <div class="tse-modal-backdrop" *ngIf="dialog === 'month' && selectedCountry">
@@ -296,6 +326,9 @@ export class CountryWeatherComponent implements OnChanges {
   copySourceCountryId = 0;
   missingFillMode: MissingWeatherFillMode = "nearest";
   missingCustomDraft: WeatherMonthDraft = this.defaultDraft();
+  newCountryNationId = 0;
+  createCountryWithPreset = true;
+  createCountryPreset: WeatherPresetKey = "temperate";
 
   constructor(
     public readonly weather: WeatherService,
@@ -319,6 +352,18 @@ export class CountryWeatherComponent implements OnChanges {
 
   get selectedCountry(): CompdataObject | undefined {
     return this.countries.find((country) => country.id === this.selectedCountryId);
+  }
+
+  get availableCountryOptions(): Array<{ id: number; name: string }> {
+    const existingNationIds = new Set<number>();
+    for (const country of this.project.objects.filter((object) => object.kind === 2)) {
+      const nationId = /^NationName_(\d+)$/i.exec(country.description)?.[1];
+      if (nationId) existingNationIds.add(Number(nationId));
+    }
+    return nations
+      .filter((nation) => !existingNationIds.has(nation.id))
+      .map((nation) => ({ id: nation.id, name: nation.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   get contextCountry(): CompdataObject | undefined {
@@ -408,6 +453,43 @@ export class CountryWeatherComponent implements OnChanges {
     return configured === 12 ? "12 months configured" : configured > 0 ? `${configured} months configured` : "Missing weather profile";
   }
 
+  openCreateCountry(): void {
+    const options = this.availableCountryOptions;
+    this.newCountryNationId = options[0]?.id ?? 0;
+    this.createCountryWithPreset = true;
+    this.createCountryPreset = "temperate";
+    this.dialog = "country";
+  }
+
+  createCountry(): void {
+    const nation = nations.find((candidate) => candidate.id === Number(this.newCountryNationId));
+    if (!nation) return;
+    const existing = this.project.objects.find((object) => object.kind === 2 && object.description.toLowerCase() === `nationname_${nation.id}`);
+    if (existing) {
+      this.refreshCountries(existing.id);
+      this.closeDialog();
+      return;
+    }
+
+    const countryObjectId = this.nextObjectId();
+    const worldObject = this.project.objects.find((object) => object.kind === 0);
+    const shortCode = nation.name.substring(0, 4).toUpperCase();
+    this.project.objects.push({
+      id: countryObjectId,
+      kind: 2,
+      shortName: shortCode,
+      description: `NationName_${nation.id}`,
+      parentId: worldObject?.id ?? 0
+    });
+
+    if (this.createCountryWithPreset) {
+      this.weather.applyPreset(this.project, countryObjectId, this.createCountryPreset, "all");
+    }
+    this.refreshCountries(countryObjectId);
+    this.afterChange();
+    this.closeDialog();
+  }
+
   openEditMonth(month: number): void {
     this.editingMonth = month;
     const entry = this.weather.monthEntry(this.project, this.selectedCountryId, month);
@@ -492,16 +574,22 @@ export class CountryWeatherComponent implements OnChanges {
     this.dialog = undefined;
   }
 
-  private refreshCountries(): void {
+  private refreshCountries(preferredCountryId = 0): void {
     this.project.weatherEntries ??= [];
     this.project.weatherInvalidLines ??= [];
     this.countries = this.weather.countries(this.project, this.reference);
     const contextId = this.contextCountry?.id ?? 0;
-    if (contextId && this.countries.some((country) => country.id === contextId)) {
+    if (preferredCountryId && this.countries.some((country) => country.id === preferredCountryId)) {
+      this.selectedCountryId = preferredCountryId;
+    } else if (contextId && this.countries.some((country) => country.id === contextId)) {
       this.selectedCountryId = contextId;
     } else if (!this.countries.some((country) => country.id === this.selectedCountryId)) {
       this.selectedCountryId = this.countries[0]?.id ?? 0;
     }
+  }
+
+  private nextObjectId(): number {
+    return Math.max(0, ...this.project.objects.map((object) => object.id)) + 1;
   }
 
   private afterChange(): void {
